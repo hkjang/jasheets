@@ -46,15 +46,17 @@ import * as XLSX from 'xlsx';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
+import { api } from '@/lib/api';
 import EmailDialog from './EmailDialog';
 
 interface SpreadsheetProps {
   initialData?: SheetData;
   onDataChange?: (data: SheetData) => void;
   spreadsheetId?: string;
+  activeSheetId?: string | null;
 }
 
-export default function Spreadsheet({ initialData = {}, onDataChange, spreadsheetId }: SpreadsheetProps) {
+export default function Spreadsheet({ initialData = {}, onDataChange, spreadsheetId, activeSheetId }: SpreadsheetProps) {
   // --- Custom Hooks ---
 
   // Data & History
@@ -104,6 +106,60 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   const { user, loading } = useAuth();
   const router = useRouter();
   const [isEmailOpen, setIsEmailOpen] = useState(false);
+
+  const handleSave = useCallback(async () => {
+    if (!activeSheetId) {
+        alert('저장할 시트가 없습니다.');
+        return;
+    }
+    try {
+        const updates: any[] = [];
+        Object.keys(data).forEach(r => {
+            const row = Number(r);
+            Object.keys(data[row]).forEach(c => {
+                const col = Number(c);
+                const cell = data[row][col];
+                if (cell) {
+                    updates.push({
+                        row,
+                        col,
+                        value: cell.value,
+                        formula: cell.formula,
+                        // format: cell.style? // Style is separate? backend expects format? 
+                        // Backend UpdateCellsDto has format: any. Cell model has format: Json.
+                        // Frontend cell has `style` (CSS properties).
+                        // I should probably map style to format or just ignore style for now?
+                        // User asked for Save. If style is lost, it's bad.
+                        // Backend cell.format is Json. I can store style there.
+                         format: cell.style
+                    });
+                }
+            });
+        });
+
+        if (updates.length === 0) {
+            alert('저장할 데이터가 없습니다.');
+            return;
+        }
+
+        await api.spreadsheets.updateCells(activeSheetId, updates);
+        alert('저장되었습니다.');
+    } catch (e) {
+        console.error(e);
+        alert('저장 중 오류가 발생했습니다.');
+    }
+  }, [data, activeSheetId]);
+
+  useEffect(() => {
+      const handleKeyDown = (e: KeyboardEvent) => {
+          if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+              e.preventDefault();
+              handleSave();
+          }
+      };
+      window.addEventListener('keydown', handleKeyDown);
+      return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSave]);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -625,6 +681,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
                   alert('오류가 발생했습니다.');
               }
          }}
+         onSave={handleSave}
          onPrint={() => window.print()}
          onUndo={handleUndo}
          onRedo={handleRedo}

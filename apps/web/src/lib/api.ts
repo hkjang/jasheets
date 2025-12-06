@@ -207,6 +207,19 @@ export const api = {
       if (!res.ok) throw new Error('Failed to permanently delete spreadsheet');
       return res.json();
     },
+    updateCells: async (sheetId: string, updates: { row: number, col: number, value?: any, formula?: string, format?: any }[]) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/sheets/sheet/${sheetId}/cells`, {
+        method: 'PUT',
+        headers: { 
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify({ updates }),
+      });
+      if (!res.ok) throw new Error('Failed to save cells');
+      return res.json();
+    },
   },
   audit: {
     list: async () => {

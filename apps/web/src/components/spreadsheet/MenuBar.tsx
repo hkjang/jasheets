@@ -28,6 +28,7 @@ interface MenuBarProps {
   onDownloadPDF: () => void;
   onMakeCopy: () => void;
   onEmail: () => void;
+  onSave?: () => void;
 }
 
 export default function MenuBar({
@@ -55,6 +56,7 @@ export default function MenuBar({
   onDownloadPDF,
   onMakeCopy,
   onEmail,
+  onSave,
 }: MenuBarProps) {
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -110,6 +112,7 @@ export default function MenuBar({
             <div className={styles.dropdown}>
               <MenuItem label="새 문서" onClick={() => window.open('/', '_blank')} />
               <MenuItem label="열기" onClick={() => window.location.href = '/'} />
+              <MenuItem label="저장" onClick={onSave} shortcut="Ctrl+S" />
               <MenuItem label="사본 만들기" onClick={onMakeCopy} />
               <Separator />
               <MenuItem label="공유" onClick={() => alert('공유 기능은 툴바의 공유 버튼을 이용해주세요.')} />

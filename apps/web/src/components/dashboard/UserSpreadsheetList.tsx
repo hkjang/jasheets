@@ -42,7 +42,7 @@ export const UserSpreadsheetList = () => {
     if (!name) return;
     try {
         const newSheet = await api.spreadsheets.create({ name });
-        router.push(`/sheet/${newSheet.id}`);
+        router.push(`/spreadsheet/${newSheet.id}`);
     } catch (err) {
         alert('Failed to create spreadsheet');
     }
