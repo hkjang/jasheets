@@ -67,7 +67,7 @@ export function useKeyboardNavigation({
           }
           return;
         default:
-          if (!isEditingRef.current && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
+          if (!isEditingRef.current && e.key && e.key.length === 1 && !e.ctrlKey && !e.metaKey) {
             onStartEdit(e.key);
             e.preventDefault();
           }

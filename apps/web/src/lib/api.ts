@@ -99,6 +99,15 @@ export const api = {
       if (!res.ok) throw new Error('Failed to fetch spreadsheet');
       return res.json();
     },
+    copy: async (id: string) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/sheets/${id}/copy`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to copy spreadsheet');
+      return res.json();
+    },
     toggleFavorite: async (id: string) => {
        const token = localStorage.getItem('auth_token');
        const res = await fetch(`${API_URL}/sheets/${id}/favorite`, {

@@ -664,18 +664,9 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
                   return;
               }
               try {
-                  const token = localStorage.getItem('token');
-                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/sheets/${spreadsheetId}/copy`, {
-                      method: 'POST',
-                      headers: { Authorization: `Bearer ${token}` }
-                  });
-                  if(res.ok) {
-                      const newSheet = await res.json();
-                      if(confirm('복사가 완료되었습니다. 복사된 시트로 이동하시겠습니까?')) {
-                          router.push(`/spreadsheet/${newSheet.id}`);
-                      }
-                  } else {
-                      alert('복사에 실패했습니다.');
+                  const newSheet = await api.spreadsheets.copy(spreadsheetId);
+                  if(confirm('복사가 완료되었습니다. 복사된 시트로 이동하시겠습니까?')) {
+                      router.push(`/spreadsheet/${newSheet.id}`);
                   }
               } catch(e) {
                   alert('오류가 발생했습니다.');
