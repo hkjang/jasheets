@@ -653,7 +653,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
                   }
                   body.push(rowData);
               }
-              (doc as any).autoTable({
+              autoTable(doc, {
                   head: [],
                   body: body,
               });
