@@ -20,6 +20,7 @@ export default function CellEditor({ position, value, onChange, onCommit, onCanc
   return (
     <input
       ref={inputRef}
+      autoFocus
       style={{
         position: 'absolute',
         left: position.x,
@@ -37,6 +38,24 @@ export default function CellEditor({ position, value, onChange, onCommit, onCanc
       value={value}
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => {
+        // Stop propagation to prevent global keyboard navigation (which listens on window)
+        // from interfering with editing (e.g. interpreting characters as commands or restarting edit)
+        // Exception: Tab key might be needed for navigation, but for now we block all to ensure stability
+        // or we can allow specific keys if needed. 
+        // Given the bug "only last character saved", blocking everything is safest for data entry.
+        // We let Enter/Escape bubble? No, CellEditor handles them. 
+        // But if useKeyboardNavigation handles Enter to move down? 
+        // Let's stop propagation for everything first.
+        
+        if (['Tab'].includes(e.key)) {
+             // Let Tab bubble so useKeyboardNavigation can handle 'move next'
+             // BUT, if isEditingRef is broken, Tab might be mishandled? 
+             // useKeyboardNavigation handles Tab specifically.
+             // allow bubbling for Tab.
+        } else {
+             e.stopPropagation();
+        }
+
         if (e.key === 'Enter') {
           onCommit();
         } else if (e.key === 'Escape') {

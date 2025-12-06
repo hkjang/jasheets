@@ -394,11 +394,12 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
 
   // Wrap selection handlers
   const handleCellSelect = useCallback((pos: CellPosition) => {
+    if (!pos) return; 
     _handleCellSelect(pos);
-    setEditing(false);
+    // setEditing(false); // Rely on onBlur to start/stop editing
     const cell = data[pos.row]?.[pos.col];
     setEditValue(cell?.formula || String(cell?.value ?? ''));
-  }, [_handleCellSelect, setEditing, setEditValue, data]);
+  }, [_handleCellSelect, setEditValue, data]);
 
   const handleSelectionChange = useCallback((range: CellRange) => {
     _handleSelectionChange(range);
@@ -808,6 +809,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
         
         {isEditing && selectedCell && (
              <CellEditor
+                key={`${selectedCell.row}-${selectedCell.col}`}
                 position={getCellPosition(selectedCell.row, selectedCell.col)}
                 value={editValue}
                 onChange={setEditValue}
@@ -821,6 +823,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
             visible={true}
             position={getCellPosition(selectedCell.row, selectedCell.col)}
             value={editValue}
+            // ...
             onSelect={(val) => {
               setEditValue(val);
               setTimeout(commitEditing, 0);
