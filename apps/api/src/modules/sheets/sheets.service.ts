@@ -48,27 +48,68 @@ export class SheetsService {
     });
   }
 
-  async findAll(userId: string) {
-    return this.prisma.spreadsheet.findMany({
-      where: {
-        AND: [
-          { deletedAt: null },
-          {
-            OR: [
-              { ownerId: userId },
-              { permissions: { some: { userId } } },
-            ],
-          }
-        ]
-      },
+  async findAll(userId: string, filter?: string, search?: string) {
+    const where: any = { deletedAt: null };
+
+    if (search) {
+      where.name = { contains: search, mode: 'insensitive' };
+    }
+
+    if (filter === 'favorites') {
+      where.favorites = { some: { userId } };
+    } else if (filter === 'shared') {
+      where.AND = [
+        { ownerId: { not: userId } },
+        { permissions: { some: { userId } } }
+      ];
+    } else if (filter === 'created') {
+      where.ownerId = userId;
+    } else {
+      where.OR = [
+        { ownerId: userId },
+        { permissions: { some: { userId } } },
+      ];
+    }
+
+    const spreadsheets = await this.prisma.spreadsheet.findMany({
+      where,
       include: {
         owner: {
           select: { id: true, email: true, name: true, avatar: true },
         },
         _count: { select: { sheets: true } },
+        favorites: {
+          where: { userId },
+          select: { id: true }
+        }
       },
       orderBy: { updatedAt: 'desc' },
     });
+
+    return spreadsheets.map(s => ({
+      ...s,
+      isFavorite: s.favorites.length > 0
+    }));
+  }
+
+  async toggleFavorite(userId: string, spreadsheetId: string) {
+    const existing = await this.prisma.favorite.findUnique({
+      where: {
+        userId_spreadsheetId: { userId, spreadsheetId }
+      }
+    });
+
+    if (existing) {
+      await this.prisma.favorite.delete({
+        where: { id: existing.id }
+      });
+      return { isFavorite: false };
+    } else {
+      await this.prisma.favorite.create({
+        data: { userId, spreadsheetId }
+      });
+      return { isFavorite: true };
+    }
   }
 
   async findAllAdmin() {
@@ -411,6 +452,71 @@ export class SheetsService {
     if (!permission || (permission.role !== PermissionRole.EDITOR && permission.role !== PermissionRole.OWNER)) {
       throw new ForbiddenException('You do not have edit access to this spreadsheet');
     }
+  }
+
+  async listPermissions(userId: string, spreadsheetId: string) {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({
+      where: { id: spreadsheetId },
+      include: {
+        permissions: {
+          include: {
+            user: { select: { id: true, email: true, name: true, avatar: true } },
+          },
+        },
+      },
+    });
+
+    if (!spreadsheet) throw new NotFoundException('Spreadsheet not found');
+    if (spreadsheet.ownerId !== userId) throw new ForbiddenException('Only owner can view permissions');
+
+    return {
+      isPublic: spreadsheet.isPublic,
+      permissions: spreadsheet.permissions.map(p => ({
+        id: p.id,
+        user: p.user,
+        email: p.email,
+        role: p.role,
+      })),
+    };
+  }
+
+  async addPermission(userId: string, spreadsheetId: string, email: string, role: PermissionRole) {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({ where: { id: spreadsheetId } });
+    if (!spreadsheet) throw new NotFoundException('Spreadsheet not found');
+    if (spreadsheet.ownerId !== userId) throw new ForbiddenException('Only owner can add permissions');
+
+    // Find user by email
+    const targetUser = await this.prisma.user.findUnique({ where: { email } });
+    
+    return this.prisma.permission.create({
+      data: {
+        spreadsheetId,
+        userId: targetUser?.id, // If null, maybe invite by email only (future feature), for now assume user exists or store email
+        email: email,
+        role,
+      },
+    });
+  }
+
+  async removePermission(userId: string, spreadsheetId: string, permissionId: string) {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({ where: { id: spreadsheetId } });
+    if (!spreadsheet) throw new NotFoundException('Spreadsheet not found');
+    if (spreadsheet.ownerId !== userId) throw new ForbiddenException('Only owner can remove permissions');
+
+    return this.prisma.permission.delete({
+      where: { id: permissionId },
+    });
+  }
+
+  async updatePublicAccess(userId: string, spreadsheetId: string, isPublic: boolean) {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({ where: { id: spreadsheetId } });
+    if (!spreadsheet) throw new NotFoundException('Spreadsheet not found');
+    if (spreadsheet.ownerId !== userId) throw new ForbiddenException('Only owner can change public access');
+
+    return this.prisma.spreadsheet.update({
+      where: { id: spreadsheetId },
+      data: { isPublic },
+    });
   }
 
   async getUserRole(userId: string, spreadsheetId: string): Promise<PermissionRole | null> {

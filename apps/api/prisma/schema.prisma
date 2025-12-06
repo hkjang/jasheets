@@ -20,6 +20,12 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
   isAdmin       Boolean   @default(false)
+  
+  // Profile
+  language      String    @default("ko")
+  theme         String    @default("light")
+  contact       String?
+
 
   // Relations
   ownedSpreadsheets   Spreadsheet[]   @relation("SpreadsheetOwner")
@@ -28,6 +34,7 @@ model User {
   versions            Version[]
   sessions            Session[]
   auditLogs           AuditLog[]
+  favorites           Favorite[]
   
   roleId              String?
   role                Role?           @relation(fields: [roleId], references: [id])
@@ -60,8 +67,21 @@ model Spreadsheet {
   sheets        Sheet[]
   permissions   Permission[]
   versions      Version[]
+  favorites     Favorite[]
 
   @@map("spreadsheets")
+}
+
+model Favorite {
+  id            String      @id @default(uuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  spreadsheetId String
+  spreadsheet   Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  createdAt     DateTime    @default(now())
+
+  @@unique([userId, spreadsheetId])
+  @@map("favorites")
 }
 
 // Sheet model (tabs within a spreadsheet)

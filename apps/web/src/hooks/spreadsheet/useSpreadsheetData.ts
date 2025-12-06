@@ -146,12 +146,90 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
     }
   }, [data, history, historyIndex, onDataChange]);
 
+  const insertRow = useCallback((rowIndex: number) => {
+    applyChange((draft) => {
+        // Shift rows down
+        // We need to find all rows >= rowIndex and move them to row+1
+        // Iterate backwards to avoid overwriting
+        const rows = Object.keys(draft).map(Number).sort((a, b) => b - a);
+        for (const r of rows) {
+            if (r >= rowIndex) {
+                draft[r + 1] = draft[r];
+                delete draft[r];
+            }
+        }
+        // Ensure the new row is empty (it might have been deleted above, or didn't exist)
+        draft[rowIndex] = {}; 
+    });
+  }, [applyChange]);
+
+  const deleteRow = useCallback((rowIndex: number) => {
+      applyChange((draft) => {
+          // Delete target row
+          if (draft[rowIndex]) delete draft[rowIndex];
+          
+          // Shift rows up
+          const rows = Object.keys(draft).map(Number).sort((a, b) => a - b);
+          for (const r of rows) {
+              if (r > rowIndex) {
+                  draft[r - 1] = draft[r];
+                  delete draft[r];
+              }
+          }
+      });
+  }, [applyChange]);
+
+  const insertColumn = useCallback((colIndex: number) => {
+      applyChange((draft) => {
+          const rows = Object.keys(draft).map(Number);
+          for (const r of rows) {
+              const rowData = draft[r];
+              if (!rowData) continue;
+              
+              // Shift cells right
+              const cols = Object.keys(rowData).map(Number).sort((a, b) => b - a);
+              for (const c of cols) {
+                  if (c >= colIndex) {
+                      rowData[c + 1] = rowData[c];
+                      delete rowData[c];
+                  }
+              }
+          }
+      });
+  }, [applyChange]);
+
+  const deleteColumn = useCallback((colIndex: number) => {
+      applyChange((draft) => {
+          const rows = Object.keys(draft).map(Number);
+          for (const r of rows) {
+              const rowData = draft[r];
+              if (!rowData) continue;
+              
+              // Delete target cell
+              if (rowData[colIndex]) delete rowData[colIndex];
+              
+              // Shift cells left
+              const cols = Object.keys(rowData).map(Number).sort((a, b) => a - b);
+              for (const c of cols) {
+                  if (c > colIndex) {
+                      rowData[c - 1] = rowData[c];
+                      delete rowData[c];
+                  }
+              }
+          }
+      });
+  }, [applyChange]);
+
   return {
     data,
     setData, 
     updateData, // External update
     setCellValue,
     updateCellStyle,
+    insertRow,
+    deleteRow,
+    insertColumn,
+    deleteColumn,
     handleUndo,
     handleRedo,
     canUndo: historyIndex >= 0,

@@ -103,6 +103,33 @@ export class UsersService {
     });
   }
 
+  async updateProfile(id: string, dto: any) {
+    await this.findOne(id);
+    
+    return this.prisma.user.update({
+      where: { id },
+      data: dto,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        avatar: true,
+        language: true,
+        theme: true,
+        contact: true,
+        isAdmin: true,
+        roleId: true,
+        role: {
+          select: {
+             id: true,
+             name: true
+          }
+        },
+        createdAt: true,
+      }
+    });
+  }
+
   async remove(id: string) {
     // Check if user exists
     await this.findOne(id);
@@ -112,3 +139,4 @@ export class UsersService {
     });
   }
 }
+

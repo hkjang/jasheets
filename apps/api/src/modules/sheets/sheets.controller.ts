@@ -8,6 +8,7 @@ import {
   Param,
   UseGuards,
   Request,
+  Query,
 } from '@nestjs/common';
 import { SheetsService } from './sheets.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
@@ -27,8 +28,33 @@ export class SheetsController {
   }
 
   @Get()
-  findAll(@Request() req: any) {
-    return this.sheetsService.findAll(req.user.id);
+  findAll(@Request() req: any, @Query('filter') filter?: string, @Query('search') search?: string) {
+    return this.sheetsService.findAll(req.user.id, filter, search);
+  }
+
+  @Post(':id/favorite')
+  toggleFavorite(@Request() req: any, @Param('id') id: string) {
+    return this.sheetsService.toggleFavorite(req.user.id, id);
+  }
+
+  @Get(':id/permissions')
+  listPermissions(@Request() req: any, @Param('id') id: string) {
+     return this.sheetsService.listPermissions(req.user.id, id);
+  }
+
+  @Post(':id/permissions')
+  addPermission(@Request() req: any, @Param('id') id: string, @Body() body: { email: string, role: any }) {
+     return this.sheetsService.addPermission(req.user.id, id, body.email, body.role);
+  }
+
+  @Delete(':id/permissions/:permId')
+  removePermission(@Request() req: any, @Param('id') id: string, @Param('permId') permId: string) {
+     return this.sheetsService.removePermission(req.user.id, id, permId);
+  }
+  
+  @Put(':id/public')
+  updatePublicAccess(@Request() req: any, @Param('id') id: string, @Body() body: { isPublic: boolean }) {
+      return this.sheetsService.updatePublicAccess(req.user.id, id, body.isPublic);
   }
 
   @Get(':id')

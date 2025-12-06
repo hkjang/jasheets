@@ -16,6 +16,8 @@ import PivotTableDialog from './PivotTableDialog';
 import { calculatePivotData, PivotConfig } from '@/utils/pivotLogic';
 import KeyboardShortcuts from './KeyboardShortcuts';
 import Toast from '../ui/Toast';
+import ShareDialog from './ShareDialog';
+import HeaderContextMenu from './HeaderContextMenu';
 import {
   CellPosition,
   CellRange,
@@ -35,9 +37,10 @@ import { useSpreadsheetCharts } from '@/hooks/spreadsheet/useSpreadsheetCharts';
 interface SpreadsheetProps {
   initialData?: SheetData;
   onDataChange?: (data: SheetData) => void;
+  spreadsheetId?: string;
 }
 
-export default function Spreadsheet({ initialData = {}, onDataChange }: SpreadsheetProps) {
+export default function Spreadsheet({ initialData = {}, onDataChange, spreadsheetId }: SpreadsheetProps) {
   // --- Custom Hooks ---
 
   // Data & History
@@ -47,6 +50,10 @@ export default function Spreadsheet({ initialData = {}, onDataChange }: Spreadsh
     updateData,
     setCellValue,
     updateCellStyle,
+    insertRow,
+    deleteRow,
+    insertColumn,
+    deleteColumn,
     handleUndo,
     handleRedo,
     canUndo,
@@ -84,10 +91,6 @@ export default function Spreadsheet({ initialData = {}, onDataChange }: Spreadsh
       router.push('/login');
     }
   }, [loading, user, router]);
-
-  // Prevent rendering if not authenticated (or show loading)
-  // We can return null or a loader here, but hooks must run first.
-  // Ideally, useSpreadsheetCollaboration should handle null user gracefully or we skip rendering the main UI until loaded.
   
   const userId = useMemo(() => user?.id || 'guest', [user]);
   const userName = useMemo(() => user?.name || user?.email || 'Guest', [user]);
@@ -99,7 +102,6 @@ export default function Spreadsheet({ initialData = {}, onDataChange }: Spreadsh
     unreadCount,
     toggleChat,
     sendChatMessage,
-    // sendCellUpdate is handled internally in hook via setData
   } = useSpreadsheetCollaboration({
     userId,
     userName,
@@ -119,13 +121,195 @@ export default function Spreadsheet({ initialData = {}, onDataChange }: Spreadsh
     handleRemoveChart,
   } = useSpreadsheetCharts();
 
-  // Columns & Rows (Local state for now, could be moved to hook if complex)
+  // Columns & Rows
   const [columns, setColumns] = useState<ColumnDef[]>(() =>
     Array(DEFAULT_CONFIG.totalCols).fill(null).map(() => ({ width: DEFAULT_CONFIG.defaultColWidth }))
   );
   const [rows, setRows] = useState<RowDef[]>(() =>
     Array(DEFAULT_CONFIG.totalRows).fill(null).map(() => ({ height: DEFAULT_CONFIG.defaultRowHeight }))
   );
+
+  // Context Menu State
+  const [contextMenu, setContextMenu] = useState<{
+    x: number;
+    y: number;
+    type: 'row' | 'col';
+    index: number;
+  } | null>(null);
+
+  const handleHeaderContextMenu = useCallback((x: number, y: number, type: 'row' | 'col', index: number) => {
+    setContextMenu({ x, y, type, index });
+  }, []);
+
+  const handleInsertRowBefore = useCallback(() => {
+    if (!contextMenu || contextMenu.type !== 'row') return;
+    const index = contextMenu.index;
+    setRows(prev => {
+        const newRows = [...prev];
+        newRows.splice(index, 0, { height: DEFAULT_CONFIG.defaultRowHeight });
+        return newRows;
+    });
+    insertRow(index);
+    setContextMenu(null);
+  }, [contextMenu, insertRow]);
+  
+  const handleInsertRowAfter = useCallback(() => {
+    if (!contextMenu || contextMenu.type !== 'row') return;
+    const index = contextMenu.index + 1;
+    setRows(prev => {
+        const newRows = [...prev];
+        newRows.splice(index, 0, { height: DEFAULT_CONFIG.defaultRowHeight });
+        return newRows;
+    });
+    insertRow(index);
+    setContextMenu(null);
+  }, [contextMenu, insertRow]);
+
+  const handleDeleteRow = useCallback(() => {
+    if (!contextMenu || contextMenu.type !== 'row') return;
+    const index = contextMenu.index;
+    setRows(prev => {
+        const newRows = [...prev];
+        newRows.splice(index, 1);
+        newRows.push({ height: DEFAULT_CONFIG.defaultRowHeight }); 
+        return newRows;
+    });
+    deleteRow(index);
+    setContextMenu(null);
+  }, [contextMenu, deleteRow]);
+
+  const handleHideRow = useCallback(() => {
+      if (!contextMenu || contextMenu.type !== 'row') return;
+      const index = contextMenu.index;
+      setRows(prev => {
+          const newRows = [...prev];
+          if (newRows[index]) newRows[index] = { ...newRows[index], hidden: true };
+          return newRows;
+      });
+      setContextMenu(null);
+  }, [contextMenu]);
+
+  const handleUnhideRow = useCallback(() => {
+      // Logic: If user specifically clicked a hidden row placeholder? 
+      // Or we unhide all in selection?
+      // For now, let's implement a simple "Unhide all rows" or unhide specific if we can target it.
+      // But context menu is usually on visible headers.
+      // Typical UX: Select Row 2 and 4 (where 3 is hidden), right click -> Unhide.
+      // Or right click on the boundary marker.
+      // Simplified: If context menu is on a row, we check if there are hidden rows nearby?
+      // Let's rely on selection-based unhide if implemented.
+      // Or just a global unhide for the current selection range if it exists?
+      
+      // Let's assume for this step we might pass "Unhide" for the current selection if it spans hidden rows.
+      if (!contextMenu || contextMenu.type !== 'row') return;
+      
+      // If we have a selection that includes hidden rows, unhide them. 
+      // Otherwise, check if adjacent rows are hidden?
+      // Simple MVP: Unhide ALL hidden rows in the current selection range, or globally if no selection?
+      // Let's do: Unhide rows adjacent to current index?
+      // Or just unhide the specific index if we could somehow right-click it (not possible if hidden).
+      // Standard Excel: Select range covering hidden rows -> Right Click -> Unhide.
+      
+      if (selection && selection.start.row <= contextMenu.index && selection.end.row >= contextMenu.index) {
+          const start = Math.min(selection.start.row, selection.end.row);
+          const end = Math.max(selection.end.row, selection.start.row);
+          setRows(prev => {
+              const newRows = [...prev];
+              for (let i = start; i <= end; i++) {
+                  if (newRows[i]?.hidden) {
+                      newRows[i] = { ...newRows[i], hidden: false };
+                  }
+              }
+              return newRows;
+          });
+      }
+      setContextMenu(null);
+  }, [contextMenu, selection]);
+
+
+  const handleInsertColBefore = useCallback(() => {
+    if (!contextMenu || contextMenu.type !== 'col') return;
+    const index = contextMenu.index;
+    setColumns(prev => {
+        const newCols = [...prev];
+        newCols.splice(index, 0, { width: DEFAULT_CONFIG.defaultColWidth });
+        return newCols;
+    });
+    insertColumn(index);
+    setContextMenu(null);
+  }, [contextMenu, insertColumn]);
+
+  const handleInsertColAfter = useCallback(() => {
+    if (!contextMenu || contextMenu.type !== 'col') return;
+    const index = contextMenu.index + 1;
+    setColumns(prev => {
+        const newCols = [...prev];
+        newCols.splice(index, 0, { width: DEFAULT_CONFIG.defaultColWidth });
+        return newCols;
+    });
+    insertColumn(index);
+    setContextMenu(null);
+  }, [contextMenu, insertColumn]);
+
+  const handleDeleteCol = useCallback(() => {
+    if (!contextMenu || contextMenu.type !== 'col') return;
+    const index = contextMenu.index;
+    setColumns(prev => {
+        const newCols = [...prev];
+        newCols.splice(index, 1);
+        newCols.push({ width: DEFAULT_CONFIG.defaultColWidth });
+        return newCols;
+    });
+    deleteColumn(index);
+    setContextMenu(null);
+  }, [contextMenu, deleteColumn]);
+
+  const handleHideCol = useCallback(() => {
+      if (!contextMenu || contextMenu.type !== 'col') return;
+      const index = contextMenu.index;
+      setColumns(prev => {
+          const newCols = [...prev];
+          if (newCols[index]) newCols[index] = { ...newCols[index], hidden: true };
+          return newCols;
+      });
+      setContextMenu(null);
+  }, [contextMenu]);
+
+  const handleUnhideCol = useCallback(() => {
+      if (!contextMenu || contextMenu.type !== 'col') return;
+      if (selection && selection.start.col <= contextMenu.index && selection.end.col >= contextMenu.index) {
+          const start = Math.min(selection.start.col, selection.end.col);
+          const end = Math.max(selection.end.col, selection.start.col);
+          setColumns(prev => {
+              const newCols = [...prev];
+              for (let i = start; i <= end; i++) {
+                  if (newCols[i]?.hidden) {
+                      newCols[i] = { ...newCols[i], hidden: false };
+                  }
+              }
+              return newCols;
+          });
+      }
+      setContextMenu(null);
+  }, [contextMenu, selection]);
+
+  const handleColumnResize = useCallback((index: number, width: number) => {
+      setColumns(prev => {
+          const newCols = [...prev];
+          if (newCols[index]) newCols[index] = { ...newCols[index], width };
+          else newCols[index] = { width };
+          return newCols;
+      });
+  }, []);
+
+  const handleRowResize = useCallback((index: number, height: number) => {
+      setRows(prev => {
+          const newRows = [...prev];
+          if (newRows[index]) newRows[index] = { ...newRows[index], height };
+          else newRows[index] = { height };
+          return newRows;
+      });
+  }, []);
 
   const getCellPosition = useCallback((row: number, col: number) => {
     let x = 50; 
@@ -137,7 +321,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange }: Spreadsh
     return { x, y, width, height };
   }, [columns, rows]);
 
-  // Wrap selection handlers to integrate with edit state
+  // Wrap selection handlers
   const handleCellSelect = useCallback((pos: CellPosition) => {
     _handleCellSelect(pos);
     setEditing(false);
@@ -192,15 +376,22 @@ export default function Spreadsheet({ initialData = {}, onDataChange }: Spreadsh
   // Toast state
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Share Dialog state
+  const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+
   const handleShare = useCallback(async () => {
-    try {
-      await navigator.clipboard.writeText(window.location.href);
-      setToastMessage('Link copied to clipboard');
-    } catch (err) {
-      console.error('Failed to copy: ', err);
-      setToastMessage('Failed to copy link');
+    if (spreadsheetId) {
+        setIsShareDialogOpen(true);
+    } else {
+        // Fallback for demo/unsaved sheets
+        try {
+            await navigator.clipboard.writeText(window.location.href);
+            setToastMessage('Link copied to clipboard (Unsaved sheet)');
+        } catch (err) {
+            setToastMessage('Failed to copy link');
+        }
     }
-  }, []);
+  }, [spreadsheetId]);
 
   // Derived
   const currentCell = useMemo(() => {
@@ -263,7 +454,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange }: Spreadsh
     return result;
   }, [data, selection]);
 
-  // Conditional Formatting Handlers
+  // Feature Handlers
   const handleAddConditionalRule = useCallback((rule: ConditionalRule) => {
     setConditionalRules(prev => [...prev, rule]);
   }, []);
@@ -276,7 +467,6 @@ export default function Spreadsheet({ initialData = {}, onDataChange }: Spreadsh
     }
   }, [selection]);
 
-  // Pivot Table Handlers
   const handleOpenPivotDialog = useCallback(() => {
     if (selection) {
       setIsPivotDialogOpen(true);
@@ -287,24 +477,20 @@ export default function Spreadsheet({ initialData = {}, onDataChange }: Spreadsh
 
   const handleCreatePivot = useCallback((config: PivotConfig) => {
     const pivotData = calculatePivotData(data, config);
-    // Find last used row
     const usedRows = Object.keys(data).map(Number);
     const maxRow = usedRows.length > 0 ? Math.max(...usedRows) : -1;
     const startTargetRow = maxRow + 5; 
 
     const newData = { ...data };
-    
     Object.keys(pivotData).forEach(rIdx => {
       const r = Number(rIdx);
       const targetRow = startTargetRow + r;
       if (!newData[targetRow]) newData[targetRow] = {};
-      
       Object.keys(pivotData[r]).forEach(cIdx => {
         const c = Number(cIdx);
         newData[targetRow][c] = pivotData[r][c];
       });
     });
-
     updateData(newData);
   }, [data, updateData]);
 
@@ -337,6 +523,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange }: Spreadsh
         onInsertChart={handleAddChart}
         onShare={handleShare}
       />
+      
       <div style={{ padding: '4px 8px', borderBottom: '1px solid #e0e0e0', background: '#f8f9fa', display: 'flex', gap: '8px', alignItems: 'center' }}>
          <button onClick={handleOpenConditionalDialog} style={{ fontSize: '12px', padding: '4px 8px', cursor: 'pointer' }}>
            조건부 서식
@@ -368,9 +555,9 @@ export default function Spreadsheet({ initialData = {}, onDataChange }: Spreadsh
         onValueChange={setEditValue}
         onSubmit={commitEditing}
         onCancel={cancelEditing}
-        // When clicking edit via formula bar, start editing current cell
         onEdit={() => selectedCell && startEditing(selectedCell)}
       />
+      
       <div className={styles.canvasWrapper} style={{ position: 'relative' }}>
         <UserCursors 
           users={users} 
@@ -385,13 +572,13 @@ export default function Spreadsheet({ initialData = {}, onDataChange }: Spreadsh
           selection={selection}
           onCellSelect={handleCellSelect}
           onSelectionChange={handleSelectionChange}
-          // On double click, start editing
           onCellEdit={(pos) => startEditing(pos)}
           conditionalRules={conditionalRules} 
+          onColumnResize={handleColumnResize}
+          onRowResize={handleRowResize}
+          onHeaderContextMenu={handleHeaderContextMenu}
         />
         
-        {/* Editor Overlay */}
-        {/* Editor Overlay */}
         {isEditing && selectedCell && (
              <CellEditor
                 position={getCellPosition(selectedCell.row, selectedCell.col)}
@@ -409,7 +596,6 @@ export default function Spreadsheet({ initialData = {}, onDataChange }: Spreadsh
             value={editValue}
             onSelect={(val) => {
               setEditValue(val);
-              // Small delay to ensure state update before submit
               setTimeout(commitEditing, 0);
             }}
             onClose={() => {}}
@@ -473,6 +659,29 @@ export default function Spreadsheet({ initialData = {}, onDataChange }: Spreadsh
         <Toast 
           message={toastMessage} 
           onClose={() => setToastMessage(null)} 
+        />
+      )}
+
+      {isShareDialogOpen && spreadsheetId && (
+        <ShareDialog
+            isOpen={isShareDialogOpen}
+            onClose={() => setIsShareDialogOpen(false)}
+            spreadsheetId={spreadsheetId}
+        />
+      )}
+
+      {contextMenu && (
+        <HeaderContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          type={contextMenu.type}
+          index={contextMenu.index}
+          onClose={() => setContextMenu(null)}
+          onInsertBefore={contextMenu.type === 'row' ? handleInsertRowBefore : handleInsertColBefore}
+          onInsertAfter={contextMenu.type === 'row' ? handleInsertRowAfter : handleInsertColAfter}
+          onDelete={contextMenu.type === 'row' ? handleDeleteRow : handleDeleteCol}
+          onHide={contextMenu.type === 'row' ? handleHideRow : handleHideCol}
+          onUnhide={contextMenu.type === 'row' ? handleUnhideRow : handleUnhideCol}
         />
       )}
     </div>

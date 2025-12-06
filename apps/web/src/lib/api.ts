@@ -56,15 +56,100 @@ export const api = {
       if (!res.ok) throw new Error('Failed to update user');
       return res.json();
     },
+    getProfile: async () => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/users/me`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch profile');
+      return res.json();
+    },
+    updateProfile: async (data: any) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/users/me`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to update profile');
+      return res.json();
+    },
   },
   spreadsheets: {
-    list: async () => {
+    list: async (filter?: string, search?: string) => {
       const token = localStorage.getItem('auth_token');
-      const res = await fetch(`${API_URL}/sheets`, {
+      const params = new URLSearchParams();
+      if (filter) params.append('filter', filter);
+      if (search) params.append('search', search);
+
+      const res = await fetch(`${API_URL}/sheets?${params.toString()}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('Failed to fetch spreadsheets');
       return res.json();
+    },
+    get: async (id: string) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/sheets/${id}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch spreadsheet');
+      return res.json();
+    },
+    toggleFavorite: async (id: string) => {
+       const token = localStorage.getItem('auth_token');
+       const res = await fetch(`${API_URL}/sheets/${id}/favorite`, {
+         method: 'POST',
+         headers: { Authorization: `Bearer ${token}` },
+       });
+       if (!res.ok) throw new Error('Failed to toggle favorite');
+       return res.json();
+    },
+    listPermissions: async (id: string) => {
+       const token = localStorage.getItem('auth_token');
+       const res = await fetch(`${API_URL}/sheets/${id}/permissions`, {
+         headers: { Authorization: `Bearer ${token}` },
+       });
+       if (!res.ok) throw new Error('Failed to list permissions');
+       return res.json();
+    },
+    addPermission: async (id: string, email: string, role: string) => {
+       const token = localStorage.getItem('auth_token');
+       const res = await fetch(`${API_URL}/sheets/${id}/permissions`, {
+         method: 'POST',
+         headers: { 
+           'Content-Type': 'application/json',
+           Authorization: `Bearer ${token}` 
+         },
+         body: JSON.stringify({ email, role }),
+       });
+       if (!res.ok) throw new Error('Failed to add permission');
+       return res.json();
+    },
+    removePermission: async (id: string, permId: string) => {
+       const token = localStorage.getItem('auth_token');
+       const res = await fetch(`${API_URL}/sheets/${id}/permissions/${permId}`, {
+         method: 'DELETE',
+         headers: { Authorization: `Bearer ${token}` },
+       });
+       if (!res.ok) throw new Error('Failed to remove permission');
+       return res.json();
+    },
+    updatePublicAccess: async (id: string, isPublic: boolean) => {
+       const token = localStorage.getItem('auth_token');
+       const res = await fetch(`${API_URL}/sheets/${id}/public`, {
+         method: 'PUT',
+         headers: { 
+           'Content-Type': 'application/json',
+           Authorization: `Bearer ${token}` 
+         },
+         body: JSON.stringify({ isPublic }),
+       });
+       if (!res.ok) throw new Error('Failed to update public access');
+       return res.json();
     },
     create: async (data: any) => {
       const token = localStorage.getItem('auth_token');

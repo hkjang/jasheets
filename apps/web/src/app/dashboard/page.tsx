@@ -1,6 +1,7 @@
 'use client';
 
-import React from 'react';
+import { ProfileDialog } from '@/components/profile/ProfileDialog';
+import { useState } from 'react';
 import NoticeBanner from '@/components/dashboard/NoticeBanner';
 import { UserSpreadsheetList } from '@/components/dashboard/UserSpreadsheetList';
 import { TemplateGallery } from '@/components/dashboard/TemplateGallery';
@@ -8,6 +9,7 @@ import { useRouter } from 'next/navigation';
 
 export default function DashboardPage() {
   const router = useRouter();
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -18,7 +20,13 @@ export default function DashboardPage() {
         </div>
         <div className="flex items-center space-x-4">
             <button onClick={() => router.push('/admin')} className="text-gray-600 hover:text-gray-900">Admin</button>
-            <div className="w-8 h-8 bg-gray-200 rounded-full"></div>
+            <button 
+              onClick={() => setIsProfileOpen(true)}
+              className="w-8 h-8 bg-gray-200 rounded-full hover:ring-2 hover:ring-blue-500 transition focus:outline-none"
+              title="Edit Profile"
+            >
+              <span className="sr-only">Profile</span>
+            </button>
         </div>
       </header>
       
@@ -33,6 +41,8 @@ export default function DashboardPage() {
         <TemplateGallery />
         <UserSpreadsheetList />
       </main>
+
+      <ProfileDialog isOpen={isProfileOpen} onClose={() => setIsProfileOpen(false)} />
     </div>
   );
 }
