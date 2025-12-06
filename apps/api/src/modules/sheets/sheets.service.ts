@@ -1,0 +1,343 @@
+import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { CreateSpreadsheetDto } from './dto/create-spreadsheet.dto';
+import { UpdateSpreadsheetDto } from './dto/update-spreadsheet.dto';
+import { PermissionRole } from '@prisma/client';
+
+@Injectable()
+export class SheetsService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async create(userId: string, dto: CreateSpreadsheetDto) {
+    return this.prisma.spreadsheet.create({
+      data: {
+        name: dto.name,
+        ownerId: userId,
+        sheets: {
+          create: {
+            name: 'Sheet1',
+            index: 0,
+          },
+        },
+        permissions: {
+          create: {
+            userId,
+            role: PermissionRole.OWNER,
+          },
+        },
+      },
+      include: {
+        sheets: true,
+        owner: {
+          select: { id: true, email: true, name: true, avatar: true },
+        },
+      },
+    });
+  }
+
+  async findAll(userId: string) {
+    return this.prisma.spreadsheet.findMany({
+      where: {
+        OR: [
+          { ownerId: userId },
+          { permissions: { some: { userId } } },
+        ],
+      },
+      include: {
+        owner: {
+          select: { id: true, email: true, name: true, avatar: true },
+        },
+        _count: { select: { sheets: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  async findAllAdmin() {
+    return this.prisma.spreadsheet.findMany({
+      include: {
+        owner: {
+          select: { id: true, email: true, name: true, avatar: true },
+        },
+        _count: { select: { sheets: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+    });
+  }
+
+  async findOne(userId: string, id: string) {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({
+      where: { id },
+      include: {
+        sheets: {
+          orderBy: { index: 'asc' },
+          include: {
+            cells: true,
+            rowMeta: true,
+            colMeta: true,
+          },
+        },
+        owner: {
+          select: { id: true, email: true, name: true, avatar: true },
+        },
+        permissions: {
+          include: {
+            user: {
+              select: { id: true, email: true, name: true, avatar: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!spreadsheet) {
+      throw new NotFoundException('Spreadsheet not found');
+    }
+
+    // Check access
+    const hasAccess = await this.checkAccess(userId, id);
+    if (!hasAccess) {
+      throw new ForbiddenException('You do not have access to this spreadsheet');
+    }
+
+    return spreadsheet;
+  }
+
+  async update(userId: string, id: string, dto: UpdateSpreadsheetDto) {
+    await this.checkEditAccess(userId, id);
+
+    return this.prisma.spreadsheet.update({
+      where: { id },
+      data: {
+        name: dto.name,
+      },
+      include: {
+        sheets: true,
+        owner: {
+          select: { id: true, email: true, name: true, avatar: true },
+        },
+      },
+    });
+  }
+
+  async remove(userId: string, id: string) {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({
+      where: { id },
+    });
+
+    if (!spreadsheet) {
+      throw new NotFoundException('Spreadsheet not found');
+    }
+
+    if (spreadsheet.ownerId !== userId) {
+      throw new ForbiddenException('Only the owner can delete this spreadsheet');
+    }
+
+    return this.prisma.spreadsheet.delete({
+      where: { id },
+    });
+  }
+
+  async removeAdmin(id: string) {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({
+      where: { id },
+    });
+
+    if (!spreadsheet) {
+      throw new NotFoundException('Spreadsheet not found');
+    }
+
+    return this.prisma.spreadsheet.delete({
+      where: { id },
+    });
+  }
+
+  // Sheet operations
+  async addSheet(userId: string, spreadsheetId: string, name: string) {
+    await this.checkEditAccess(userId, spreadsheetId);
+
+    const lastSheet = await this.prisma.sheet.findFirst({
+      where: { spreadsheetId },
+      orderBy: { index: 'desc' },
+    });
+
+    return this.prisma.sheet.create({
+      data: {
+        spreadsheetId,
+        name,
+        index: (lastSheet?.index ?? -1) + 1,
+      },
+    });
+  }
+
+  async updateSheet(userId: string, sheetId: string, data: { name?: string }) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+    });
+
+    if (!sheet) {
+      throw new NotFoundException('Sheet not found');
+    }
+
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+
+    return this.prisma.sheet.update({
+      where: { id: sheetId },
+      data,
+    });
+  }
+
+  async deleteSheet(userId: string, sheetId: string) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+    });
+
+    if (!sheet) {
+      throw new NotFoundException('Sheet not found');
+    }
+
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+
+    // Check if this is the last sheet
+    const sheetCount = await this.prisma.sheet.count({
+      where: { spreadsheetId: sheet.spreadsheetId },
+    });
+
+    if (sheetCount <= 1) {
+      throw new ForbiddenException('Cannot delete the last sheet');
+    }
+
+    return this.prisma.sheet.delete({
+      where: { id: sheetId },
+    });
+  }
+
+  // Cell operations
+  async updateCell(
+    userId: string,
+    sheetId: string,
+    row: number,
+    col: number,
+    data: { value?: any; formula?: string; format?: any },
+  ) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+    });
+
+    if (!sheet) {
+      throw new NotFoundException('Sheet not found');
+    }
+
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+
+    return this.prisma.cell.upsert({
+      where: {
+        sheetId_row_col: { sheetId, row, col },
+      },
+      update: data,
+      create: {
+        sheetId,
+        row,
+        col,
+        ...data,
+      },
+    });
+  }
+
+  async updateCells(
+    userId: string,
+    sheetId: string,
+    updates: Array<{ row: number; col: number; value?: any; formula?: string; format?: any }>,
+  ) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+    });
+
+    if (!sheet) {
+      throw new NotFoundException('Sheet not found');
+    }
+
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+
+    return this.prisma.$transaction(
+      updates.map((update) =>
+        this.prisma.cell.upsert({
+          where: {
+            sheetId_row_col: { sheetId, row: update.row, col: update.col },
+          },
+          update: {
+            value: update.value,
+            formula: update.formula,
+            format: update.format,
+          },
+          create: {
+            sheetId,
+            row: update.row,
+            col: update.col,
+            value: update.value,
+            formula: update.formula,
+            format: update.format,
+          },
+        }),
+      ),
+    );
+  }
+
+  // Permission helpers
+  async checkAccess(userId: string, spreadsheetId: string): Promise<boolean> {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({
+      where: { id: spreadsheetId },
+      include: {
+        permissions: {
+          where: { userId },
+        },
+      },
+    });
+
+    if (!spreadsheet) return false;
+    if (spreadsheet.isPublic) return true;
+    if (spreadsheet.ownerId === userId) return true;
+    if (spreadsheet.permissions.length > 0) return true;
+
+    return false;
+  }
+
+  async checkEditAccess(userId: string, spreadsheetId: string): Promise<void> {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({
+      where: { id: spreadsheetId },
+      include: {
+        permissions: {
+          where: { userId },
+        },
+      },
+    });
+
+    if (!spreadsheet) {
+      throw new NotFoundException('Spreadsheet not found');
+    }
+
+    if (spreadsheet.ownerId === userId) return;
+
+    const permission = spreadsheet.permissions[0];
+    if (!permission || (permission.role !== PermissionRole.EDITOR && permission.role !== PermissionRole.OWNER)) {
+      throw new ForbiddenException('You do not have edit access to this spreadsheet');
+    }
+  }
+
+  async getUserRole(userId: string, spreadsheetId: string): Promise<PermissionRole | null> {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({
+      where: { id: spreadsheetId },
+    });
+
+    if (!spreadsheet) return null;
+    if (spreadsheet.ownerId === userId) return PermissionRole.OWNER;
+
+    const permission = await this.prisma.permission.findUnique({
+      where: {
+        spreadsheetId_userId: { spreadsheetId, userId },
+      },
+    });
+
+    return permission?.role ?? null;
+  }
+}

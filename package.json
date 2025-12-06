@@ -1,0 +1,29 @@
+{
+  "name": "jasheets",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A Sheets-like web spreadsheet service",
+  "scripts": {
+    "dev": "turbo run dev",
+    "build": "turbo run build",
+    "test": "turbo run test",
+    "test:e2e": "playwright test",
+    "lint": "turbo run lint",
+    "clean": "turbo run clean && rimraf node_modules",
+    "db:up": "docker-compose -f docker/docker-compose.yml up -d",
+    "db:down": "docker-compose -f docker/docker-compose.yml down",
+    "db:generate": "turbo run prisma:generate",
+    "db:migrate": "turbo run prisma:migrate",
+    "db:studio": "turbo run prisma:studio"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.57.0",
+    "rimraf": "^5.0.5",
+    "turbo": "^2.3.3",
+    "typescript": "^5.7.2"
+  },
+  "packageManager": "pnpm@9.14.4",
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

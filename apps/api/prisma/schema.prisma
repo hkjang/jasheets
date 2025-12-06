@@ -1,0 +1,194 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model
+model User {
+  id            String    @id @default(uuid())
+  email         String    @unique
+  password      String
+  name          String?
+  avatar        String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  isAdmin       Boolean   @default(false)
+
+  // Relations
+  ownedSpreadsheets   Spreadsheet[]   @relation("SpreadsheetOwner")
+  permissions         Permission[]
+  comments            Comment[]
+  versions            Version[]
+  sessions            Session[]
+
+  @@map("users")
+}
+
+// Session model for JWT refresh tokens
+model Session {
+  id            String    @id @default(uuid())
+  userId        String
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken  String    @unique
+  expiresAt     DateTime
+  createdAt     DateTime  @default(now())
+
+  @@map("sessions")
+}
+
+// Spreadsheet model
+model Spreadsheet {
+  id            String    @id @default(uuid())
+  name          String
+  ownerId       String
+  owner         User      @relation("SpreadsheetOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  isPublic      Boolean   @default(false)
+  publicToken   String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  sheets        Sheet[]
+  permissions   Permission[]
+  versions      Version[]
+
+  @@map("spreadsheets")
+}
+
+// Sheet model (tabs within a spreadsheet)
+model Sheet {
+  id              String    @id @default(uuid())
+  spreadsheetId   String
+  spreadsheet     Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  name            String
+  index           Int       @default(0)
+  rowCount        Int       @default(1000)
+  colCount        Int       @default(26)
+  frozenRows      Int       @default(0)
+  frozenCols      Int       @default(0)
+  defaultRowHeight Int      @default(25)
+  defaultColWidth  Int      @default(100)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relations
+  cells           Cell[]
+  comments        Comment[]
+  rowMeta         RowMeta[]
+  colMeta         ColMeta[]
+
+  @@unique([spreadsheetId, index])
+  @@map("sheets")
+}
+
+// Cell model
+model Cell {
+  id            String    @id @default(uuid())
+  sheetId       String
+  sheet         Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  row           Int
+  col           Int
+  value         Json?
+  formula       String?
+  format        Json?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@unique([sheetId, row, col])
+  @@index([sheetId])
+  @@map("cells")
+}
+
+// Row metadata (height, hidden)
+model RowMeta {
+  id            String    @id @default(uuid())
+  sheetId       String
+  sheet         Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  row           Int
+  height        Int?
+  hidden        Boolean   @default(false)
+
+  @@unique([sheetId, row])
+  @@map("row_meta")
+}
+
+// Column metadata (width, hidden)
+model ColMeta {
+  id            String    @id @default(uuid())
+  sheetId       String
+  sheet         Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  col           Int
+  width         Int?
+  hidden        Boolean   @default(false)
+
+  @@unique([sheetId, col])
+  @@map("col_meta")
+}
+
+// Permission model
+model Permission {
+  id              String    @id @default(uuid())
+  spreadsheetId   String
+  spreadsheet     Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  userId          String?
+  user            User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email           String?   // For sharing with non-registered users
+  role            PermissionRole
+  inviteToken     String?   @unique
+  expiresAt       DateTime?
+  createdAt       DateTime  @default(now())
+
+  @@unique([spreadsheetId, userId])
+  @@unique([spreadsheetId, email])
+  @@map("permissions")
+}
+
+enum PermissionRole {
+  VIEWER
+  COMMENTER
+  EDITOR
+  OWNER
+}
+
+// Version/History model
+model Version {
+  id              String    @id @default(uuid())
+  spreadsheetId   String
+  spreadsheet     Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  name            String?
+  snapshot        Json      // CRDT state or cell data snapshot
+  createdById     String
+  createdBy       User      @relation(fields: [createdById], references: [id])
+  createdAt       DateTime  @default(now())
+
+  @@index([spreadsheetId, createdAt(sort: Desc)])
+  @@map("versions")
+}
+
+// Comment model
+model Comment {
+  id              String    @id @default(uuid())
+  sheetId         String
+  sheet           Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  row             Int
+  col             Int
+  content         String
+  authorId        String
+  author          User      @relation(fields: [authorId], references: [id])
+  parentId        String?
+  parent          Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies         Comment[] @relation("CommentReplies")
+  resolved        Boolean   @default(false)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([sheetId, row, col])
+  @@map("comments")
+}
