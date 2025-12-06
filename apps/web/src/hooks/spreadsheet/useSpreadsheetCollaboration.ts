@@ -9,6 +9,7 @@ interface UseSpreadsheetCollaborationProps {
   selectedCell: CellPosition | null;
   selection: CellRange | null;
   setData: React.Dispatch<React.SetStateAction<SheetData>>;
+  spreadsheetId: string;
 }
 
 export function useSpreadsheetCollaboration({
@@ -17,6 +18,7 @@ export function useSpreadsheetCollaboration({
   selectedCell,
   selection,
   setData,
+  spreadsheetId,
 }: UseSpreadsheetCollaborationProps) {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -53,7 +55,7 @@ export function useSpreadsheetCollaboration({
     sendSelectionChange,
     sendChatMessage,
   } = useCollaboration({
-    spreadsheetId: 'demo-sheet',
+    spreadsheetId,
     userId,
     userName,
     onChatMessage: handleChatMessage,

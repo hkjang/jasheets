@@ -183,6 +183,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     selectedCell,
     selection,
     setData,
+    spreadsheetId: spreadsheetId || 'demo-sheet',
   });
 
   // Charts

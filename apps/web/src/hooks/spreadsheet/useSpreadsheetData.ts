@@ -22,6 +22,18 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
   const [history, setHistory] = useState<Commit[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
 
+  // Update data if initialData changes (e.g. loaded from server)
+  // We check if data is currently empty/default and initialData is populated to avoid overwriting user edits
+  // deep equality check is expensive, assume props change implies update needed if we are in "loading" phase
+  // But wait, if we are editing, we don't want to reset?
+  // Use a ref to track if we are "dirty"?
+  // Or simply: if initialData changes, we assume it's a "load" event from parent.
+  const [prevInitialData, setPrevInitialData] = useState(initialData);
+  if (initialData !== prevInitialData) {
+      setData(initialData);
+      setPrevInitialData(initialData);
+  }
+
   // Helper to apply changes and record history
   const applyChange = useCallback((recipe: (draft: SheetData) => void) => {
     let patches: Patch[] = [];

@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import styles from './MenuBar.module.css';
 
 interface MenuBarProps {
@@ -58,6 +60,7 @@ export default function MenuBar({
   onEmail,
   onSave,
 }: MenuBarProps) {
+  const router = useRouter();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -73,6 +76,12 @@ export default function MenuBar({
 
   const handleMenuClick = (menu: string) => {
     setActiveMenu(activeMenu === menu ? null : menu);
+  };
+
+  const handleMouseEnter = (menu: string) => {
+    if (activeMenu) {
+      setActiveMenu(menu);
+    }
   };
 
   const MenuItem = ({ label, onClick, shortcut }: { label: string; onClick?: () => void; shortcut?: string }) => (
@@ -92,12 +101,12 @@ export default function MenuBar({
 
   return (
     <div className={styles.container} ref={menuRef}>
-      <div className={styles.logo}>
+      <Link href="/dashboard" className={styles.logo} title="대시보드로 이동">
         <svg viewBox="0 0 24 24" width="24" height="24" fill="#0f9d58">
             <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
         </svg>
         <span className={styles.title}>JaSheets</span>
-      </div>
+      </Link>
 
       <div className={styles.menus}>
         {/* FILE MENU */}
@@ -105,6 +114,7 @@ export default function MenuBar({
           <button 
             className={`${styles.menuButton} ${activeMenu === 'file' ? styles.active : ''}`}
             onClick={() => handleMenuClick('file')}
+            onMouseEnter={() => handleMouseEnter('file')}
           >
             파일
           </button>
@@ -134,6 +144,7 @@ export default function MenuBar({
           <button 
             className={`${styles.menuButton} ${activeMenu === 'edit' ? styles.active : ''}`}
             onClick={() => handleMenuClick('edit')}
+            onMouseEnter={() => handleMouseEnter('edit')}
           >
             수정
           </button>
@@ -159,6 +170,7 @@ export default function MenuBar({
           <button 
             className={`${styles.menuButton} ${activeMenu === 'insert' ? styles.active : ''}`}
             onClick={() => handleMenuClick('insert')}
+            onMouseEnter={() => handleMouseEnter('insert')}
           >
             삽입
           </button>
@@ -182,6 +194,7 @@ export default function MenuBar({
           <button 
             className={`${styles.menuButton} ${activeMenu === 'view' ? styles.active : ''}`}
             onClick={() => handleMenuClick('view')}
+            onMouseEnter={() => handleMouseEnter('view')}
           >
             보기
           </button>
@@ -204,6 +217,7 @@ export default function MenuBar({
           <button 
             className={`${styles.menuButton} ${activeMenu === 'format' ? styles.active : ''}`}
             onClick={() => handleMenuClick('format')}
+            onMouseEnter={() => handleMouseEnter('format')}
           >
             서식
           </button>
@@ -223,6 +237,7 @@ export default function MenuBar({
           <button 
             className={`${styles.menuButton} ${activeMenu === 'data' ? styles.active : ''}`}
             onClick={() => handleMenuClick('data')}
+            onMouseEnter={() => handleMouseEnter('data')}
           >
             데이터
           </button>
@@ -242,6 +257,7 @@ export default function MenuBar({
           <button 
             className={`${styles.menuButton} ${activeMenu === 'help' ? styles.active : ''}`}
             onClick={() => handleMenuClick('help')}
+            onMouseEnter={() => handleMouseEnter('help')}
           >
             도움말
           </button>
