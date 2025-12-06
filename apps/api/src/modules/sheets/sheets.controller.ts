@@ -62,6 +62,24 @@ export class SheetsController {
     return this.sheetsService.removeAdmin(id);
   }
 
+  @Get('trash')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  listTrash(@Request() req: any) {
+    return this.sheetsService.listTrash(req.user.id);
+  }
+
+  @Post('trash/:id/restore')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  restore(@Request() req: any, @Param('id') id: string) {
+    return this.sheetsService.restore(req.user.id, id);
+  }
+
+  @Delete('trash/:id')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  hardDelete(@Request() req: any, @Param('id') id: string) {
+    return this.sheetsService.hardDelete(req.user.id, id);
+  }
+
   // Sheet operations
   @Post(':id/sheets')
   addSheet(

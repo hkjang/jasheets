@@ -19,6 +19,7 @@ export interface TokenResponse {
     email: string;
     name: string | null;
     avatar: string | null;
+    isAdmin: boolean;
   };
 }
 
@@ -109,7 +110,7 @@ export class AuthService {
     return user;
   }
 
-  private async generateTokens(user: { id: string; email: string; name: string | null; avatar: string | null }): Promise<TokenResponse> {
+  private async generateTokens(user: { id: string; email: string; name: string | null; avatar: string | null; isAdmin: boolean }): Promise<TokenResponse> {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
@@ -138,6 +139,7 @@ export class AuthService {
         email: user.email,
         name: user.name,
         avatar: user.avatar,
+        isAdmin: user.isAdmin,
       },
     };
   }

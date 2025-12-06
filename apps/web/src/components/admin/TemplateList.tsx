@@ -3,18 +3,18 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../lib/api';
 import { DataGrid } from './DataGrid';
-import { UserModal } from './UserModal';
+import { TemplateModal } from './TemplateModal';
 
-export function UserList() {
-  const [users, setUsers] = useState<any[]>([]);
+export function TemplateList() {
+  const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
-  const [editingUser, setEditingUser] = useState<any>(null);
+  const [editingTemplate, setEditingTemplate] = useState<any>(null);
 
-  const fetchUsers = async () => {
+  const fetchTemplates = async () => {
     try {
-      const data = await api.users.list();
-      setUsers(data);
+      const data = await api.templates.list();
+      setTemplates(data);
     } catch (e) {
       console.error(e);
     } finally {
@@ -23,75 +23,62 @@ export function UserList() {
   };
 
   useEffect(() => {
-    fetchUsers();
+    fetchTemplates();
   }, []);
 
   const handleDelete = async (id: string) => {
-    if (confirm('Are you sure you want to delete this user?')) {
-      await api.users.delete(id);
-      fetchUsers();
+    if (confirm('Are you sure you want to delete this template?')) {
+      await api.templates.delete(id);
+      fetchTemplates();
     }
   };
 
   const handleCreate = () => {
-    setEditingUser(null);
+    setEditingTemplate(null);
     setModalOpen(true);
   };
 
-  const handleEdit = (user: any) => {
-    setEditingUser(user);
+  const handleEdit = (template: any) => {
+    setEditingTemplate(template);
     setModalOpen(true);
   };
 
   const handleSave = async (data: any) => {
-    if (editingUser) {
-      await api.users.update(editingUser.id, data);
+    if (editingTemplate) {
+      await api.templates.update(editingTemplate.id, data);
     } else {
-      await api.users.create(data);
+      await api.templates.create(data);
     }
-    fetchUsers();
+    fetchTemplates();
   };
 
   const columns = [
-    { field: 'name', headerName: 'Name', width: '20%' },
-    { field: 'email', headerName: 'Email', width: '30%' },
+    { field: 'name', headerName: 'Name', width: '25%' },
+    { field: 'category', headerName: 'Category', width: '20%' },
     { 
-      field: 'isAdmin', 
-      headerName: 'Role', 
-      width: '15%',
-      renderCell: (row: any) => {
-        let label = 'USER';
-        let color = '#475569';
-        let bg = '#f1f5f9';
-
-        if (row.isAdmin) {
-             label = 'ADMIN';
-             color = '#1e40af';
-             bg = '#dbeafe';
-        } else if (row.role) {
-             label = row.role.name.toUpperCase();
-             color = '#7e22ce';
-             bg = '#f3e8ff';
-        }
-
-        return (
-            <span style={{ 
-            padding: '4px 8px', 
-            borderRadius: '12px', 
-            fontSize: '0.75rem', 
-            background: bg,
-            color: color,
-            fontWeight: 600
-            }}>
-            {label}
+        field: 'isPublic', 
+        headerName: 'Visibility', 
+        width: '15%',
+        renderCell: (row: any) => (
+            <span style={{ color: row.isPublic ? '#15803d' : '#94a3b8', fontWeight: 500 }}>
+                {row.isPublic ? 'Public' : 'Internal'}
             </span>
-        );
-      }
+        )
+    },
+    { 
+        field: 'description', 
+        headerName: 'Description', 
+        width: '25%',
+        renderCell: (row: any) => (
+            <span style={{ color: '#64748b', fontSize: '0.9rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: 'block' }}>
+                {row.description}
+            </span>
+        )
     },
     {
       field: 'actions',
       headerName: 'Actions',
-      width: '35%',
+      width: '15%',
       renderCell: (row: any) => (
         <div style={{ display: 'flex', gap: '8px' }}>
           <button 
@@ -114,23 +101,23 @@ export function UserList() {
   return (
     <div>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-        <h2 style={{ fontSize: '1.5rem', color: '#1e293b', margin: 0 }}>Users</h2>
+        <h2 style={{ fontSize: '1.5rem', color: '#1e293b', margin: 0 }}>Templates</h2>
         <button 
           onClick={handleCreate}
           style={{ padding: '10px 20px', background: '#3b82f6', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 500 }}
         >
-          + Add User
+          + Add Template
         </button>
       </div>
 
-      <DataGrid rows={users} columns={columns} loading={loading} />
+      <DataGrid rows={templates} columns={columns} loading={loading} />
 
-      <UserModal 
+      <TemplateModal 
         isOpen={modalOpen} 
         onClose={() => setModalOpen(false)} 
         onSubmit={handleSave}
-        initialData={editingUser}
-        title={editingUser ? 'Edit User' : 'Create New User'}
+        initialData={editingTemplate}
+        title={editingTemplate ? 'Edit Template' : 'Create New Template'}
       />
     </div>
   );

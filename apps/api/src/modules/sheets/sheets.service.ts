@@ -9,16 +9,29 @@ export class SheetsService {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(userId: string, dto: CreateSpreadsheetDto) {
+    const sheetsCreateInput = dto.data?.sheets ? {
+        create: dto.data.sheets.map((sheet: any, index: number) => ({
+            name: sheet.name,
+            index: index,
+            cells: sheet.cells ? {
+                create: Object.entries(sheet.cells).map(([key, cell]: [string, any]) => {
+                    const [row, col] = key.split(':').map(Number);
+                    return { row, col, ...cell };
+                })
+            } : undefined
+        }))
+    } : {
+        create: {
+            name: 'Sheet1',
+            index: 0,
+        },
+    };
+
     return this.prisma.spreadsheet.create({
       data: {
         name: dto.name,
         ownerId: userId,
-        sheets: {
-          create: {
-            name: 'Sheet1',
-            index: 0,
-          },
-        },
+        sheets: sheetsCreateInput,
         permissions: {
           create: {
             userId,
@@ -38,10 +51,15 @@ export class SheetsService {
   async findAll(userId: string) {
     return this.prisma.spreadsheet.findMany({
       where: {
-        OR: [
-          { ownerId: userId },
-          { permissions: { some: { userId } } },
-        ],
+        AND: [
+          { deletedAt: null },
+          {
+            OR: [
+              { ownerId: userId },
+              { permissions: { some: { userId } } },
+            ],
+          }
+        ]
       },
       include: {
         owner: {
@@ -55,6 +73,7 @@ export class SheetsService {
 
   async findAllAdmin() {
     return this.prisma.spreadsheet.findMany({
+      where: { deletedAt: null },
       include: {
         owner: {
           select: { id: true, email: true, name: true, avatar: true },
@@ -65,9 +84,78 @@ export class SheetsService {
     });
   }
 
+  async listTrash(userId: string) {
+     const user = await this.prisma.user.findUnique({ where: { id: userId } });
+     const isAdmin = user?.isAdmin || false; // TODO: Check Role logic as well if needed
+
+     if (isAdmin) {
+        return this.prisma.spreadsheet.findMany({
+            where: { NOT: { deletedAt: null } },
+            include: {
+              owner: {
+                select: { id: true, email: true, name: true, avatar: true },
+              },
+              _count: { select: { sheets: true } },
+            },
+            orderBy: { deletedAt: 'desc' },
+        });
+     }
+
+     return this.prisma.spreadsheet.findMany({
+      where: {
+        AND: [
+          { NOT: { deletedAt: null } },
+          { ownerId: userId }
+        ]
+      },
+      include: {
+        owner: {
+          select: { id: true, email: true, name: true, avatar: true },
+        },
+        _count: { select: { sheets: true } },
+      },
+      orderBy: { deletedAt: 'desc' },
+    });
+  }
+
+  async restore(userId: string, id: string) {
+      const spreadsheet = await this.prisma.spreadsheet.findUnique({ where: { id } });
+      if (!spreadsheet) throw new NotFoundException('Spreadsheet not found');
+      
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      const isAdmin = user?.isAdmin || false;
+
+      if (spreadsheet.ownerId !== userId && !isAdmin) {
+          throw new ForbiddenException('Only owner or admin can restore');
+      }
+
+      return this.prisma.spreadsheet.update({
+          where: { id },
+          data: { deletedAt: null }
+      });
+  }
+
+  // Hard delete
+  async hardDelete(userId: string, id: string) {
+      const spreadsheet = await this.prisma.spreadsheet.findUnique({ where: { id } });
+      if (!spreadsheet) throw new NotFoundException('Spreadsheet not found');
+      
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      const isAdmin = user?.isAdmin || false;
+
+      if (!isAdmin && spreadsheet.ownerId !== userId) {
+         throw new ForbiddenException('Insufficient permissions');
+      }
+
+      return this.prisma.spreadsheet.delete({ where: { id } });
+  }
+
   async findOne(userId: string, id: string) {
-    const spreadsheet = await this.prisma.spreadsheet.findUnique({
-      where: { id },
+    const spreadsheet = await this.prisma.spreadsheet.findFirst({
+      where: { 
+          id,
+          deletedAt: null
+      },
       include: {
         sheets: {
           orderBy: { index: 'asc' },
@@ -133,8 +221,9 @@ export class SheetsService {
       throw new ForbiddenException('Only the owner can delete this spreadsheet');
     }
 
-    return this.prisma.spreadsheet.delete({
+    return this.prisma.spreadsheet.update({
       where: { id },
+      data: { deletedAt: new Date() }
     });
   }
 

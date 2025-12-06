@@ -13,6 +13,11 @@ import { WebhooksModule } from './modules/webhooks/webhooks.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { OAuthModule } from './modules/oauth/oauth.module';
 import { UsersModule } from './modules/users/users.module';
+import { AuditModule } from './modules/audit/audit.module';
+import { SettingsModule } from './modules/settings/settings.module';
+import { RolesModule } from './modules/roles/roles.module';
+import { NoticesModule } from './modules/notices/notices.module';
+import { TemplatesModule } from './modules/templates/templates.module';
 
 @Module({
   imports: [
@@ -31,6 +36,11 @@ import { UsersModule } from './modules/users/users.module';
     WebhooksModule,
     NotificationsModule,
     UsersModule,
+    AuditModule,
+    SettingsModule,
+    RolesModule,
+    NoticesModule,
+    TemplatesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

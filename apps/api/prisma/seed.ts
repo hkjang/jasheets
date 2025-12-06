@@ -7,6 +7,7 @@ async function main() {
   console.log('Starting seed...');
 
   // 1. Cleanup
+  await prisma.auditLog.deleteMany();
   await prisma.comment.deleteMany();
   await prisma.cell.deleteMany();
   await prisma.rowMeta.deleteMany();
@@ -16,9 +17,41 @@ async function main() {
   await prisma.version.deleteMany();
   await prisma.spreadsheet.deleteMany();
   await prisma.session.deleteMany();
+  await prisma.notice.deleteMany();
+  await prisma.template.deleteMany();
   await prisma.user.deleteMany();
+  await prisma.role.deleteMany();
 
   console.log('Cleanup finished.');
+
+  // 1.8 Create System Roles
+  const adminRole = await prisma.role.create({
+    data: {
+      name: 'ADMIN',
+      description: 'System Administrator with full access',
+      isSystem: true,
+      permissions: { all: true }
+    }
+  });
+
+  const editorRole = await prisma.role.create({
+    data: {
+      name: 'EDITOR',
+      description: 'Can manage contents but not system settings',
+      permissions: { manageSheets: true, manageUsers: false }
+    }
+  });
+
+  const userRole = await prisma.role.create({
+    data: {
+      name: 'USER',
+      isSystem: true,
+      description: 'Standard user',
+      permissions: { createSheets: true }
+    }
+  });
+  
+  console.log('Roles created.');
 
   // 2. Create Users
   const passwordHash = await bcrypt.hash('password123', 10);
@@ -30,6 +63,7 @@ async function main() {
       password: passwordHash,
       name: 'Super Admin',
       isAdmin: true,
+      roleId: adminRole.id,
       avatar: 'https://ui-avatars.com/api/?name=Super+Admin&background=0D8ABC&color=fff',
     },
   });
@@ -44,12 +78,55 @@ async function main() {
         password: passwordHash,
         name: `User ${i}`,
         isAdmin: false,
+        roleId: userRole.id,
         avatar: `https://ui-avatars.com/api/?name=User+${i}&background=random`,
       },
     });
     users.push(user);
     console.log(`Created User ${i}:`, user.email);
   }
+
+  // 2.5 Create Notices & Templates
+  await prisma.notice.createMany({
+    data: [
+      { 
+        title: 'Welcome to JaSheets', 
+        content: 'We hope you enjoy the new update!', 
+        type: 'INFO', 
+        active: true,
+        authorId: admin.id 
+      },
+      { 
+        title: 'Scheduled Maintenance', 
+        content: 'System will be down on Sunday at 2am.', 
+        type: 'WARNING', 
+        active: true, 
+        endDate: new Date(Date.now() + 86400000 * 7),
+        authorId: admin.id
+      }
+    ]
+  });
+
+  await prisma.template.create({
+    data: {
+      name: 'Annual Budget',
+      description: 'A comprehensive budget template for small businesses.',
+      category: 'Finance',
+      isPublic: true,
+      data: {
+         sheets: [
+            {
+                name: 'Budget',
+                cells: {
+                    '0:0': { value: 'Year 2024 Budget' },
+                    '1:0': { value: 'Income' },
+                    '1:1': { value: 0 }
+                }
+            }
+         ]
+      }
+    }
+  });
 
   // 3. Create Spreadsheets
   // Admin Project

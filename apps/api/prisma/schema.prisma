@@ -27,11 +27,12 @@ model User {
   comments            Comment[]
   versions            Version[]
   sessions            Session[]
-
-  @@map("users")
+  auditLogs           AuditLog[]
+  
+  roleId              String?
+  role                Role?           @relation(fields: [roleId], references: [id])
 }
 
-// Session model for JWT refresh tokens
 model Session {
   id            String    @id @default(uuid())
   userId        String
@@ -53,6 +54,7 @@ model Spreadsheet {
   publicToken   String?   @unique
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime? // For soft delete
 
   // Relations
   sheets        Sheet[]
@@ -191,4 +193,87 @@ model Comment {
 
   @@index([sheetId, row, col])
   @@map("comments")
+}
+
+// System Configuration (Global Settings)
+model SystemConfig {
+  key           String    @id
+  value         String // JSON string or simple value
+  description   String?
+  updatedAt     DateTime  @updatedAt
+
+  @@map("system_config")
+}
+
+// Audit Logs
+model AuditLog {
+  id            String    @id @default(uuid())
+  userId        String?
+  user          User?     @relation(fields: [userId], references: [id])
+  action        String    // e.g., "USER_CREATED", "SHEET_DELETED"
+  resource      String?   // e.g., "User: 123", "Sheet: ABC"
+  details       Json?     // Metadata
+  ipAddress     String?
+  userAgent     String?
+  createdAt     DateTime  @default(now())
+
+  @@index([createdAt(sort: Desc)])
+  @@index([userId])
+  @@index([action])
+  @@map("audit_logs")
+}
+
+// Role Based Access Control
+model Role {
+  id            String    @id @default(uuid())
+  name          String    @unique // e.g., "ADMIN", "MANAGER", "USER"
+  description   String?
+  permissions   Json      // List of allowed actions or permission matrix
+  isSystem      Boolean   @default(false) // System roles cannot be deleted
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  users         User[]
+
+  @@map("roles")
+}
+
+// System Notices / Announcements
+model Notice {
+  id            String    @id @default(uuid())
+  title         String
+  content       String    @db.Text
+  type          NoticeType @default(INFO)
+  active        Boolean   @default(true)
+  startDate     DateTime?
+  endDate       DateTime?
+  authorId      String
+  // author        User      @relation(fields: [authorId], references: [id]) // Optional: link to creator
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("notices")
+}
+
+enum NoticeType {
+  INFO
+  WARNING
+  URGENT
+  MAINTENANCE
+}
+
+// Spreadsheet Templates
+model Template {
+  id            String    @id @default(uuid())
+  name          String
+  description   String?
+  category      String    @default("General")
+  data          Json      // The spreadsheet data structure
+  thumbnail     String?   // URL or base64
+  isPublic      Boolean   @default(true)
+  order         Int       @default(0)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@map("templates")
 }
