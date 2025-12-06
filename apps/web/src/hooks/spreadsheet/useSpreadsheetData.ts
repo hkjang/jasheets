@@ -4,6 +4,8 @@ import { produce, applyPatches, Patch, enablePatches } from 'immer';
 // Use local FormulaEngine
 import { evaluateFormula } from '@/utils/FormulaEngine';
 import { formatValue } from '@/utils/formatting';
+import { parseInput } from '@/utils/inputParser';
+import { recalculate } from '@/utils/RecalculationEngine';
 
 enablePatches();
 
@@ -69,6 +71,8 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
         const isFormula = value.startsWith('=');
         let displayValue = value;
         let error: string | undefined;
+        let numValue: number | string | boolean | null = value;
+        let detectedFormat: string | undefined;
 
         // Retrieve existing format
         const currentFormat = draft[row][col]?.format || 'general';
@@ -83,30 +87,39 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                 } else {
                      displayValue = String(result);
                 }
+                numValue = result; 
             } catch (e) {
                 displayValue = '#ERROR!';
                 error = e instanceof Error ? e.message : 'Formula error';
             }
+        } else {
+            // Smart Parse
+            const parsed = parseInput(value);
+            numValue = parsed.value;
+            
+            if (parsed.format && parsed.format !== 'general' && currentFormat === 'general') {
+                detectedFormat = parsed.format;
+            }
         }
 
-        const numValue = !isFormula && !isNaN(parseFloat(value)) ? parseFloat(value) : value;
+        const finalFormat = detectedFormat || currentFormat;
 
         // Apply format if not formula
-        if (!isFormula && typeof numValue === 'number') {
-            displayValue = formatValue(numValue, currentFormat);
+        if (!isFormula) {
+            displayValue = formatValue(numValue, finalFormat);
         }
 
         draft[row][col] = {
             value: numValue,
-            displayValue: isFormula || currentFormat !== 'general' ? displayValue : (isFormula ? displayValue : undefined), // Only store displayValue if needed? Actually store it always if formatted?
-            // Optimization: If general and no formula, displayValue is same as value (stringified). 
-            // Canvas uses value if displayValue is missing.
-            // Let's store displayValue if formula OR format != general.
+            displayValue: displayValue,
             formula: isFormula ? value : undefined,
             error,
             style: draft[row][col]?.style,
-            format: currentFormat,
+            format: finalFormat,
         };
+
+        // Trigger Recalculation
+        recalculate(draft);
     });
   }, [applyChange]);
 

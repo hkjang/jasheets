@@ -1,7 +1,8 @@
 export type FormatType = 'general' | 'number' | 'currency' | 'percent' | 'date' | 'time';
 
-export function formatValue(value: string | number | null, format: string): string {
+export function formatValue(value: string | number | boolean | null, format: string): string {
     if (value === null || value === undefined || value === '') return '';
+    if (typeof value === 'boolean') return value ? 'TRUE' : 'FALSE';
     
     // If it's a string, we usually just return it, BUT user might have switched format to 'date' 
     // on a cell that currently holds a string like "2023-01-01".

@@ -8,9 +8,9 @@ import { SheetData, CellData } from '@/types/spreadsheet';
  * - References: A1, B2, A1:B2 (Ranges)
  */
 
-type TokenType = 'NUMBER' | 'STRING' | 'REF' | 'RANGE' | 'FUNCTION' | 'OPERATOR' | 'LPAREN' | 'RPAREN' | 'COMMA' | 'EOF';
+export type TokenType = 'NUMBER' | 'STRING' | 'REF' | 'RANGE' | 'FUNCTION' | 'OPERATOR' | 'LPAREN' | 'RPAREN' | 'COMMA' | 'EOF';
 
-interface Token {
+export interface Token {
   type: TokenType;
   value: string;
 }
@@ -18,7 +18,7 @@ interface Token {
 const OPERATORS = ['+', '-', '*', '/'];
 const FUNCTIONS = ['SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT'];
 
-function tokenize(formula: string): Token[] {
+export function tokenize(formula: string): Token[] {
   const tokens: Token[] = [];
   let i = 0;
 
