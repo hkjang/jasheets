@@ -6,8 +6,17 @@ export function useServiceWorker() {
   const [isReady, setIsReady] = useState(false);
   const [hasUpdate, setHasUpdate] = useState(false);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
 
   useEffect(() => {
+    // Capture the install prompt
+    const handleBeforeInstallPrompt = (e: any) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+
+    window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
       return;
     }
@@ -43,11 +52,24 @@ export function useServiceWorker() {
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       window.location.reload();
     });
+
+    return () => {
+        window.removeEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
+    };
   }, []);
 
   const update = () => {
     if (registration?.waiting) {
       registration.waiting.postMessage({ type: 'SKIP_WAITING' });
+    }
+  };
+
+  const promptInstall = async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    if (outcome === 'accepted') {
+      setDeferredPrompt(null);
     }
   };
 
@@ -64,6 +86,8 @@ export function useServiceWorker() {
     update,
     registration,
     requestNotificationPermission,
+    installPrompt: deferredPrompt,
+    promptInstall,
   };
 }
 

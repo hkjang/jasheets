@@ -7,15 +7,17 @@ import Toast from './ui/Toast';
 import { useState } from 'react';
 
 export default function PWAHandler() {
-  const { isReady, hasUpdate, update, requestNotificationPermission } = useServiceWorker();
+  const { isReady, hasUpdate, update, installPrompt, promptInstall } = useServiceWorker();
   const { isOnline, pendingChanges, syncChanges } = useOfflineSync();
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (hasUpdate) {
       setToastMsg('New version available. Click to reload.');
+    } else if (installPrompt) {
+        setToastMsg('Install JaSheets for offline use.');
     }
-  }, [hasUpdate]);
+  }, [hasUpdate, installPrompt]);
 
   useEffect(() => {
     if (!isOnline) {
@@ -37,13 +39,16 @@ export default function PWAHandler() {
       if (hasUpdate) {
           update();
           window.location.reload();
+      } else if (installPrompt) {
+          promptInstall();
+          setToastMsg(null);
       }
   };
 
   if (!toastMsg) return null;
 
   return (
-    <div onClick={handleToastClick} style={{ cursor: hasUpdate ? 'pointer' : 'default' }}>
+    <div onClick={handleToastClick} style={{ cursor: 'pointer' }}>
         <Toast message={toastMsg} onClose={handleToastClose} />
     </div>
   );

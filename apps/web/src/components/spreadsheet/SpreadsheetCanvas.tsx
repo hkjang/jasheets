@@ -184,12 +184,12 @@ export default function SpreadsheetCanvas({
     ctx.clip();
 
     // Draw cells
+    let currentY = getRowY(startRow) - scrollY;
     for (let row = startRow; row <= endRow; row++) {
-      const rowY = getRowY(row) - scrollY;
       const rowHeight = rows[row]?.height ?? config.defaultRowHeight;
-
+      
+      let currentX = getColX(startCol) - scrollX;
       for (let col = startCol; col <= endCol; col++) {
-        const colX = getColX(col) - scrollX;
         const colWidth = columns[col]?.width ?? config.defaultColWidth;
         const cellData = data[row]?.[col];
 
@@ -207,13 +207,13 @@ export default function SpreadsheetCanvas({
         // Draw cell background
         if (isInSelection && !isSelected) {
           ctx.fillStyle = 'rgba(26, 115, 232, 0.1)';
-          ctx.fillRect(colX, rowY, colWidth, rowHeight);
+          ctx.fillRect(currentX, currentY, colWidth, rowHeight);
         }
 
         // Apply cell style background
         if (cellData?.style?.backgroundColor) {
           ctx.fillStyle = cellData.style.backgroundColor;
-          ctx.fillRect(colX, rowY, colWidth, rowHeight);
+          ctx.fillRect(currentX, currentY, colWidth, rowHeight);
         }
 
         // Apply conditional formatting
@@ -257,13 +257,13 @@ export default function SpreadsheetCanvas({
         if (conditionalStyle.backgroundColor) {
              // @ts-ignore
              ctx.fillStyle = conditionalStyle.backgroundColor;
-             ctx.fillRect(colX, rowY, colWidth, rowHeight);
+             ctx.fillRect(currentX, currentY, colWidth, rowHeight);
         }
 
         // Draw cell border
         ctx.strokeStyle = '#e2e2e2';
         ctx.lineWidth = 1;
-        ctx.strokeRect(colX + 0.5, rowY + 0.5, colWidth, rowHeight);
+        ctx.strokeRect(currentX + 0.5, currentY + 0.5, colWidth, rowHeight);
 
         // Draw cell content
         if (cellData) {
@@ -280,10 +280,10 @@ export default function SpreadsheetCanvas({
           ctx.font = `${fontWeight === 'bold' ? 'bold ' : ''}${fontStyle === 'italic' ? 'italic ' : ''}${cellData.style?.fontSize || 13}px ${cellData.style?.fontFamily || 'Arial'}`;
           
           const textX = cellData.style?.textAlign === 'center' 
-            ? colX + colWidth / 2 
+            ? currentX + colWidth / 2 
             : cellData.style?.textAlign === 'right'
-              ? colX + colWidth - 4
-              : colX + 4;
+              ? currentX + colWidth - 4
+              : currentX + 4;
           
           ctx.textAlign = (cellData.style?.textAlign as CanvasTextAlign) || 'left';
           ctx.textBaseline = 'middle';
@@ -291,12 +291,15 @@ export default function SpreadsheetCanvas({
           // Clip text to cell bounds
           ctx.save();
           ctx.beginPath();
-          ctx.rect(colX + 2, rowY + 2, colWidth - 4, rowHeight - 4);
+          ctx.rect(currentX + 2, currentY + 2, colWidth - 4, rowHeight - 4);
           ctx.clip();
-          ctx.fillText(displayValue, textX, rowY + rowHeight / 2);
+          ctx.fillText(displayValue, textX, currentY + rowHeight / 2);
           ctx.restore();
         }
+        
+        currentX += colWidth;
       }
+      currentY += rowHeight;
     }
 
     // Draw selected cell border
