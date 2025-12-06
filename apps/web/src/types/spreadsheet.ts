@@ -68,6 +68,7 @@ export interface CellData {
   displayValue?: string;
   formula?: string;
   style?: CellStyle;
+  format?: string;
   error?: string;
 }
 

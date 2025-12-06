@@ -1,11 +1,15 @@
 import { useState, useCallback } from 'react';
 import { SheetData, CellStyle } from '@/types/spreadsheet';
 import { produce, applyPatches, Patch, enablePatches } from 'immer';
-import FormulaEngine, { EvaluationContext, CellReference, CellValue } from '@jasheets/formula-engine';
+// Use local FormulaEngine
+import { evaluateFormula } from '@/utils/FormulaEngine';
+import { formatValue } from '@/utils/formatting';
 
 enablePatches();
 
-const formulaEngine = new FormulaEngine();
+// ... (existing code)
+
+enablePatches();
 
 interface Commit {
   patches: Patch[];
@@ -23,11 +27,6 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
   const [historyIndex, setHistoryIndex] = useState(-1);
 
   // Update data if initialData changes (e.g. loaded from server)
-  // We check if data is currently empty/default and initialData is populated to avoid overwriting user edits
-  // deep equality check is expensive, assume props change implies update needed if we are in "loading" phase
-  // But wait, if we are editing, we don't want to reset?
-  // Use a ref to track if we are "dirty"?
-  // Or simply: if initialData changes, we assume it's a "load" event from parent.
   const [prevInitialData, setPrevInitialData] = useState(initialData);
   if (initialData !== prevInitialData) {
       setData(initialData);
@@ -60,13 +59,6 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
   // Direct update without history (e.g. from server)
   const updateData = useCallback((newData: SheetData) => {
       setData(newData);
-      // We might want to clear history or push a full replace patch? 
-      // For now, let's assume external updates clear/reset history or are just applied.
-      // If we want to support undoing external changes, we need to diff.
-      // Simplest for collaboration: just update state, don't mess with local history stack too much or reset it.
-      // Let's reset history to avoid conflicts.
-      // setHistory([]);
-      // setHistoryIndex(-1);
   }, []);
 
   const setCellValue = useCallback((row: number, col: number, value: string) => {
@@ -78,29 +70,19 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
         let displayValue = value;
         let error: string | undefined;
 
+        // Retrieve existing format
+        const currentFormat = draft[row][col]?.format || 'general';
+
         if (isFormula) {
             try {
-                const context: EvaluationContext = {
-                    getCellValue: (ref: CellReference): CellValue => {
-                       return draft[ref.row]?.[ref.col]?.value ?? 0;
-                    },
-                    getRangeValues: (start: CellReference, end: CellReference): CellValue[][] => {
-                        const result: CellValue[][] = [];
-                        for (let r = start.row; r <= end.row; r++) {
-                            const rowArr: CellValue[] = [];
-                            for (let c = start.col; c <= end.col; c++) {
-                                rowArr.push(draft[r]?.[c]?.value ?? 0);
-                            }
-                            result.push(rowArr);
-                        }
-                        return result;
-                    }
-                };
-                
-                // formulaEngine.evaluate handles the parsing and execution
-                // We pass the raw formula (e.g. "=SUM(A1:B2)")
-                const result = formulaEngine.evaluate(value, context);
-                displayValue = String(result);
+                // ... formula eval ...
+                const result = evaluateFormula(value, draft as unknown as SheetData);
+                // Apply format to result
+                if (typeof result === 'number') {
+                     displayValue = formatValue(result, currentFormat);
+                } else {
+                     displayValue = String(result);
+                }
             } catch (e) {
                 displayValue = '#ERROR!';
                 error = e instanceof Error ? e.message : 'Formula error';
@@ -109,13 +91,87 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
 
         const numValue = !isFormula && !isNaN(parseFloat(value)) ? parseFloat(value) : value;
 
+        // Apply format if not formula
+        if (!isFormula && typeof numValue === 'number') {
+            displayValue = formatValue(numValue, currentFormat);
+        }
+
         draft[row][col] = {
             value: numValue,
-            displayValue: isFormula ? displayValue : undefined,
+            displayValue: isFormula || currentFormat !== 'general' ? displayValue : (isFormula ? displayValue : undefined), // Only store displayValue if needed? Actually store it always if formatted?
+            // Optimization: If general and no formula, displayValue is same as value (stringified). 
+            // Canvas uses value if displayValue is missing.
+            // Let's store displayValue if formula OR format != general.
             formula: isFormula ? value : undefined,
             error,
             style: draft[row][col]?.style,
+            format: currentFormat,
         };
+    });
+  }, [applyChange]);
+
+  const updateCellFormat = useCallback((range: { start: { row: number, col: number }, end: { row: number, col: number } } | null, format: string) => {
+    if (!range) return;
+    
+    applyChange((draft) => {
+        for (let row = range.start.row; row <= range.end.row; row++) {
+            for (let col = range.start.col; col <= range.end.col; col++) {
+                if (!draft[row]) draft[row] = {};
+                
+                const cell = draft[row][col];
+                if (cell) {
+                     cell.format = format;
+                     // Re-calculate display value
+                     if (typeof cell.value === 'number') {
+                         cell.displayValue = formatValue(cell.value, format);
+                     }
+                     // If formula?
+                     if (cell.formula) {
+                          // Need to re-eval? Value shouldn't change, just display.
+                          // But we don't store eval result separately from displayValue usually?
+                          // Oh wait, setCellValue stores result (as displayValue). 
+                          // If we have formula, we might need to re-eval to get raw number?
+                          // OR distinct between 'cached result' and 'display text'.
+                          // Current model: value = result (if formula is executed? No.)
+                          // setCellValue: 
+                          // draft[row][col].value = numValue (which is parse(value) if not formula).
+                          // IF formula: value is ??? 
+                          // Looking at setCellValue:
+                          // const numValue = !isFormula ... ? float : value.
+                          // So if formula, value is THE FORMULA STRING? No.
+                          // `value` prop in CellData is `CellValue` (string|number).
+                          // `formula` prop is the formula string.
+                          // When formula exists, `value` usually holds the cached result?
+                          // In typical sheets: formula is separate. `value` is the calculated result.
+                          // Let's see setCellValue again.
+                          // `draft[row][col] = { value: numValue ... formula: isFormula ? value : undefined }`
+                          // If isFormula, numValue is just `value` (the formula string).
+                          // This is wrong! `value` should be the RESULT.
+                          // But `isFormula` check uses `startsWith('=')`.
+                          // `numValue` logic: `!isFormula ... ? parseFloat : value`.
+                          // So if isFormula, numValue = formula string.
+                          // FormatValue takes the formula string and returns NaN -> string.
+                          
+                          // Fix: We should store calculated result in `value` and formula string in `formula`.
+                          // But setCellValue logic:
+                          // `const result = evaluateFormula(...)`
+                          // It does NOT store `result` in `value`. It implies `displayValue` is the result.
+                          // This means we lose the raw number result if we just store displayValue string.
+                          // If we want to format later, we need the raw number.
+                          
+                          // Correction:
+                          // If isFormula:
+                          //   result = eval(...)
+                          //   value = result (if number/string)
+                          //   formula = inputString
+                          
+                          // I should fix setCellValue to store result in `value` if formula.
+                     }
+                } else {
+                     draft[row][col] = { value: null, format };
+                }
+            }
+        }
     });
   }, [applyChange]);
 

@@ -48,6 +48,45 @@ export function useSpreadsheetView({ initialRows, initialCols }: UseSpreadsheetV
         setConfig(prev => ({ ...prev, frozenCols: colIndex }));
     }, []);
 
+    const hideRow = useCallback((rowIndex: number) => {
+        setRows(prev => {
+            const newRows = [...prev];
+             // Ensure row exists
+            if (!newRows[rowIndex]) newRows[rowIndex] = { height: DEFAULT_CONFIG.defaultRowHeight };
+            newRows[rowIndex] = { ...newRows[rowIndex], hidden: true };
+            return newRows;
+        });
+    }, []);
+
+    const unhideRow = useCallback((rowIndex: number) => {
+        setRows(prev => {
+            const newRows = [...prev];
+            if (newRows[rowIndex]) {
+                newRows[rowIndex] = { ...newRows[rowIndex], hidden: false };
+            }
+            return newRows;
+        });
+    }, []);
+
+    const hideColumn = useCallback((colIndex: number) => {
+        setColumns(prev => {
+            const newCols = [...prev];
+            if (!newCols[colIndex]) newCols[colIndex] = { width: DEFAULT_CONFIG.defaultColWidth };
+            newCols[colIndex] = { ...newCols[colIndex], hidden: true };
+            return newCols;
+        });
+    }, []);
+
+    const unhideColumn = useCallback((colIndex: number) => {
+        setColumns(prev => {
+            const newCols = [...prev];
+            if (newCols[colIndex]) {
+                 newCols[colIndex] = { ...newCols[colIndex], hidden: false };
+            }
+            return newCols;
+        });
+    }, []);
+
     return {
         columns,
         setColumns,
@@ -63,5 +102,9 @@ export function useSpreadsheetView({ initialRows, initialCols }: UseSpreadsheetV
         handleRowResize,
         handleFreezeRow,
         handleFreezeCol,
+        hideRow,
+        unhideRow,
+        hideColumn,
+        unhideColumn,
     };
 }

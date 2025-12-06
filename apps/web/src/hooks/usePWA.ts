@@ -21,6 +21,16 @@ export function useServiceWorker() {
       return;
     }
 
+    if (process.env.NODE_ENV === 'development') {
+      // In development, unregister any existing service workers to avoid caching issues
+      navigator.serviceWorker.getRegistrations().then((registrations) => {
+        for (let registration of registrations) {
+          registration.unregister();
+        }
+      });
+      return;
+    }
+
     const registerSW = async () => {
       try {
         const reg = await navigator.serviceWorker.register('/sw.js', {

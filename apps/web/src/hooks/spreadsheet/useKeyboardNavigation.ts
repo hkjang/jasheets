@@ -30,6 +30,14 @@ export function useKeyboardNavigation({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!selectedCell) return;
+      
+      // Ignore if typing in an input field (CellEditor, FormulaBar, etc)
+      // UNLESS it's a navigation key that should commit/move (Tab, Enter)
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      const isInput = activeTag === 'input' || activeTag === 'textarea';
+      
+      if (isInput && !['Tab', 'Enter', 'Escape'].includes(e.key)) return;
+
       if (isEditingRef.current && !['Tab', 'Enter', 'Escape'].includes(e.key)) return;
 
       let newRow = selectedCell.row;

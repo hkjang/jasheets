@@ -78,6 +78,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     sortRows,
     findNext,
     replaceAll,
+    updateCellFormat,
   } = useSpreadsheetData({ initialData, onDataChange });
 
   // Selection
@@ -213,7 +214,11 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
       handleColumnResize,
       handleRowResize,
       handleFreezeRow,
-      handleFreezeCol
+      handleFreezeCol,
+      hideRow,
+      unhideRow,
+      hideColumn,
+      unhideColumn,
   } = useSpreadsheetView();
 
   // Context Menu State
@@ -750,7 +755,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
         onAlignLeft={() => updateCellStyle(selection, { textAlign: 'left' })}
         onAlignCenter={() => updateCellStyle(selection, { textAlign: 'center' })}
         onAlignRight={() => updateCellStyle(selection, { textAlign: 'right' })}
-        onFormat={(fmt) => console.log('Format:', fmt)}
+        onFormat={(fmt) => updateCellFormat(selection, fmt)}
         canUndo={canUndo}
         canRedo={canRedo}
         isBold={currentStyle.fontWeight === 'bold'}

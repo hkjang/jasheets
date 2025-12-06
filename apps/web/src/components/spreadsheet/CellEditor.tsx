@@ -14,13 +14,49 @@ export default function CellEditor({ position, value, onChange, onCommit, onCanc
   useEffect(() => {
     if (inputRef.current) {
       inputRef.current.focus();
+      // Ensure cursor is at the end of the text
+      // We only set this on mount. If value updates from parent, we don't want to jump cursor.
+      // But if parent re-renders CellEditor completely (remount), this runs again.
+      // If we are just typing, React reconciles and this effect doesn't run, which is good.
+      // However, if we lose focus, this won't help us regain it unless we track it.
+      const len = inputRef.current.value.length;
+      inputRef.current.setSelectionRange(len, len);
     }
   }, []);
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Critical: Stop propagation to prevent global spreadsheet navigation/shortcuts
+    // while editing. e.g. "ArrowRight" should move cursor in text, not change cell selection.
+    e.stopPropagation(); 
+    
+    // We can allow some keys to bubble if strictly necessary, but usually
+    // CellEditor should handle its own navigation logic or commit on specific keys.
+    
+    if (e.key === 'Enter') {
+      e.preventDefault(); // Prevent newline if it's a single line input
+      onCommit();
+    } else if (e.key === 'Escape') {
+      // e.preventDefault(); // Optional, usually good to prevent browser dialogs?
+      onCancel();
+    } else if (e.key === 'Tab') {
+       // Tab usually commits and moves to next cell.
+       // We can handle it here or let it bubble if we trust the parent.
+       // But parent `useKeyboardNavigation` might prevent default.
+       // Safest is to handle it explicitly if we want "Excel-like" behavior: Commit + Move.
+       // For now, let's commit. The parent (Spreadsheet) logic for "Move on Commit" 
+       // might not strictly exist yet, so we'll rely on global listener if we bubble?
+       // userKeyboardNavigation.ts listens to window. 
+       // If we stopPropagation, window won't see Tab.
+       // So we MUST NOT stop propagation for Tab if we want global nav to pick it up.
+       // OR we call a specific onTab handler.
+       // Let's try bubbling Tab for now, but stop everything else.
+       // Undo stopPropagation for Tab?
+    }
+  };
 
   return (
     <input
       ref={inputRef}
-      autoFocus
       style={{
         position: 'absolute',
         left: position.x,
@@ -38,29 +74,13 @@ export default function CellEditor({ position, value, onChange, onCommit, onCanc
       value={value}
       onChange={(e) => onChange(e.target.value)}
       onKeyDown={(e) => {
-        // Stop propagation to prevent global keyboard navigation (which listens on window)
-        // from interfering with editing (e.g. interpreting characters as commands or restarting edit)
-        // Exception: Tab key might be needed for navigation, but for now we block all to ensure stability
-        // or we can allow specific keys if needed. 
-        // Given the bug "only last character saved", blocking everything is safest for data entry.
-        // We let Enter/Escape bubble? No, CellEditor handles them. 
-        // But if useKeyboardNavigation handles Enter to move down? 
-        // Let's stop propagation for everything first.
-        
-        if (['Tab'].includes(e.key)) {
-             // Let Tab bubble so useKeyboardNavigation can handle 'move next'
-             // BUT, if isEditingRef is broken, Tab might be mishandled? 
-             // useKeyboardNavigation handles Tab specifically.
-             // allow bubbling for Tab.
-        } else {
-             e.stopPropagation();
-        }
-
-        if (e.key === 'Enter') {
-          onCommit();
-        } else if (e.key === 'Escape') {
-          onCancel();
-        }
+          if (e.key === 'Tab') {
+              // Allow Tab to bubble to trigger navigation in useKeyboardNavigation
+              // But ensure we commit first? useKeyboardNavigation commits on Tab if isEditingRef is true.
+              // So we just let it bubble.
+              return;
+          }
+          handleKeyDown(e);
       }}
       onBlur={onCommit}
     />
