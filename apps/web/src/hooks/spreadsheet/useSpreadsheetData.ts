@@ -349,6 +349,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
     }, [applyChange]),
 
     // Find and Replace
+    updateCellFormat,
     findNext: useCallback((query: string, matchCase: boolean, startIndex: { row: number, col: number }) => {
         // Return next match position
         const rows = Object.keys(data).map(Number).sort((a, b) => a - b);

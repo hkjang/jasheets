@@ -400,11 +400,27 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   // Wrap selection handlers
   const handleCellSelect = useCallback((pos: CellPosition) => {
     if (!pos) return; 
+    
+    // Check if we are re-selecting the currently edited cell
+    // If so, do not reset the editValue, as it would overwrite user input
+    // We access isEditing property from the hook result directly or pass it in dependencies
+    // Since handleCellSelect is dependent on setEditValue/data, we need to add isEditing/selectedCell to dependencies
+    // But since this function is recreated when dependencies change, that's fine.
+    
     _handleCellSelect(pos);
-    // setEditing(false); // Rely on onBlur to start/stop editing
+    
+    // If we are editing this same cell, don't reset value
+    // NOTE: We need to access the LATEST isEditing state. 
+    // Usually via refs if we want to avoid recreating callback too often, 
+    // but here recreating is fine as long as SpreadsheetCanvas uses the latest handleCellSelect.
+    
+    if (isEditing && selectedCell && selectedCell.row === pos.row && selectedCell.col === pos.col) {
+        return;
+    }
+
     const cell = data[pos.row]?.[pos.col];
     setEditValue(cell?.formula || String(cell?.value ?? ''));
-  }, [_handleCellSelect, setEditValue, data]);
+  }, [_handleCellSelect, setEditValue, data, isEditing, selectedCell]);
 
   const handleSelectionChange = useCallback((range: CellRange) => {
     _handleSelectionChange(range);
@@ -773,7 +789,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
       {showFormulaBar && (
         <FormulaBar
             selectedCell={selectedCell}
-            value={String(currentCell?.value ?? '')}
+            value={isEditing ? editValue : String(currentCell?.value ?? '')}
             formula={currentCell?.formula ?? null}
             isEditing={isEditing}
             onValueChange={setEditValue}
