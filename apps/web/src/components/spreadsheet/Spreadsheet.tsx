@@ -522,30 +522,11 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
         alignment={currentStyle.textAlign || 'left'}
         onInsertChart={handleAddChart}
         onShare={handleShare}
+        onInsertPivot={handleOpenPivotDialog}
+        onConditionalFormatting={handleOpenConditionalDialog}
+        onShortcuts={() => setIsShortcutsOpen(true)}
+        onAdmin={user?.isAdmin ? () => router.push('/admin') : undefined}
       />
-      
-      <div style={{ padding: '4px 8px', borderBottom: '1px solid #e0e0e0', background: '#f8f9fa', display: 'flex', gap: '8px', alignItems: 'center' }}>
-         <button onClick={handleOpenConditionalDialog} style={{ fontSize: '12px', padding: '4px 8px', cursor: 'pointer' }}>
-           조건부 서식
-         </button>
-         {user?.isAdmin && (
-           <button 
-             onClick={() => router.push('/admin')}
-             style={{ 
-               fontSize: '12px', 
-               padding: '4px 8px', 
-               cursor: 'pointer',
-               background: '#e8f0fe',
-               color: '#1a73e8',
-               border: '1px solid #d2e3fc',
-               borderRadius: '4px',
-               marginLeft: 'auto'
-             }}
-           >
-             Admin Dashboard
-           </button>
-         )}
-      </div>
 
       <FormulaBar
         selectedCell={selectedCell}

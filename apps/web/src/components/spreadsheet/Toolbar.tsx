@@ -21,6 +21,10 @@ interface ToolbarProps {
   alignment: 'left' | 'center' | 'right';
   onInsertChart?: () => void;
   onShare?: () => void;
+  onInsertPivot?: () => void;
+  onConditionalFormatting?: () => void;
+  onShortcuts?: () => void;
+  onAdmin?: () => void;
 }
 
 export default function Toolbar({
@@ -41,6 +45,10 @@ export default function Toolbar({
   alignment,
   onInsertChart,
   onShare,
+  onInsertPivot,
+  onConditionalFormatting,
+  onShortcuts,
+  onAdmin,
 }: ToolbarProps) {
   const [showFormatMenu, setShowFormatMenu] = useState(false);
 
@@ -151,6 +159,31 @@ export default function Toolbar({
           </svg>
         </button>
       </div>
+
+       <div className={styles.separator} />
+
+      {/* Data Features */}
+      <div className={styles.group}>
+          <button 
+             className={styles.button}
+             onClick={onConditionalFormatting}
+             title="Conditional Formatting"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <path d="M21 3H3c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h18c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-6 10H8v-2h7v2zm2-4H8V7h9v2z"/>
+            </svg>
+          </button>
+          
+          <button 
+             className={styles.button}
+             onClick={onInsertPivot}
+             title="Pivot Table"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                <path d="M10 3h11v5H10V3zm-7 7h5v11H3V10zm0-7h5v5H3V3zm7 7h11v11H10V10z"/>
+            </svg>
+          </button>
+      </div>
       
       <div className={styles.separator} />
 
@@ -181,6 +214,34 @@ export default function Toolbar({
       </div>
 
        <div className={styles.separator} />
+
+      {/* Extra Features */}
+      <div className={styles.group}>
+          <button 
+             className={styles.button}
+             onClick={onShortcuts}
+             title="Keyboard Shortcuts (Ctrl+/)"
+          >
+            <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+               <path d="M20 5H4c-1.1 0-1.99.9-1.99 2L2 17c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm-9 3h2v2h-2V8zm0 3h2v2h-2v-2zM8 8h2v2H8V8zm0 3h2v2H8v-2zm-1 2H5v-2h2v2zm0-3H5V8h2v2zm9 7H8v-2h8v2zm0-4h-2v-2h2v2zm0-3h-2V8h2v2zm3 3h-2v-2h2v2zm0-3h-2V8h2v2z"/>
+            </svg>
+          </button>
+          
+          {onAdmin && (
+             <button
+               className={styles.button}
+               onClick={onAdmin}
+               title="Admin Dashboard"
+               style={{ color: '#d93025' }}
+             >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                    <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+                </svg>
+             </button>
+          )}
+      </div>
+
+      <div className={styles.separator} />
 
       {/* Share */}
       <div className={styles.group}>
