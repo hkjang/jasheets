@@ -1,0 +1,259 @@
+'use client';
+
+import { useState, useRef, useEffect } from 'react';
+import styles from './MenuBar.module.css';
+
+interface MenuBarProps {
+  onExportCSV: () => void;
+  onPrint: () => void;
+  onUndo: () => void;
+  onRedo: () => void;
+  onCut: () => void;
+  onCopy: () => void;
+  onPaste: () => void;
+  onFind: () => void;
+  onShowShortcuts: () => void;
+  onVersionHistory: () => void;
+  onInsertRow: () => void;
+  onInsertCol: () => void;
+  onDeleteRow: () => void;
+  onDeleteCol: () => void;
+  onFreezeRow: () => void;
+  onFreezeCol: () => void;
+  onFilter: () => void;
+  onSort: () => void;
+  onToggleFormulaBar: () => void;
+  onToggleGridlines: () => void;
+  onDownloadXLSX: () => void;
+  onDownloadPDF: () => void;
+  onMakeCopy: () => void;
+  onEmail: () => void;
+}
+
+export default function MenuBar({
+  onExportCSV,
+  onPrint,
+  onUndo,
+  onRedo,
+  onCut,
+  onCopy,
+  onPaste,
+  onFind,
+  onShowShortcuts,
+  onVersionHistory,
+  onInsertRow,
+  onInsertCol,
+  onDeleteRow,
+  onDeleteCol,
+  onFreezeRow,
+  onFreezeCol,
+  onFilter,
+  onSort,
+  onToggleFormulaBar,
+  onToggleGridlines,
+  onDownloadXLSX,
+  onDownloadPDF,
+  onMakeCopy,
+  onEmail,
+}: MenuBarProps) {
+  const [activeMenu, setActiveMenu] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
+        setActiveMenu(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  const handleMenuClick = (menu: string) => {
+    setActiveMenu(activeMenu === menu ? null : menu);
+  };
+
+  const MenuItem = ({ label, onClick, shortcut }: { label: string; onClick?: () => void; shortcut?: string }) => (
+    <div 
+        className={styles.menuItem} 
+        onClick={() => {
+            onClick?.();
+            setActiveMenu(null);
+        }}
+    >
+      <span className={styles.menuLabel}>{label}</span>
+      {shortcut && <span className={styles.menuShortcut}>{shortcut}</span>}
+    </div>
+  );
+
+  const Separator = () => <div className={styles.separator} />;
+
+  return (
+    <div className={styles.container} ref={menuRef}>
+      <div className={styles.logo}>
+        <svg viewBox="0 0 24 24" width="24" height="24" fill="#0f9d58">
+            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+        </svg>
+        <span className={styles.title}>JaSheets</span>
+      </div>
+
+      <div className={styles.menus}>
+        {/* FILE MENU */}
+        <div className={styles.menuWrapper}>
+          <button 
+            className={`${styles.menuButton} ${activeMenu === 'file' ? styles.active : ''}`}
+            onClick={() => handleMenuClick('file')}
+          >
+            파일
+          </button>
+          {activeMenu === 'file' && (
+            <div className={styles.dropdown}>
+              <MenuItem label="새 문서" onClick={() => window.open('/', '_blank')} />
+              <MenuItem label="열기" onClick={() => window.location.href = '/'} />
+              <MenuItem label="사본 만들기" onClick={onMakeCopy} />
+              <Separator />
+              <MenuItem label="공유" onClick={() => alert('공유 기능은 툴바의 공유 버튼을 이용해주세요.')} />
+              <MenuItem label="이메일로 보내기" onClick={onEmail} />
+              <Separator />
+              <MenuItem label="다운로드 (CSV)" onClick={onExportCSV} />
+              <MenuItem label="다운로드 (XLSX)" onClick={onDownloadXLSX} />
+              <MenuItem label="다운로드 (PDF)" onClick={onDownloadPDF} />
+              <Separator />
+              <MenuItem label="버전 기록" onClick={onVersionHistory} />
+              <Separator />
+              <MenuItem label="인쇄" onClick={onPrint} shortcut="Ctrl+P" />
+            </div>
+          )}
+        </div>
+
+        {/* EDIT MENU */}
+        <div className={styles.menuWrapper}>
+          <button 
+            className={`${styles.menuButton} ${activeMenu === 'edit' ? styles.active : ''}`}
+            onClick={() => handleMenuClick('edit')}
+          >
+            수정
+          </button>
+          {activeMenu === 'edit' && (
+            <div className={styles.dropdown}>
+              <MenuItem label="실행 취소" onClick={onUndo} shortcut="Ctrl+Z" />
+              <MenuItem label="재실행" onClick={onRedo} shortcut="Ctrl+Y" />
+              <Separator />
+              <MenuItem label="오려두기" onClick={onCut} shortcut="Ctrl+X" />
+              <MenuItem label="복사" onClick={onCopy} shortcut="Ctrl+C" />
+              <MenuItem label="붙여넣기" onClick={onPaste} shortcut="Ctrl+V" />
+              <Separator />
+              <MenuItem label="찾기 및 바꾸기" onClick={onFind} shortcut="Ctrl+F" />
+              <Separator />
+              <MenuItem label="행 삭제" onClick={onDeleteRow} />
+              <MenuItem label="열 삭제" onClick={onDeleteCol} />
+            </div>
+          )}
+        </div>
+
+        {/* INSERT MENU */}
+        <div className={styles.menuWrapper}>
+          <button 
+            className={`${styles.menuButton} ${activeMenu === 'insert' ? styles.active : ''}`}
+            onClick={() => handleMenuClick('insert')}
+          >
+            삽입
+          </button>
+          {activeMenu === 'insert' && (
+            <div className={styles.dropdown}>
+              <MenuItem label="행 (위쪽)" onClick={onInsertRow} />
+              <MenuItem label="행 (아래쪽)" onClick={onInsertRow} />
+              <MenuItem label="열 (왼쪽)" onClick={onInsertCol} />
+              <MenuItem label="열 (오른쪽)" onClick={onInsertCol} />
+              <Separator />
+              <MenuItem label="차트" onClick={() => alert('툴바의 차트 버튼을 이용해주세요.')} />
+              <MenuItem label="피벗 테이블" onClick={() => alert('툴바의 피벗 테이블 버튼을 이용해주세요.')} />
+              <MenuItem label="이미지" onClick={() => alert('이미지 삽입 준비 중...')} />
+              <MenuItem label="링크" onClick={() => alert('링크 삽입 준비 중...')} shortcut="Ctrl+K" />
+            </div>
+          )}
+        </div>
+
+        {/* VIEW MENU */}
+        <div className={styles.menuWrapper}>
+          <button 
+            className={`${styles.menuButton} ${activeMenu === 'view' ? styles.active : ''}`}
+            onClick={() => handleMenuClick('view')}
+          >
+            보기
+          </button>
+          {activeMenu === 'view' && (
+            <div className={styles.dropdown}>
+              <MenuItem label="표시 > 수식바" onClick={onToggleFormulaBar} shortcut="✓" />
+              <MenuItem label="표시 > 격자선" onClick={onToggleGridlines} shortcut="✓" />
+              <Separator />
+              <MenuItem label="고정 > 행 1개" onClick={onFreezeRow} />
+              <MenuItem label="고정 > 열 1개" onClick={onFreezeCol} />
+              <MenuItem label="고정 없음" onClick={() => {}} />
+              <Separator />
+              <MenuItem label="확대/축소" onClick={() => {}} />
+            </div>
+          )}
+        </div>
+
+        {/* FORMAT MENU */}
+        <div className={styles.menuWrapper}>
+          <button 
+            className={`${styles.menuButton} ${activeMenu === 'format' ? styles.active : ''}`}
+            onClick={() => handleMenuClick('format')}
+          >
+            서식
+          </button>
+          {activeMenu === 'format' && (
+            <div className={styles.dropdown}>
+               <MenuItem label="테마" onClick={() => alert('테마 설정 준비 중...')} />
+               <MenuItem label="숫자" onClick={() => {}} />
+               <MenuItem label="텍스트" onClick={() => {}} />
+               <Separator />
+               <MenuItem label="조건부 서식" onClick={() => alert('툴바의 조건부 서식 버튼을 이용해주세요.')} />
+            </div>
+          )}
+        </div>
+        
+         {/* DATA MENU */}
+        <div className={styles.menuWrapper}>
+          <button 
+            className={`${styles.menuButton} ${activeMenu === 'data' ? styles.active : ''}`}
+            onClick={() => handleMenuClick('data')}
+          >
+            데이터
+          </button>
+          {activeMenu === 'data' && (
+            <div className={styles.dropdown}>
+               <MenuItem label="시트 정렬 (A-Z)" onClick={onSort} />
+               <MenuItem label="필터 만들기" onClick={() => alert('필터 기능 준비 중...')} />
+               <Separator />
+               <MenuItem label="데이터 확인" onClick={() => alert('데이터 확인 기능 준비 중...')} />
+               <MenuItem label="공백 제거" onClick={() => alert('공백 제거 기능 준비 중...')} />
+            </div>
+          )}
+        </div>
+
+        {/* HELP MENU */}
+        <div className={styles.menuWrapper}>
+          <button 
+            className={`${styles.menuButton} ${activeMenu === 'help' ? styles.active : ''}`}
+            onClick={() => handleMenuClick('help')}
+          >
+            도움말
+          </button>
+          {activeMenu === 'help' && (
+            <div className={styles.dropdown}>
+               <MenuItem label="도움말 검색" onClick={() => {}} />
+               <MenuItem label="단축키" onClick={onShowShortcuts} shortcut="Ctrl+/" />
+               <Separator />
+               <MenuItem label="개인정보처리방침" onClick={() => {}} />
+               <MenuItem label="서비스 약관" onClick={() => {}} />
+            </div>
+          )}
+        </div>
+
+      </div>
+    </div>
+  );
+}

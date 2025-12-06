@@ -53,4 +53,4 @@ HTMLCanvasElement.prototype.getContext = jest.fn(() => ({
   measureText: jest.fn(() => ({ width: 0 })),
   fillText: jest.fn(),
   strokeText: jest.fn(),
-}));
+} as any));

@@ -234,5 +234,88 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
     handleRedo,
     canUndo: historyIndex >= 0,
     canRedo: historyIndex < history.length - 1,
+    history,
+    sortRows: useCallback((colIndex: number, ascending: boolean = true) => {
+        applyChange((draft) => {
+             // ... existing sort logic ...
+            // 1. Get all row indices
+            const rowIndices = Object.keys(draft).map(Number).filter(r => !isNaN(r));
+            if (rowIndices.length === 0) return;
+            const minRow = Math.min(...rowIndices);
+            const maxRow = Math.max(...rowIndices);
+            
+            const rowsToSort = [];
+            for (let r = minRow; r <= maxRow; r++) {
+               rowsToSort.push({ index: r, data: draft[r] });
+            }
+            
+            rowsToSort.sort((a, b) => {
+                const valA = a.data?.[colIndex]?.value;
+                const valB = b.data?.[colIndex]?.value;
+                if (valA === valB) return 0;
+                if (valA === null || valA === undefined) return 1; 
+                if (valB === null || valB === undefined) return -1;
+                if (valA < valB) return ascending ? -1 : 1;
+                if (valA > valB) return ascending ? 1 : -1;
+                return 0;
+            });
+            
+            rowsToSort.forEach((item, i) => {
+                const targetRowIndex = minRow + i;
+                draft[targetRowIndex] = item.data;
+            });
+        });
+    }, [applyChange]),
+
+    // Find and Replace
+    findNext: useCallback((query: string, matchCase: boolean, startIndex: { row: number, col: number }) => {
+        // Return next match position
+        const rows = Object.keys(data).map(Number).sort((a, b) => a - b);
+        for (const r of rows) {
+            const cols = Object.keys(data[r]).map(Number).sort((a, b) => a - b);
+            for (const c of cols) {
+                // simple scan, can be optimized to start from index
+                if (r < startIndex.row || (r === startIndex.row && c <= startIndex.col)) continue;
+
+                const val = String(data[r][c]?.value ?? '');
+                const target = matchCase ? query : query.toLowerCase();
+                const source = matchCase ? val : val.toLowerCase();
+                
+                if (source.includes(target)) {
+                    return { row: r, col: c };
+                }
+            }
+        }
+        return null; // wrap around?
+    }, [data]),
+
+    replaceAll: useCallback((query: string, replacement: string, matchCase: boolean) => {
+        applyChange((draft) => {
+            const rows = Object.keys(draft).map(Number);
+            for (const r of rows) {
+                const cols = Object.keys(draft[r]).map(Number);
+                for (const c of cols) {
+                    const cell = draft[r][c];
+                    if (!cell) continue;
+                    const val = String(cell.value ?? '');
+                    
+                    const target = matchCase ? query : query.toLowerCase();
+                    const source = matchCase ? val : val.toLowerCase();
+
+                    if (source.includes(target)) {
+                         // Simple replace or regex? Simple include check implies simple replace
+                         // But if we want exact replace behavior similar to 'includes':
+                         if (matchCase) {
+                             cell.value = val.replaceAll(query, replacement);
+                         } else {
+                             // case insensitive replace all
+                             const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                             cell.value = val.replace(re, replacement);
+                         }
+                    }
+                }
+            }
+        });
+    }, [applyChange]),
   };
 }

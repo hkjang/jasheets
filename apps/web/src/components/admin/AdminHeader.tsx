@@ -23,7 +23,7 @@ export function AdminHeader({ title }: { title: string }) {
       <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <img 
-            src={user?.avatar || `https://ui-avatars.com/api/?name=${user?.name || 'Admin'}`} 
+            src={`https://ui-avatars.com/api/?name=${user?.name || 'Admin'}`} 
             alt="Profile" 
             style={{ width: '32px', height: '32px', borderRadius: '50%' }}
           />

@@ -31,6 +31,10 @@ interface UseCollaborationOptions {
     value: any;
     formula?: string;
   }) => void;
+  onCellsUpdate?: (data: {
+    sheetId: string;
+    updates: Array<{ row: number; col: number; value: any; formula?: string }>;
+  }) => void;
   onChatMessage?: (message: ChatMessage) => void;
 }
 

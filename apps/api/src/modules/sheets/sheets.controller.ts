@@ -27,6 +27,11 @@ export class SheetsController {
     return this.sheetsService.create(req.user.id, dto);
   }
 
+  @Post(':id/copy')
+  copy(@Request() req: any, @Param('id') id: string) {
+    return this.sheetsService.copy(req.user.id, id);
+  }
+
   @Get()
   findAll(@Request() req: any, @Query('filter') filter?: string, @Query('search') search?: string) {
     return this.sheetsService.findAll(req.user.id, filter, search);

@@ -31,6 +31,7 @@ interface SpreadsheetCanvasProps {
   onColumnResize?: (index: number, width: number) => void;
   onRowResize?: (index: number, height: number) => void;
   onHeaderContextMenu?: (x: number, y: number, type: 'row' | 'col', index: number) => void;
+  showGridlines?: boolean;
 }
 
 export default function SpreadsheetCanvas({
@@ -47,6 +48,7 @@ export default function SpreadsheetCanvas({
   onColumnResize,
   onRowResize,
   onHeaderContextMenu,
+  showGridlines = true,
 }: SpreadsheetCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -278,9 +280,11 @@ export default function SpreadsheetCanvas({
         }
 
         // Draw cell border
-        ctx.strokeStyle = '#e2e2e2';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(currentX + 0.5, currentY + 0.5, colWidth, rowHeight);
+        if (showGridlines) {
+            ctx.strokeStyle = '#e2e2e2';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(currentX + 0.5, currentY + 0.5, colWidth, rowHeight);
+        }
 
         // Draw cell content
         if (cellData) {
@@ -427,6 +431,7 @@ export default function SpreadsheetCanvas({
     conditionalRules,
     getColX,
     getRowY,
+    showGridlines,
   ]);
 
   // Handle resize

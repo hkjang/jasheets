@@ -11,7 +11,13 @@ import { UserCursors, ChatPanel } from '../collaboration';
 import SmartAutocomplete from './SmartAutocomplete';
 import { ChartDialog } from '../charts';
 import ChartOverlay from '../charts/ChartOverlay';
+import VersionHistorySidebar from './VersionHistorySidebar';
 import ConditionalFormattingDialog, { ConditionalRule } from './ConditionalFormattingDialog';
+import FindDialog from './FindDialog';
+
+// ... (in Spreadsheet component)
+
+
 import PivotTableDialog from './PivotTableDialog';
 import { calculatePivotData, PivotConfig } from '@/utils/pivotLogic';
 import KeyboardShortcuts from './KeyboardShortcuts';
@@ -28,11 +34,19 @@ import {
 } from '@/types/spreadsheet';
 import styles from './Spreadsheet.module.css';
 import { useSpreadsheetData } from '@/hooks/spreadsheet/useSpreadsheetData';
+import { useSpreadsheetView } from '@/hooks/spreadsheet/useSpreadsheetView';
 import { useSpreadsheetSelection } from '@/hooks/spreadsheet/useSpreadsheetSelection';
 import { useSpreadsheetEdit } from '@/hooks/spreadsheet/useSpreadsheetEdit';
 import { useKeyboardNavigation } from '@/hooks/spreadsheet/useKeyboardNavigation';
 import { useSpreadsheetCollaboration } from '@/hooks/spreadsheet/useSpreadsheetCollaboration';
 import { useSpreadsheetCharts } from '@/hooks/spreadsheet/useSpreadsheetCharts';
+import MenuBar from './MenuBar';
+import { exportToCSV } from '@/utils/export';
+import * as XLSX from 'xlsx';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
+
+import EmailDialog from './EmailDialog';
 
 interface SpreadsheetProps {
   initialData?: SheetData;
@@ -58,6 +72,10 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     handleRedo,
     canUndo,
     canRedo,
+    history,
+    sortRows,
+    findNext,
+    replaceAll,
   } = useSpreadsheetData({ initialData, onDataChange });
 
   // Selection
@@ -85,6 +103,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   // Collaboration
   const { user, loading } = useAuth();
   const router = useRouter();
+  const [isEmailOpen, setIsEmailOpen] = useState(false);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -122,12 +141,23 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   } = useSpreadsheetCharts();
 
   // Columns & Rows
-  const [columns, setColumns] = useState<ColumnDef[]>(() =>
-    Array(DEFAULT_CONFIG.totalCols).fill(null).map(() => ({ width: DEFAULT_CONFIG.defaultColWidth }))
-  );
-  const [rows, setRows] = useState<RowDef[]>(() =>
-    Array(DEFAULT_CONFIG.totalRows).fill(null).map(() => ({ height: DEFAULT_CONFIG.defaultRowHeight }))
-  );
+  // View State using new hook
+  const {
+      columns,
+      setColumns,
+      rows,
+      setRows,
+      config,
+      setConfig,
+      showFormulaBar,
+      setShowFormulaBar,
+      showGridlines,
+      setShowGridlines,
+      handleColumnResize,
+      handleRowResize,
+      handleFreezeRow,
+      handleFreezeCol
+  } = useSpreadsheetView();
 
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{
@@ -293,23 +323,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
       setContextMenu(null);
   }, [contextMenu, selection]);
 
-  const handleColumnResize = useCallback((index: number, width: number) => {
-      setColumns(prev => {
-          const newCols = [...prev];
-          if (newCols[index]) newCols[index] = { ...newCols[index], width };
-          else newCols[index] = { width };
-          return newCols;
-      });
-  }, []);
 
-  const handleRowResize = useCallback((index: number, height: number) => {
-      setRows(prev => {
-          const newRows = [...prev];
-          if (newRows[index]) newRows[index] = { ...newRows[index], height };
-          else newRows[index] = { height };
-          return newRows;
-      });
-  }, []);
 
   const getCellPosition = useCallback((row: number, col: number) => {
     let x = 50; 
@@ -378,6 +392,12 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
 
   // Share Dialog state
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+
+  // Version History state
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+
+  // Find Dialog state
+  const [isFindOpen, setIsFindOpen] = useState(false);
 
   const handleShare = useCallback(async () => {
     if (spreadsheetId) {
@@ -454,6 +474,46 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     return result;
   }, [data, selection]);
 
+  // Find Handlers
+  const handleFind = useCallback((query: string, matchCase: boolean) => {
+      const start = selectedCell || { row: -1, col: -1 };
+      const next = findNext(query, matchCase, start);
+      if (next) {
+          _handleCellSelect(next);
+      } else {
+          const nextWrap = findNext(query, matchCase, { row: -1, col: -1 });
+          if (nextWrap) {
+               _handleCellSelect(nextWrap);
+          } else {
+               alert('검색 결과가 없습니다.');
+          }
+      }
+  }, [findNext, selectedCell, _handleCellSelect]);
+
+  const handleReplace = useCallback((query: string, replacement: string, matchCase: boolean) => {
+      if (!selectedCell) {
+          handleFind(query, matchCase);
+          return;
+      }
+      
+      const val = String(currentCell?.value ?? '');
+      const target = matchCase ? query : query.toLowerCase();
+      const source = matchCase ? val : val.toLowerCase();
+      
+      if (source.includes(target)) {
+             if (matchCase) {
+                 setCellValue(selectedCell.row, selectedCell.col, val.replace(query, replacement));
+             } else {
+                 const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+                 // Replace only first?
+                 setCellValue(selectedCell.row, selectedCell.col, val.replace(re, replacement));
+             }
+             handleFind(query, matchCase);
+      } else {
+          handleFind(query, matchCase);
+      }
+  }, [selectedCell, currentCell, handleFind, setCellValue]);
+
   // Feature Handlers
   const handleAddConditionalRule = useCallback((rule: ConditionalRule) => {
     setConditionalRules(prev => [...prev, rule]);
@@ -504,6 +564,133 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
 
   return (
     <div className={styles.container}>
+      <MenuBar 
+         onExportCSV={() => exportToCSV(data, 'jasheets_export.csv')}
+         onDownloadXLSX={() => {
+              const rows = Object.keys(data).map(Number).sort((a,b)=>a-b);
+              const maxRow = rows.length ? rows[rows.length-1] : 0;
+              const maxCol = 26; 
+              const aoa = [];
+              for(let r=0; r<=maxRow; r++) {
+                  const rowData = [];
+                  for(let c=0; c<maxCol; c++) {
+                      rowData.push(data[r]?.[c]?.value ?? '');
+                  }
+                  aoa.push(rowData);
+              }
+              const wb = XLSX.utils.book_new();
+              const wsFull = XLSX.utils.aoa_to_sheet(aoa);
+              XLSX.utils.book_append_sheet(wb, wsFull, "Sheet1");
+              XLSX.writeFile(wb, "jasheets_export.xlsx");
+         }}
+         onDownloadPDF={() => {
+              const doc = new jsPDF();
+              const rows = Object.keys(data).map(Number).sort((a,b)=>a-b);
+              const maxRow = rows.length ? rows[rows.length-1] : 0;
+              const maxCol = 10; 
+              const body = [];
+              for(let r=0; r<=maxRow; r++) {
+                  const rowData = [];
+                  for(let c=0; c<maxCol; c++) {
+                      rowData.push(String(data[r]?.[c]?.value ?? ''));
+                  }
+                  body.push(rowData);
+              }
+              (doc as any).autoTable({
+                  head: [],
+                  body: body,
+              });
+              doc.save("jasheets_export.pdf");
+         }}
+         onMakeCopy={async () => {
+              if(!spreadsheetId) {
+                  alert('저장된 시트만 복사할 수 있습니다.');
+                  return;
+              }
+              try {
+                  const token = localStorage.getItem('token');
+                  const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'}/sheets/${spreadsheetId}/copy`, {
+                      method: 'POST',
+                      headers: { Authorization: `Bearer ${token}` }
+                  });
+                  if(res.ok) {
+                      const newSheet = await res.json();
+                      if(confirm('복사가 완료되었습니다. 복사된 시트로 이동하시겠습니까?')) {
+                          router.push(`/spreadsheet/${newSheet.id}`);
+                      }
+                  } else {
+                      alert('복사에 실패했습니다.');
+                  }
+              } catch(e) {
+                  alert('오류가 발생했습니다.');
+              }
+         }}
+         onPrint={() => window.print()}
+         onUndo={handleUndo}
+         onRedo={handleRedo}
+         onCut={() => alert('잘라내기는 Ctrl+X를 이용해주세요 (브라우저 보안 제한)')}
+         onCopy={() => alert('복사는 Ctrl+C를 이용해주세요 (브라우저 보안 제한)')}
+         onPaste={() => alert('붙여넣기는 Ctrl+V를 이용해주세요 (브라우저 보안 제한)')}
+         onFind={() => setIsFindOpen(true)}
+         onShowShortcuts={() => setIsShortcutsOpen(true)}
+         onVersionHistory={() => setIsHistoryOpen(true)}
+         onInsertRow={() => { if (selectedCell) insertRow(selectedCell.row); }}
+         onInsertCol={() => { if (selectedCell) insertColumn(selectedCell.col); }}
+         onDeleteRow={() => { if (selectedCell) deleteRow(selectedCell.row); }}
+         onDeleteCol={() => { if (selectedCell) deleteColumn(selectedCell.col); }}
+         onFreezeRow={() => {
+             if (selectedCell) {
+                 handleFreezeRow(selectedCell.row);
+             } else {
+                 alert('고정할 행 아래의 셀을 선택해주세요.');
+             }
+         }}
+         onFreezeCol={() => {
+             if (selectedCell) {
+                 handleFreezeCol(selectedCell.col);
+             } else {
+                 alert('고정할 열 오른쪽의 셀을 선택해주세요.');
+             }
+         }}
+         onFilter={() => {
+             if (!selectedCell) {
+                 if (rows.some(r => r?.hidden)) {
+                     setRows(prev => prev.map(r => ({ ...r, hidden: false })));
+                     alert('필터가 해제되었습니다.');
+                 } else {
+                     alert('필터를 적용할 셀을 선택해주세요.');
+                 }
+                 return;
+             }
+             const targetValue = data[selectedCell.row]?.[selectedCell.col]?.value;
+             const targetCol = selectedCell.col;
+             setRows(prev => prev.map((r, i) => {
+                 const cellValue = data[i]?.[targetCol]?.value;
+                 if (cellValue !== targetValue) {
+                     return { ...r, hidden: true };
+                 }
+                 return { ...r, hidden: false };
+             }));
+         }}
+         onSort={() => {
+             if (selectedCell) {
+                 sortRows(selectedCell.col, true); 
+             } else {
+                 alert('정렬할 열의 셀을 선택해주세요.');
+             }
+         }}
+         onToggleFormulaBar={() => setShowFormulaBar(!showFormulaBar)}
+         onToggleGridlines={() => setShowGridlines(!showGridlines)}
+         onEmail={() => setIsEmailOpen(true)}
+      />
+      <EmailDialog 
+        isOpen={isEmailOpen} 
+        onClose={() => setIsEmailOpen(false)} 
+        onSend={(email, subject, message) => {
+            alert(`이메일을 보냈습니다! (시뮬레이션)\nTo: ${email}\nSubject: ${subject}\nMsg: ${message}`);
+            setIsEmailOpen(false);
+        }}
+      />
       <Toolbar
         onUndo={handleUndo}
         onRedo={handleRedo}
@@ -528,18 +715,26 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
         onAdmin={user?.isAdmin ? () => router.push('/admin') : undefined}
       />
 
-      <FormulaBar
-        selectedCell={selectedCell}
-        value={String(currentCell?.value ?? '')}
-        formula={currentCell?.formula ?? null}
-        isEditing={isEditing}
-        onValueChange={setEditValue}
-        onSubmit={commitEditing}
-        onCancel={cancelEditing}
-        onEdit={() => selectedCell && startEditing(selectedCell)}
-      />
+      {showFormulaBar && (
+        <FormulaBar
+            selectedCell={selectedCell}
+            value={String(currentCell?.value ?? '')}
+            formula={currentCell?.formula ?? null}
+            isEditing={isEditing}
+            onValueChange={setEditValue}
+            onSubmit={commitEditing}
+            onCancel={cancelEditing}
+            onEdit={() => selectedCell && startEditing(selectedCell)}
+        />
+      )}
       
       <div className={styles.canvasWrapper} style={{ position: 'relative' }}>
+         <VersionHistorySidebar
+            isOpen={isHistoryOpen}
+            onClose={() => setIsHistoryOpen(false)}
+            history={history}
+            onRestore={(index) => alert(`Restore version ${index} logic (requires patching)`)}
+         />
         <UserCursors 
           users={users} 
           getCellPosition={getCellPosition} 
@@ -549,6 +744,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
           data={data}
           columns={columns}
           rows={rows}
+          config={config}
           selectedCell={selectedCell}
           selection={selection}
           onCellSelect={handleCellSelect}
@@ -557,6 +753,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
           conditionalRules={conditionalRules} 
           onColumnResize={handleColumnResize}
           onRowResize={handleRowResize}
+          showGridlines={showGridlines}
           onHeaderContextMenu={handleHeaderContextMenu}
         />
         
@@ -634,6 +831,13 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
       <KeyboardShortcuts
         isOpen={isShortcutsOpen}
         onClose={() => setIsShortcutsOpen(false)}
+      />
+      <FindDialog
+        isOpen={isFindOpen}
+        onClose={() => setIsFindOpen(false)}
+        onFind={handleFind}
+        onReplace={handleReplace}
+        onReplaceAll={replaceAll}
       />
 
       {toastMessage && (

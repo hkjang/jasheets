@@ -535,4 +535,51 @@ export class SheetsService {
 
     return permission?.role ?? null;
   }
+  async copy(userId: string, id: string) {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({
+      where: { id },
+      include: { sheets: { include: { cells: true } } },
+    });
+
+    if (!spreadsheet) {
+      throw new NotFoundException('Spreadsheet not found');
+    }
+
+    // Check read access
+    const hasAccess = await this.checkAccess(userId, id);
+    if (!hasAccess) {
+      throw new ForbiddenException('You do not have access to this spreadsheet');
+    }
+
+    const newSpreadsheet = await this.prisma.spreadsheet.create({
+      data: {
+        name: `Copy of ${spreadsheet.name}`,
+        ownerId: userId,
+        sheets: {
+          create: spreadsheet.sheets.map(sheet => ({
+            name: sheet.name,
+            index: sheet.index,
+            cells: {
+              create: sheet.cells.map(cell => ({
+                row: cell.row,
+                col: cell.col,
+                value: cell.value as any,
+                formula: cell.formula,
+                format: cell.format as any,
+              })),
+            },
+          })),
+        },
+        permissions: {
+            create: {
+                userId,
+                role: PermissionRole.OWNER
+            }
+        }
+      },
+      select: { id: true },
+    });
+
+    return newSpreadsheet;
+  }
 }
