@@ -18,6 +18,8 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { NoticesModule } from './modules/notices/notices.module';
 import { TemplatesModule } from './modules/templates/templates.module';
+import { EventsModule } from './modules/events/events.module';
+import { FlowsModule } from './modules/flows/flows.module';
 
 @Module({
   imports: [
@@ -41,6 +43,8 @@ import { TemplatesModule } from './modules/templates/templates.module';
     RolesModule,
     NoticesModule,
     TemplatesModule,
+    EventsModule,
+    FlowsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

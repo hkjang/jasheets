@@ -11,7 +11,11 @@ interface Spreadsheet {
   isFavorite?: boolean;
 }
 
-export const UserSpreadsheetList = () => {
+interface UserSpreadsheetListProps {
+  onSelect?: (id: string) => void;
+}
+
+export const UserSpreadsheetList = ({ onSelect }: UserSpreadsheetListProps) => {
   const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('all');
@@ -50,6 +54,15 @@ export const UserSpreadsheetList = () => {
   
   const handleOpen = (id: string) => {
       router.push(`/spreadsheet/${id}`);
+  };
+
+  const handleWorkflows = (e: React.MouseEvent, id: string) => {
+      e.stopPropagation();
+      if (onSelect) {
+          onSelect(id);
+      } else {
+          router.push(`/spreadsheet/${id}?tab=workflows`);
+      }
   };
 
   const toggleFavorite = async (e: React.MouseEvent, id: string) => {
@@ -120,7 +133,16 @@ export const UserSpreadsheetList = () => {
                 <div className="p-2 bg-green-100 rounded-lg text-green-700 group-hover:bg-green-200 transition">
                    <svg viewBox="0 0 24 24" width="24" height="24" fill="currentColor"><path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm0 16H5V5h14v14zM7 10h2v7H7zm4-3h2v10h-2zm4 6h2v4h-2z"/></svg>
                 </div>
-                <div className="flex items-center">
+                <div className="flex items-center gap-1">
+                    <button 
+                        onClick={(e) => handleWorkflows(e, sheet.id)}
+                        className="p-1.5 rounded-full hover:bg-gray-100 text-gray-400 hover:text-purple-600 transition"
+                        title="Manage Workflows"
+                    >
+                        <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                            <path d="M13 2v2.05c3.39.49 6 3.38 6 6.85c0 1.23-.32 2.39-.88 3.39l1.47 1.47c.79-1.37 1.26-2.96 1.26-4.66c0-4.79-3.57-8.62-8.19-9.09V2h.34zm-2 0h.34a9.998 9.998 0 0 0-4.39 17.61l1.43-1.43A7.963 7.963 0 0 1 4.05 12.9c0-3.47 2.61-6.36 6-6.85V2zm1-2H9.71l-3.66 3.66l1.41 1.41L10 2.53l2.54 2.54l1.41-1.41L10.29 0zm5.84 15.84L17 15l.84.84c.39.39 1.02.39 1.41 0l1.41-1.41c.39-.39.39-1.02 0-1.41L17 9.29a.996.996 0 0 0-1.41 0l-1.41 1.41c-.39.39-.39 1.02 0 1.41L15 13l-.84.84c-.39.39-.39 1.02 0 1.41s1.02.39 1.41 0l.84-.84z"/>
+                        </svg>
+                    </button>
                     <button 
                         onClick={(e) => toggleFavorite(e, sheet.id)}
                         className={`p-1 rounded-full hover:bg-gray-100 ${sheet.isFavorite ? 'text-yellow-400' : 'text-gray-300'}`}

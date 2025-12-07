@@ -1,12 +1,16 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSpreadsheetDto } from './dto/create-spreadsheet.dto';
 import { UpdateSpreadsheetDto } from './dto/update-spreadsheet.dto';
 import { PermissionRole } from '@prisma/client';
+import { EventsService, CellChangeEvent } from '../events/events.service';
 
 @Injectable()
 export class SheetsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly eventsService: EventsService,
+  ) {}
 
   async create(userId: string, dto: CreateSpreadsheetDto) {
     const sheetsCreateInput = dto.data?.sheets ? {
@@ -389,7 +393,19 @@ export class SheetsService {
 
     await this.checkEditAccess(userId, sheet.spreadsheetId);
 
-    return this.prisma.$transaction(
+    // Get existing cell values for event detection
+    const existingCells = await this.prisma.cell.findMany({
+      where: {
+        sheetId,
+        OR: updates.map(u => ({ row: u.row, col: u.col })),
+      },
+    });
+    const existingMap = new Map(
+      existingCells.map(c => [`${c.row}:${c.col}`, c.value])
+    );
+
+    // Perform the updates
+    const result = await this.prisma.$transaction(
       updates.map((update) =>
         this.prisma.cell.upsert({
           where: {
@@ -411,6 +427,27 @@ export class SheetsService {
         }),
       ),
     );
+
+    // Trigger cell change events (async, don't block response)
+    const cellChangeEvents: CellChangeEvent[] = updates.map(update => ({
+      spreadsheetId: sheet.spreadsheetId,
+      sheetId,
+      row: update.row,
+      col: update.col,
+      previousValue: existingMap.get(`${update.row}:${update.col}`) ?? null,
+      newValue: update.value,
+      changedBy: userId,
+      changeMethod: 'api' as const,
+    }));
+
+    // Fire events asynchronously
+    if (cellChangeEvents.length === 1) {
+      this.eventsService.detectCellChange(cellChangeEvents[0]).catch(() => {});
+    } else if (cellChangeEvents.length > 1) {
+      this.eventsService.detectMultiCellChange(cellChangeEvents).catch(() => {});
+    }
+
+    return result;
   }
 
   // Permission helpers

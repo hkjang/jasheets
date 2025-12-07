@@ -1,181 +1,476 @@
 import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { Webhook } from '@prisma/client';
 import * as crypto from 'crypto';
+import { CreateWebhookDto, UpdateWebhookDto } from './dto/webhook.dto';
 
-interface WebhookPayload {
+// Re-export for backwards compatibility
+export { CreateWebhookDto, UpdateWebhookDto } from './dto/webhook.dto';
+
+// =====================================================
+// Types & Interfaces
+// =====================================================
+
+export interface WebhookPayload {
   event: string;
+  transactionId: string;
   spreadsheetId: string;
+  sheetId?: string;
   timestamp: string;
-  data: any;
+  data: CellChangeData | CellChangeData[];
 }
 
-export interface WebhookConfig {
-  id: string;
-  spreadsheetId: string;
-  url: string;
-  events: string[];
-  secret: string;
-  active: boolean;
-  createdAt: Date;
+export interface CellChangeData {
+  cellCoordinate: string;
+  previousValue: any;
+  newValue: any;
+  changedBy?: string;
+  changeMethod?: string;
 }
+
+// =====================================================
+// Service
+// =====================================================
 
 @Injectable()
 export class WebhooksService {
   private readonly logger = new Logger(WebhooksService.name);
-  
-  // In-memory storage for demo (use DB in production)
-  private webhooks: Map<string, WebhookConfig> = new Map();
 
   constructor(private readonly prisma: PrismaService) {}
+
+  // =====================================================
+  // Permission Check Helper
+  // =====================================================
+
+  private async checkSpreadsheetAccess(userId: string, spreadsheetId: string): Promise<boolean> {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({
+      where: { id: spreadsheetId },
+      include: { permissions: true },
+    });
+
+    if (!spreadsheet) {
+      throw new NotFoundException('Spreadsheet not found');
+    }
+
+    // Owner has access
+    if (spreadsheet.ownerId === userId) {
+      return true;
+    }
+
+    // Users with EDITOR or OWNER permissions have access
+    const hasPermission = spreadsheet.permissions.some(
+      (p) => p.userId === userId && (p.role === 'EDITOR' || p.role === 'OWNER')
+    );
+
+    return hasPermission;
+  }
+
+  // =====================================================
+  // Webhook CRUD (DB-based)
+  // =====================================================
+
+  async createWebhook(userId: string, dto: CreateWebhookDto): Promise<Webhook> {
+    const hasAccess = await this.checkSpreadsheetAccess(userId, dto.spreadsheetId);
+    if (!hasAccess) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const secret = crypto.randomBytes(32).toString('hex');
+
+    return this.prisma.webhook.create({
+      data: {
+        spreadsheetId: dto.spreadsheetId,
+        name: dto.name,
+        url: dto.url,
+        secret,
+        events: dto.events || ['cell.update', 'sheet.create', 'sheet.delete'],
+        maxRetries: dto.maxRetries ?? 3,
+        retryBackoff: dto.retryBackoff ?? 'exponential',
+        active: true,
+      },
+    });
+  }
+
+  async listWebhooks(userId: string, spreadsheetId: string) {
+    const hasAccess = await this.checkSpreadsheetAccess(userId, spreadsheetId);
+    if (!hasAccess) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    return this.prisma.webhook.findMany({
+      where: { spreadsheetId },
+      select: {
+        id: true,
+        name: true,
+        url: true,
+        events: true,
+        maxRetries: true,
+        retryBackoff: true,
+        active: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
+  }
+
+  async getWebhook(userId: string, webhookId: string) {
+    const webhook = await this.prisma.webhook.findUnique({
+      where: { id: webhookId },
+      include: { spreadsheet: true },
+    });
+
+    if (!webhook) {
+      throw new NotFoundException('Webhook not found');
+    }
+
+    const hasAccess = await this.checkSpreadsheetAccess(userId, webhook.spreadsheetId);
+    if (!hasAccess) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    return webhook;
+  }
+
+  async updateWebhook(userId: string, webhookId: string, dto: UpdateWebhookDto) {
+    const webhook = await this.prisma.webhook.findUnique({
+      where: { id: webhookId },
+      include: { spreadsheet: true },
+    });
+
+    if (!webhook) {
+      throw new NotFoundException('Webhook not found');
+    }
+
+    const hasAccess = await this.checkSpreadsheetAccess(userId, webhook.spreadsheetId);
+    if (!hasAccess) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    return this.prisma.webhook.update({
+      where: { id: webhookId },
+      data: dto,
+    });
+  }
+
+  async deleteWebhook(userId: string, webhookId: string) {
+    const webhook = await this.prisma.webhook.findUnique({
+      where: { id: webhookId },
+      include: { spreadsheet: true },
+    });
+
+    if (!webhook) {
+      throw new NotFoundException('Webhook not found');
+    }
+
+    const hasAccess = await this.checkSpreadsheetAccess(userId, webhook.spreadsheetId);
+    if (!hasAccess) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    return this.prisma.webhook.delete({
+      where: { id: webhookId },
+    });
+  }
+
+  // =====================================================
+  // Webhook Triggering
+  // =====================================================
+
+  async triggerWebhook(
+    webhookId: string,
+    transactionId: string,
+    eventData: CellChangeData | CellChangeData[],
+    eventType: string,
+  ) {
+    const webhook = await this.prisma.webhook.findUnique({
+      where: { id: webhookId },
+    });
+
+    if (!webhook || !webhook.active) {
+      return;
+    }
+
+    if (!webhook.events.includes(eventType)) {
+      return;
+    }
+
+    const payload: WebhookPayload = {
+      event: eventType,
+      transactionId,
+      spreadsheetId: webhook.spreadsheetId,
+      timestamp: new Date().toISOString(),
+      data: eventData,
+    };
+
+    await this.executeWithRetry(webhook, payload, transactionId);
+  }
+
+  async triggerWebhooksForSpreadsheet(
+    spreadsheetId: string,
+    transactionId: string,
+    eventData: CellChangeData | CellChangeData[],
+    eventType: string,
+  ) {
+    const webhooks = await this.prisma.webhook.findMany({
+      where: {
+        spreadsheetId,
+        active: true,
+        events: { has: eventType },
+      },
+    });
+
+    for (const webhook of webhooks) {
+      const payload: WebhookPayload = {
+        event: eventType,
+        transactionId,
+        spreadsheetId,
+        timestamp: new Date().toISOString(),
+        data: eventData,
+      };
+
+      await this.executeWithRetry(webhook, payload, transactionId);
+    }
+  }
+
+  // =====================================================
+  // Retry Logic
+  // =====================================================
+
+  private async executeWithRetry(
+    webhook: Webhook,
+    payload: WebhookPayload,
+    transactionId: string,
+  ) {
+    const maxRetries = webhook.maxRetries || 3;
+    let lastError: string | null = null;
+    let lastStatusCode: number | null = null;
+    let response: any = null;
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.logger.log(`Webhook ${webhook.id} attempt ${attempt}`);
+
+        response = await fetch(webhook.url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Webhook-Signature': this.generateSignature(JSON.stringify(payload), webhook.secret),
+            'X-Transaction-Id': transactionId,
+          },
+          body: JSON.stringify(payload),
+        });
+
+        lastStatusCode = response.status;
+
+        if (response.ok) {
+          await this.logExecution(webhook.id, transactionId, payload, {
+            success: true,
+            statusCode: lastStatusCode,
+            response: await response.text(),
+            attempts: attempt,
+          });
+          return;
+        }
+
+        this.logger.warn(`Webhook ${webhook.id} failed with status ${response.status}`);
+      } catch (error: any) {
+        lastError = error.message;
+        this.logger.error(`Webhook ${webhook.id} attempt ${attempt} error: ${lastError}`);
+      }
+
+      if (attempt < maxRetries) {
+        const backoffMs = this.calculateBackoff(webhook.retryBackoff, attempt);
+        await this.sleep(backoffMs);
+      }
+    }
+
+    // All retries failed
+    await this.logExecution(webhook.id, transactionId, payload, {
+      success: false,
+      statusCode: lastStatusCode,
+      error: lastError,
+      attempts: maxRetries,
+    });
+
+    // Add to dead letter queue
+    await this.addToDeadLetterQueue(webhook.id, payload, lastError || 'Max retries exceeded');
+  }
+
+  private async logExecution(
+    webhookId: string,
+    transactionId: string,
+    payload: WebhookPayload,
+    result: { success: boolean; statusCode?: number | null; response?: any; error?: string | null; attempts: number },
+  ) {
+    await this.prisma.webhookExecution.create({
+      data: {
+        webhookId,
+        transactionId,
+        success: result.success,
+        statusCode: result.statusCode,
+        response: result.response,
+        retryCount: result.attempts,
+        payload: payload as any,
+      },
+    });
+  }
+
+  async getExecutionLogs(userId: string, webhookId: string, limit = 50) {
+    const webhook = await this.prisma.webhook.findUnique({
+      where: { id: webhookId },
+      include: { spreadsheet: true },
+    });
+
+    if (!webhook) {
+      throw new NotFoundException('Webhook not found');
+    }
+
+    const hasAccess = await this.checkSpreadsheetAccess(userId, webhook.spreadsheetId);
+    if (!hasAccess) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    return this.prisma.webhookExecution.findMany({
+      where: { webhookId },
+      orderBy: { executedAt: 'desc' },
+      take: limit,
+    });
+  }
+
+  // =====================================================
+  // Dead Letter Queue
+  // =====================================================
+
+  private async addToDeadLetterQueue(
+    webhookId: string,
+    payload: WebhookPayload,
+    error: string,
+  ) {
+    await this.prisma.deadLetterItem.create({
+      data: {
+        webhookId,
+        payload: payload as any,
+        error,
+      },
+    });
+  }
+
+  async getDeadLetterQueue(userId: string, webhookId: string) {
+    const webhook = await this.prisma.webhook.findUnique({
+      where: { id: webhookId },
+      include: { spreadsheet: true },
+    });
+
+    if (!webhook) {
+      throw new NotFoundException('Webhook not found');
+    }
+
+    const hasAccess = await this.checkSpreadsheetAccess(userId, webhook.spreadsheetId);
+    if (!hasAccess) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    return this.prisma.deadLetterItem.findMany({
+      where: { webhookId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async retryDeadLetterItem(userId: string, itemId: string) {
+    const item = await this.prisma.deadLetterItem.findUnique({
+      where: { id: itemId },
+      include: { webhook: { include: { spreadsheet: true } } },
+    });
+
+    if (!item) {
+      throw new NotFoundException('Dead letter item not found');
+    }
+
+    const hasAccess = await this.checkSpreadsheetAccess(userId, item.webhook.spreadsheetId);
+    if (!hasAccess) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    const payload = item.payload as unknown as WebhookPayload;
+    await this.executeWithRetry(item.webhook, payload, payload.transactionId);
+
+    return this.prisma.deadLetterItem.delete({
+      where: { id: itemId },
+    });
+  }
+
+  async deleteDeadLetterItem(userId: string, itemId: string) {
+    const item = await this.prisma.deadLetterItem.findUnique({
+      where: { id: itemId },
+      include: { webhook: { include: { spreadsheet: true } } },
+    });
+
+    if (!item) {
+      throw new NotFoundException('Dead letter item not found');
+    }
+
+    const hasAccess = await this.checkSpreadsheetAccess(userId, item.webhook.spreadsheetId);
+    if (!hasAccess) {
+      throw new ForbiddenException('Access denied');
+    }
+
+    return this.prisma.deadLetterItem.delete({
+      where: { id: itemId },
+    });
+  }
+
+  // =====================================================
+  // Utilities
+  // =====================================================
+
+  private generateSignature(body: string, secret: string): string {
+    return crypto.createHmac('sha256', secret).update(body).digest('hex');
+  }
+
+  verifySignature(body: string, signature: string, secret: string): boolean {
+    const expected = this.generateSignature(body, secret);
+    return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+  }
+
+  private calculateBackoff(strategy: string, attempt: number): number {
+    const baseDelay = 1000;
+
+    if (strategy === 'exponential') {
+      return baseDelay * Math.pow(2, attempt - 1);
+    }
+
+    // Linear
+    return baseDelay * attempt;
+  }
+
+  private sleep(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
+  // =====================================================
+  // Legacy API compatibility
+  // =====================================================
 
   async registerWebhook(
     userId: string,
     spreadsheetId: string,
     url: string,
-    events: string[] = ['cell.update', 'sheet.create', 'sheet.delete'],
-  ): Promise<WebhookConfig> {
-    // Verify ownership
-    const spreadsheet = await this.prisma.spreadsheet.findUnique({
-      where: { id: spreadsheetId },
-    });
-
-    if (!spreadsheet) {
-      throw new NotFoundException('Spreadsheet not found');
-    }
-
-    if (spreadsheet.ownerId !== userId) {
-      throw new ForbiddenException('Only the owner can register webhooks');
-    }
-
-    const webhookId = crypto.randomUUID();
-    const secret = crypto.randomBytes(32).toString('hex');
-
-    const webhook: WebhookConfig = {
-      id: webhookId,
+    events: string[],
+  ) {
+    return this.createWebhook(userId, {
       spreadsheetId,
+      name: 'Auto-registered webhook',
       url,
       events,
-      secret,
-      active: true,
-      createdAt: new Date(),
-    };
-
-    this.webhooks.set(webhookId, webhook);
-
-    return {
-      ...webhook,
-      secret: undefined as any, // Don't return on list, only on create
-    };
-  }
-
-  async listWebhooks(userId: string, spreadsheetId: string): Promise<Omit<WebhookConfig, 'secret'>[]> {
-    const spreadsheet = await this.prisma.spreadsheet.findUnique({
-      where: { id: spreadsheetId },
     });
-
-    if (!spreadsheet) {
-      throw new NotFoundException('Spreadsheet not found');
-    }
-
-    if (spreadsheet.ownerId !== userId) {
-      throw new ForbiddenException('Access denied');
-    }
-
-    return Array.from(this.webhooks.values())
-      .filter(w => w.spreadsheetId === spreadsheetId)
-      .map(({ secret, ...rest }) => rest);
   }
 
-  async deleteWebhook(userId: string, webhookId: string): Promise<void> {
-    const webhook = this.webhooks.get(webhookId);
-    
-    if (!webhook) {
-      throw new NotFoundException('Webhook not found');
-    }
-
-    const spreadsheet = await this.prisma.spreadsheet.findUnique({
-      where: { id: webhook.spreadsheetId },
-    });
-
-    if (spreadsheet?.ownerId !== userId) {
-      throw new ForbiddenException('Access denied');
-    }
-
-    this.webhooks.delete(webhookId);
+  async triggerWebhooks(spreadsheetId: string, event: string, data: any) {
+    const transactionId = crypto.randomUUID();
+    await this.triggerWebhooksForSpreadsheet(spreadsheetId, transactionId, data, event);
   }
 
-  async toggleWebhook(userId: string, webhookId: string, active: boolean): Promise<WebhookConfig> {
-    const webhook = this.webhooks.get(webhookId);
-    
-    if (!webhook) {
-      throw new NotFoundException('Webhook not found');
-    }
-
-    const spreadsheet = await this.prisma.spreadsheet.findUnique({
-      where: { id: webhook.spreadsheetId },
-    });
-
-    if (spreadsheet?.ownerId !== userId) {
-      throw new ForbiddenException('Access denied');
-    }
-
-    webhook.active = active;
-    this.webhooks.set(webhookId, webhook);
-
-    const { secret, ...rest } = webhook;
-    return rest as WebhookConfig;
-  }
-
-  // Trigger webhooks for an event
-  async triggerWebhooks(spreadsheetId: string, event: string, data: any): Promise<void> {
-    const webhooks = Array.from(this.webhooks.values())
-      .filter(w => w.spreadsheetId === spreadsheetId && w.active && w.events.includes(event));
-
-    const payload: WebhookPayload = {
-      event,
-      spreadsheetId,
-      timestamp: new Date().toISOString(),
-      data,
-    };
-
-    for (const webhook of webhooks) {
-      this.sendWebhook(webhook, payload);
-    }
-  }
-
-  private async sendWebhook(webhook: WebhookConfig, payload: WebhookPayload): Promise<void> {
-    try {
-      const body = JSON.stringify(payload);
-      const signature = crypto
-        .createHmac('sha256', webhook.secret)
-        .update(body)
-        .digest('hex');
-
-      const response = await fetch(webhook.url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-JaSheets-Signature': `sha256=${signature}`,
-          'X-JaSheets-Event': payload.event,
-        },
-        body,
-      });
-
-      if (!response.ok) {
-        this.logger.warn(`Webhook ${webhook.id} failed: ${response.status}`);
-      }
-    } catch (error) {
-      this.logger.error(`Webhook ${webhook.id} error:`, error);
-    }
-  }
-
-  // Verify webhook signature (for external use)
-  verifySignature(payload: string, signature: string, secret: string): boolean {
-    const expectedSignature = crypto
-      .createHmac('sha256', secret)
-      .update(payload)
-      .digest('hex');
-    
-    return signature === `sha256=${expectedSignature}`;
+  async toggleWebhook(userId: string, webhookId: string, active: boolean) {
+    return this.updateWebhook(userId, webhookId, { active });
   }
 }

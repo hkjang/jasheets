@@ -38,6 +38,7 @@ model User {
   
   roleId              String?
   role                Role?           @relation(fields: [roleId], references: [id])
+  flowPermissions     FlowPermission[]
 }
 
 model Session {
@@ -68,6 +69,9 @@ model Spreadsheet {
   permissions   Permission[]
   versions      Version[]
   favorites     Favorite[]
+  webhooks      Webhook[]
+  eventRules    EventRule[]
+  flows         Flow[]
 
   @@map("spreadsheets")
 }
@@ -296,4 +300,249 @@ model Template {
   updatedAt     DateTime  @updatedAt
 
   @@map("templates")
+}
+
+// =====================================================
+// WORKFLOW AUTOMATION SYSTEM
+// =====================================================
+
+// 웹훅 설정
+model Webhook {
+  id              String          @id @default(uuid())
+  spreadsheetId   String
+  spreadsheet     Spreadsheet     @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  name            String
+  url             String
+  secret          String
+  events          String[]        // 이벤트 타입 배열
+  
+  // 재시도 정책
+  maxRetries      Int             @default(3)
+  retryBackoff    String          @default("exponential") // linear, exponential
+  
+  active          Boolean         @default(true)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  eventRules      EventRule[]
+  executions      WebhookExecution[]
+  deadLetterQueue DeadLetterItem[]
+
+  @@map("webhooks")
+}
+
+// 웹훅 실행 로그
+model WebhookExecution {
+  id              String          @id @default(uuid())
+  webhookId       String
+  webhook         Webhook         @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  transactionId   String
+  payload         Json
+  response        Json?
+  statusCode      Int?
+  success         Boolean         @default(false)
+  retryCount      Int             @default(0)
+  executedAt      DateTime        @default(now())
+
+  @@index([webhookId, executedAt(sort: Desc)])
+  @@map("webhook_executions")
+}
+
+// Dead-letter 큐
+model DeadLetterItem {
+  id              String          @id @default(uuid())
+  webhookId       String
+  webhook         Webhook         @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  payload         Json
+  error           String
+  createdAt       DateTime        @default(now())
+
+  @@map("dead_letter_queue")
+}
+
+// 이벤트 감지 규칙
+model EventRule {
+  id              String          @id @default(uuid())
+  spreadsheetId   String
+  spreadsheet     Spreadsheet     @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  
+  // 감지 대상
+  targetType      TargetType      @default(SHEET)
+  sheetId         String?
+  cellRange       String?         // e.g., "A1:B10"
+  cellCoordinates Json?           // 특정 셀 좌표 배열
+  
+  // 이벤트 타입
+  eventTypes      EventType[]
+  
+  // 필터 조건
+  filterConditions Json?          // 값 비교, 변화 유형 등
+  batchMode       Boolean         @default(false)
+  batchWindow     Int?            // 밀리초 단위 배치 윈도우
+  
+  // 웹훅 연결
+  webhookId       String?
+  webhook         Webhook?        @relation(fields: [webhookId], references: [id])
+  
+  // 플로우 연결
+  flowId          String?
+  flow            Flow?           @relation(fields: [flowId], references: [id])
+  
+  active          Boolean         @default(true)
+  version         Int             @default(1)
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  eventLogs       EventLog[]
+
+  @@map("event_rules")
+}
+
+enum TargetType {
+  SPREADSHEET
+  SHEET
+  RANGE
+  CELL
+  CELL_GROUP
+}
+
+enum EventType {
+  CELL_CHANGE
+  MULTI_CELL_CHANGE
+  FORMULA_RECALC
+  ROW_INSERT
+  ROW_DELETE
+  COL_INSERT
+  COL_DELETE
+}
+
+// 이벤트 로그
+model EventLog {
+  id              String          @id @default(uuid())
+  eventRuleId     String?
+  eventRule       EventRule?      @relation(fields: [eventRuleId], references: [id])
+  spreadsheetId   String
+  sheetId         String
+  eventType       EventType
+  cellCoordinate  String          // e.g., "A1"
+  previousValue   Json?
+  newValue        Json?
+  changedBy       String?
+  changeMethod    String?         // "manual", "formula", "api", "import"
+  transactionId   String
+  createdAt       DateTime        @default(now())
+
+  @@index([spreadsheetId, createdAt(sort: Desc)])
+  @@index([transactionId])
+  @@map("event_logs")
+}
+
+// 플로우 정의
+model Flow {
+  id              String          @id @default(uuid())
+  spreadsheetId   String
+  spreadsheet     Spreadsheet     @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  
+  // 노드 및 연결 정의 (JSON)
+  nodes           Json            @default("[]") // FlowNode[]
+  edges           Json            @default("[]") // FlowEdge[]
+  
+  active          Boolean         @default(true)
+  version         Int             @default(1)
+  createdById     String
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  // Relations
+  eventRules      EventRule[]
+  executions      FlowExecution[]
+  versions        FlowVersion[]
+  permissions     FlowPermission[]
+
+  @@map("flows")
+}
+
+// 플로우 버전 히스토리
+model FlowVersion {
+  id              String          @id @default(uuid())
+  flowId          String
+  flow            Flow            @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  version         Int
+  nodes           Json
+  edges           Json
+  snapshot        Json?           // 전체 플로우 스냅샷
+  createdById     String
+  createdAt       DateTime        @default(now())
+
+  @@unique([flowId, version])
+  @@map("flow_versions")
+}
+
+// 플로우 실행 로그
+model FlowExecution {
+  id              String          @id @default(uuid())
+  flowId          String
+  flow            Flow            @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  transactionId   String          @unique
+  status          ExecutionStatus @default(RUNNING)
+  triggerData     Json?
+  startedAt       DateTime        @default(now())
+  completedAt     DateTime?
+  error           String?
+
+  // Relations
+  nodeExecutions  NodeExecution[]
+
+  @@index([flowId, startedAt(sort: Desc)])
+  @@map("flow_executions")
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// 노드별 실행 로그
+model NodeExecution {
+  id              String          @id @default(uuid())
+  flowExecutionId String
+  flowExecution   FlowExecution   @relation(fields: [flowExecutionId], references: [id], onDelete: Cascade)
+  nodeId          String
+  nodeType        String
+  inputData       Json?
+  outputData      Json?
+  status          ExecutionStatus @default(RUNNING)
+  error           String?
+  startedAt       DateTime        @default(now())
+  completedAt     DateTime?
+
+  @@map("node_executions")
+}
+
+// 플로우 권한
+model FlowPermission {
+  id              String          @id @default(uuid())
+  flowId          String
+  flow            Flow            @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  userId          String
+  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role            FlowRole
+
+  @@unique([flowId, userId])
+  @@map("flow_permissions")
+}
+
+enum FlowRole {
+  VIEWER
+  EDITOR
+  OWNER
 }
