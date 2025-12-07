@@ -48,6 +48,8 @@ import autoTable from 'jspdf-autotable';
 
 import { api } from '@/lib/api';
 import EmailDialog from './EmailDialog';
+import FileOpenDialog from './FileOpenDialog';
+import { ImportResult } from '@/utils/fileImport';
 
 interface SpreadsheetProps {
   initialData?: SheetData;
@@ -322,6 +324,10 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
           if ((e.ctrlKey || e.metaKey) && e.key === 's') {
               e.preventDefault();
               handleSave();
+          }
+          if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+              e.preventDefault();
+              setIsFileDialogOpen(true);
           }
       };
       window.addEventListener('keydown', handleKeyDown);
@@ -639,6 +645,9 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   // Find Dialog state
   const [isFindOpen, setIsFindOpen] = useState(false);
 
+  // File Open Dialog state
+  const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
+
   const handleShare = useCallback(async () => {
     if (spreadsheetId) {
         setIsShareDialogOpen(true);
@@ -651,6 +660,15 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
             setToastMessage('Failed to copy link');
         }
     }
+  }, [spreadsheetId]);
+
+  // Handle file import
+  const handleFileImport = useCallback((result: ImportResult) => {
+    setData(result.data);
+    if (result.sheetName && !spreadsheetId) {
+      setSheetTitle(result.sheetName);
+    }
+    setToastMessage(`"${result.sheetName}" 파일을 불러왔습니다.`);
   }, [spreadsheetId]);
 
   // Derived
@@ -916,6 +934,12 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
          onToggleFormulaBar={() => setShowFormulaBar(!showFormulaBar)}
          onToggleGridlines={() => setShowGridlines(!showGridlines)}
          onEmail={() => setIsEmailOpen(true)}
+         onOpenFile={() => setIsFileDialogOpen(true)}
+      />
+      <FileOpenDialog
+        isOpen={isFileDialogOpen}
+        onClose={() => setIsFileDialogOpen(false)}
+        onFileImport={handleFileImport}
       />
       <EmailDialog 
         isOpen={isEmailOpen} 

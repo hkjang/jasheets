@@ -226,6 +226,35 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
     });
   }
 
+  @SubscribeMessage('chat-message')
+  handleChatMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: {
+      spreadsheetId: string;
+      content: string;
+      timestamp: number;
+    },
+  ) {
+    const roomId = `sheet:${data.spreadsheetId}`;
+    const room = this.rooms.get(roomId);
+
+    if (room && room.users.has(client.id)) {
+      const sender = room.users.get(client.id)!;
+      const message = {
+        id: `msg_${Date.now()}_${client.id.substring(0, 8)}`,
+        senderId: sender.id,
+        senderName: sender.name,
+        content: data.content,
+        timestamp: data.timestamp,
+      };
+
+      // Broadcast to all users in room including sender
+      this.server.to(roomId).emit('chat-message', message);
+      
+      this.logger.log(`Chat message in ${roomId} from ${sender.name}: ${data.content.substring(0, 50)}`);
+    }
+  }
+
   private removeUserFromRoom(client: Socket, roomId: string): void {
     const room = this.rooms.get(roomId);
     if (room && room.users.has(client.id)) {

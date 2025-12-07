@@ -31,6 +31,7 @@ interface MenuBarProps {
   onMakeCopy: () => void;
   onEmail: () => void;
   onSave?: () => void;
+  onOpenFile?: () => void;
   title?: string;
   onTitleChange?: (newTitle: string) => void;
 }
@@ -61,6 +62,7 @@ export default function MenuBar({
   onMakeCopy,
   onEmail,
   onSave,
+  onOpenFile,
   title,
   onTitleChange,
 }: MenuBarProps) {
@@ -135,7 +137,8 @@ export default function MenuBar({
           {activeMenu === 'file' && (
             <div className={styles.dropdown}>
               <MenuItem label="새 문서" onClick={() => window.open('/', '_blank')} />
-              <MenuItem label="열기" onClick={() => window.location.href = '/'} />
+              <MenuItem label="열기" onClick={onOpenFile} shortcut="Ctrl+O" />
+              <MenuItem label="가져오기" onClick={onOpenFile} />
               <MenuItem label="저장" onClick={onSave} shortcut="Ctrl+S" />
               <MenuItem label="사본 만들기" onClick={onMakeCopy} />
               <Separator />
