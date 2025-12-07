@@ -568,25 +568,20 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     if (!pos) return; 
     
     // Check if we are re-selecting the currently edited cell
-    // If so, do not reset the editValue, as it would overwrite user input
-    // We access isEditing property from the hook result directly or pass it in dependencies
-    // Since handleCellSelect is dependent on setEditValue/data, we need to add isEditing/selectedCell to dependencies
-    // But since this function is recreated when dependencies change, that's fine.
-    
-    _handleCellSelect(pos);
-    
-    // If we are editing this same cell, don't reset value
-    // NOTE: We need to access the LATEST isEditing state. 
-    // Usually via refs if we want to avoid recreating callback too often, 
-    // but here recreating is fine as long as SpreadsheetCanvas uses the latest handleCellSelect.
-    
     if (isEditing && selectedCell && selectedCell.row === pos.row && selectedCell.col === pos.col) {
         return;
     }
 
+    // Auto-commit if moving to another cell while editing
+    if (isEditing) {
+        commitEditing();
+    }
+
+    _handleCellSelect(pos);
+    
     const cell = data[pos.row]?.[pos.col];
     setEditValue(cell?.formula || String(cell?.value ?? ''));
-  }, [_handleCellSelect, setEditValue, data, isEditing, selectedCell]);
+  }, [_handleCellSelect, setEditValue, data, isEditing, selectedCell, commitEditing]);
 
   const handleSelectionChange = useCallback((range: CellRange) => {
     _handleSelectionChange(range);
