@@ -54,9 +54,29 @@ interface SpreadsheetProps {
   onDataChange?: (data: SheetData) => void;
   spreadsheetId?: string;
   activeSheetId?: string | null;
+  title?: string;
 }
 
-export default function Spreadsheet({ initialData = {}, onDataChange, spreadsheetId, activeSheetId }: SpreadsheetProps) {
+export default function Spreadsheet({ initialData = {}, onDataChange, spreadsheetId, activeSheetId, title = 'Untitled Spreadsheet' }: SpreadsheetProps) {
+  const [sheetTitle, setSheetTitle] = useState(title);
+
+  // Update title if prop changes (e.g. loaded from server)
+  useEffect(() => {
+    if (title) setSheetTitle(title);
+  }, [title]);
+
+  const handleTitleChange = useCallback(async (newTitle: string) => {
+    setSheetTitle(newTitle);
+    if (spreadsheetId) {
+        try {
+            await api.spreadsheets.update(spreadsheetId, { name: newTitle });
+        } catch (e) {
+            console.error('Failed to update title', e);
+            setToastMessage('Failed to save title');
+        }
+    }
+  }, [spreadsheetId]);
+
   // --- Custom Hooks ---
 
   // Data & History
@@ -79,6 +99,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     findNext,
     replaceAll,
     updateCellFormat,
+    updateCells,
   } = useSpreadsheetData({ initialData, onDataChange });
 
   // Selection
@@ -103,12 +124,146 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     cancelEditing,
   } = useSpreadsheetEdit({ data, selectedCell, setCellValue });
 
+  // --- Clipboard Handling ---
+  const copyToClipboard = useCallback(async () => {
+      if (!selection) return;
+
+      const rows = [];
+      for (let r = selection.start.row; r <= selection.end.row; r++) {
+          const rowData = [];
+          for (let c = selection.start.col; c <= selection.end.col; c++) {
+              const val = data[r]?.[c]?.value;
+              rowData.push(val === null || val === undefined ? '' : String(val));
+          }
+          rows.push(rowData.join('\t'));
+      }
+      const text = rows.join('\n');
+      
+      try {
+          await navigator.clipboard.writeText(text);
+          setToastMessage('Copied to clipboard');
+      } catch (err) {
+          console.error('Failed to copy', err);
+          alert('Failed to copy to clipboard');
+      }
+  }, [data, selection]);
+
+  const cutoffToClipboard = useCallback(async () => {
+      if (!selection) return;
+
+      // Copy first
+      await copyToClipboard();
+      
+      // Execute delete
+      const updates: { row: number; col: number; value: string }[] = [];
+      for (let r = selection.start.row; r <= selection.end.row; r++) {
+          for (let c = selection.start.col; c <= selection.end.col; c++) {
+              updates.push({ row: r, col: c, value: '' });
+          }
+      }
+      updateCells(updates);
+  }, [selection, copyToClipboard, updateCells]);
+
+  const pasteFromClipboard = useCallback(async () => {
+      if (!selectedCell) return;
+      
+      try {
+          const text = await navigator.clipboard.readText();
+          if (!text) return;
+
+          const rows = text.split(/\r\n|\n|\r/);
+          const updates: { row: number; col: number; value: string }[] = [];
+          
+          rows.forEach((rowStr, rIdx) => {
+              if (rIdx === rows.length - 1 && rowStr === '') return; 
+              const cols = rowStr.split('\t');
+              cols.forEach((val, cIdx) => {
+                  updates.push({
+                      row: selectedCell.row + rIdx,
+                      col: selectedCell.col + cIdx,
+                      value: val
+                  });
+              });
+          });
+          
+          if (updates.length > 0) {
+              updateCells(updates);
+          }
+      } catch (err) {
+          console.error('Failed to paste', err);
+          // Fallback or alert? 
+          // Often triggered if permission denied or not focused
+          alert('Failed to paste from clipboard. Please allow clipboard access.');
+      }
+  }, [selectedCell, updateCells]);
+
+  useEffect(() => {
+      const handleCopy = (e: ClipboardEvent) => {
+          const activeTag = document.activeElement?.tagName.toLowerCase();
+          if (activeTag === 'input' || activeTag === 'textarea') return;
+          if (!selection) return;
+          e.preventDefault();
+          copyToClipboard(); 
+      };
+
+      const handleCut = (e: ClipboardEvent) => {
+          const activeTag = document.activeElement?.tagName.toLowerCase();
+          if (activeTag === 'input' || activeTag === 'textarea') return;
+          if (!selection) return;
+          e.preventDefault();
+          cutoffToClipboard();
+      };
+
+      const handlePaste = (e: ClipboardEvent) => {
+          const activeTag = document.activeElement?.tagName.toLowerCase();
+          if (activeTag === 'input' || activeTag === 'textarea') return;
+          if (!selectedCell) return;
+          e.preventDefault();
+          
+          // For paste event, we can access data directly which is better than readText() permission-wise within the event
+          const text = e.clipboardData?.getData('text/plain');
+          if (text) {
+               // Reuse logic? Or just duplicate the parsing for the event version?
+               // The event version is synchronous and doesn't need promise.
+               // Let's just use the logic inline effectively or refactor parsing.
+               // Refactoring parsing to separate function is cleaner but for now let's just duplicate the parsing logic
+               // or updates logic.
+               
+              const rows = text.split(/\r\n|\n|\r/);
+              const updates: { row: number; col: number; value: string }[] = [];
+              rows.forEach((rowStr, rIdx) => {
+                  if (rIdx === rows.length - 1 && rowStr === '') return;
+                  const cols = rowStr.split('\t');
+                  cols.forEach((val, cIdx) => {
+                      updates.push({
+                          row: selectedCell.row + rIdx,
+                          col: selectedCell.col + cIdx,
+                          value: val
+                      });
+                  });
+              });
+              if (updates.length > 0) updateCells(updates);
+          }
+      };
+
+      document.addEventListener('copy', handleCopy);
+      document.addEventListener('cut', handleCut);
+      document.addEventListener('paste', handlePaste);
+
+      return () => {
+          document.removeEventListener('copy', handleCopy);
+          document.removeEventListener('cut', handleCut);
+          document.removeEventListener('paste', handlePaste);
+      };
+  }, [selection, selectedCell, copyToClipboard, cutoffToClipboard, updateCells]);
+
   // Collaboration
   const { user, loading } = useAuth();
   const router = useRouter();
   const [isEmailOpen, setIsEmailOpen] = useState(false);
 
   const handleSave = useCallback(async () => {
+    // ... same as before
     if (!activeSheetId) {
         alert('저장할 시트가 없습니다.');
         return;
@@ -126,13 +281,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
                         col,
                         value: cell.value,
                         formula: cell.formula,
-                        // format: cell.style? // Style is separate? backend expects format? 
-                        // Backend UpdateCellsDto has format: any. Cell model has format: Json.
-                        // Frontend cell has `style` (CSS properties).
-                        // I should probably map style to format or just ignore style for now?
-                        // User asked for Save. If style is lost, it's bad.
-                        // Backend cell.format is Json. I can store style there.
-                         format: cell.style
+                        format: cell.style // Assuming format mapping or similar
                     });
                 }
             });
@@ -150,6 +299,23 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
         alert('저장 중 오류가 발생했습니다.');
     }
   }, [data, activeSheetId]);
+
+  // ...
+
+  // To save space in tool call, I'll target the MenuBar props update separately or rely on previous view_file to locate it?
+  // I need to update MenuBar props too.
+  // The replace_content block above replaced the previous clipboard useEffect.
+  // Now I need to update MenuBar.
+  // Wait, I replaced lines 105-199 with the new separate functions + useEffect.
+  // I didn't include MenuBar in the replacement content.
+  // I need to verify line numbers.
+  // The previous tool called replace_file_content lines 105 to 205 (approx).
+  
+  // Actually, I'll split this into two edits if needed, but I can do contiguous if I include everything.
+  // Let's just do the `useEffect` replacement first as defined above. I'll need another edit for MenuBar.
+  
+
+
 
   useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
@@ -644,7 +810,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   return (
     <div className={styles.container}>
       <MenuBar 
-         onExportCSV={() => exportToCSV(data, 'jasheets_export.csv')}
+         onExportCSV={() => exportToCSV(data, sheetTitle.trim() || 'spreadsheet')}
          onDownloadXLSX={() => {
               const rows = Object.keys(data).map(Number).sort((a,b)=>a-b);
               const maxRow = rows.length ? rows[rows.length-1] : 0;
@@ -660,7 +826,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
               const wb = XLSX.utils.book_new();
               const wsFull = XLSX.utils.aoa_to_sheet(aoa);
               XLSX.utils.book_append_sheet(wb, wsFull, "Sheet1");
-              XLSX.writeFile(wb, "jasheets_export.xlsx");
+              XLSX.writeFile(wb, `${sheetTitle.trim() || 'spreadsheet'}.xlsx`);
          }}
          onDownloadPDF={() => {
               const doc = new jsPDF();
@@ -679,7 +845,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
                   head: [],
                   body: body,
               });
-              doc.save("jasheets_export.pdf");
+              doc.save(`${sheetTitle.trim() || 'spreadsheet'}.pdf`);
          }}
          onMakeCopy={async () => {
               if(!spreadsheetId) {
@@ -696,12 +862,14 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
               }
          }}
          onSave={handleSave}
+         title={sheetTitle}
+         onTitleChange={handleTitleChange}
          onPrint={() => window.print()}
          onUndo={handleUndo}
          onRedo={handleRedo}
-         onCut={() => alert('잘라내기는 Ctrl+X를 이용해주세요 (브라우저 보안 제한)')}
-         onCopy={() => alert('복사는 Ctrl+C를 이용해주세요 (브라우저 보안 제한)')}
-         onPaste={() => alert('붙여넣기는 Ctrl+V를 이용해주세요 (브라우저 보안 제한)')}
+         onCut={cutoffToClipboard}
+         onCopy={copyToClipboard}
+         onPaste={pasteFromClipboard}
          onFind={() => setIsFindOpen(true)}
          onShowShortcuts={() => setIsShortcutsOpen(true)}
          onVersionHistory={() => setIsHistoryOpen(true)}

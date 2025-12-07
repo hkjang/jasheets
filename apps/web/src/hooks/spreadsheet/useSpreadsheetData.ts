@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { SheetData, CellStyle } from '@/types/spreadsheet';
 import { produce, applyPatches, Patch, enablePatches } from 'immer';
 // Use local FormulaEngine
@@ -29,11 +29,12 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
   const [historyIndex, setHistoryIndex] = useState(-1);
 
   // Update data if initialData changes (e.g. loaded from server)
-  const [prevInitialData, setPrevInitialData] = useState(initialData);
-  if (initialData !== prevInitialData) {
-      setData(initialData);
-      setPrevInitialData(initialData);
-  }
+  // Update data if initialData changes (e.g. loaded from server)
+  useEffect(() => {
+    if (initialData) { // Only update if we have data
+        setData(initialData);
+    }
+  }, [initialData]);
 
   // Helper to apply changes and record history
   const applyChange = useCallback((recipe: (draft: SheetData) => void) => {
@@ -121,6 +122,58 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
         // Trigger Recalculation
         recalculate(draft);
     });
+  }, [applyChange]);
+
+  const updateCells = useCallback((updates: { row: number; col: number; value: string }[]) => {
+      applyChange((draft) => {
+          updates.forEach(({ row, col, value }) => {
+              if (!draft[row]) draft[row] = {};
+              
+              const isFormula = value.startsWith('=');
+              let displayValue = value;
+              let error: string | undefined;
+              let numValue: number | string | boolean | null = value;
+              let detectedFormat: string | undefined;
+              
+              const currentFormat = draft[row][col]?.format || 'general';
+              
+              if (isFormula) {
+                   try {
+                       const result = evaluateFormula(value, draft as unknown as SheetData);
+                       if (typeof result === 'number') {
+                            displayValue = formatValue(result, currentFormat);
+                       } else {
+                            displayValue = String(result);
+                       }
+                       numValue = result;
+                   } catch (e) {
+                       displayValue = '#ERROR!';
+                       error = e instanceof Error ? e.message : 'Formula error';
+                   }
+              } else {
+                   const parsed = parseInput(value);
+                   numValue = parsed.value;
+                   if (parsed.format && parsed.format !== 'general' && currentFormat === 'general') {
+                       detectedFormat = parsed.format;
+                   }
+              }
+
+              const finalFormat = detectedFormat || currentFormat;
+              if (!isFormula) {
+                  displayValue = formatValue(numValue, finalFormat);
+              }
+
+              draft[row][col] = {
+                  value: numValue,
+                  displayValue: displayValue,
+                  formula: isFormula ? value : undefined,
+                  error,
+                  style: draft[row][col]?.style,
+                  format: finalFormat,
+              };
+          });
+          recalculate(draft);
+      });
   }, [applyChange]);
 
   const updateCellFormat = useCallback((range: { start: { row: number, col: number }, end: { row: number, col: number } } | null, format: string) => {
@@ -306,6 +359,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
     setData, 
     updateData, // External update
     setCellValue,
+    updateCells,
     updateCellStyle,
     insertRow,
     deleteRow,

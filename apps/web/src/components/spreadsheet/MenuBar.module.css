@@ -1,26 +1,57 @@
+
 .container {
   display: flex;
   align-items: center;
-  height: 48px; /* Slightly taller to accommodate logo + menus */
   padding: 0 16px;
-  background-color: #f8f9fa; /* Matches Header/Toolbar bg */
-  border-bottom: 1px solid #e0e0e0; /* To separate from toolbar */
+  height: 64px; 
+  background: #fff;
+  border-bottom: 1px solid #e0e0e0;
   gap: 16px;
-  font-family: "Roboto", sans-serif;
-  user-select: none;
+}
+
+.leftSection {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.titleContainer {
+    display: flex;
+    flex-direction: column;
+}
+
+.titleInput {
+    border: none;
+    font-size: 18px;
+    font-weight: 500;
+    color: #202124; 
+    padding: 4px 8px;
+    border-radius: 4px;
+    outline: none;
+    min-width: 200px;
+}
+.titleInput:hover {
+    border: 1px solid #dadce0;
+    padding: 3px 7px;
+}
+.titleInput:focus {
+    border: 2px solid #1a73e8;
+    padding: 2px 6px;
 }
 
 .logo {
   display: flex;
   align-items: center;
   gap: 8px;
-  cursor: pointer;
+  text-decoration: none;
+  color: inherit;
+  margin-right: 8px;
 }
 
 .title {
-  font-size: 18px;
-  color: #5f6368;
+    display: none;
 }
+
 
 .menus {
   display: flex;

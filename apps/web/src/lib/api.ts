@@ -99,6 +99,19 @@ export const api = {
       if (!res.ok) throw new Error('Failed to fetch spreadsheet');
       return res.json();
     },
+    update: async (id: string, data: { name?: string }) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/sheets/${id}`, {
+        method: 'PUT',
+        headers: { 
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}` 
+        },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to update spreadsheet');
+      return res.json();
+    },
     copy: async (id: string) => {
       const token = localStorage.getItem('auth_token');
       const res = await fetch(`${API_URL}/sheets/${id}/copy`, {

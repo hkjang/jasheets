@@ -31,6 +31,8 @@ interface MenuBarProps {
   onMakeCopy: () => void;
   onEmail: () => void;
   onSave?: () => void;
+  title?: string;
+  onTitleChange?: (newTitle: string) => void;
 }
 
 export default function MenuBar({
@@ -59,6 +61,8 @@ export default function MenuBar({
   onMakeCopy,
   onEmail,
   onSave,
+  title,
+  onTitleChange,
 }: MenuBarProps) {
   const router = useRouter();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -101,12 +105,22 @@ export default function MenuBar({
 
   return (
     <div className={styles.container} ref={menuRef}>
-      <Link href="/dashboard" className={styles.logo} title="대시보드로 이동">
-        <svg viewBox="0 0 24 24" width="24" height="24" fill="#0f9d58">
-            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-        </svg>
-        <span className={styles.title}>JaSheets</span>
-      </Link>
+      <div className={styles.leftSection}>
+          <Link href="/dashboard" className={styles.logo} title="대시보드로 이동">
+            <svg viewBox="0 0 24 24" width="24" height="24" fill="#0f9d58">
+                <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
+            </svg>
+          </Link>
+          <div className={styles.titleContainer}>
+              <input 
+                  type="text" 
+                  value={title || 'Untitled Spreadsheet'} 
+                  onChange={(e) => onTitleChange?.(e.target.value)}
+                  className={styles.titleInput}
+                  placeholder="제목 없는 스프레드시트"
+              />
+          </div>
+      </div>
 
       <div className={styles.menus}>
         {/* FILE MENU */}

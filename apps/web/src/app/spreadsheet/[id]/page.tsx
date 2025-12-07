@@ -12,15 +12,17 @@ export default function SpreadsheetPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
+  const [title, setTitle] = useState('');
 
   useEffect(() => {
     if (id) {
        setLoading(true);
        api.spreadsheets.get(id)
          .then(res => {
+            setTitle(res.name || 'Untitled Spreadsheet'); 
             const sheets = res.sheets || [];
             if (sheets.length > 0) {
-               const firstSheet = sheets[0]; // TODO: Multi-sheet support
+               const firstSheet = sheets[0]; 
                setActiveSheetId(firstSheet.id);
                
                const sheetData: any = {};
@@ -43,5 +45,5 @@ export default function SpreadsheetPage() {
   if (loading) return <div className="flex h-screen items-center justify-center">Loading...</div>;
   if (error) return <div className="flex h-screen items-center justify-center text-red-500">{error}</div>;
   
-  return <Spreadsheet initialData={data} spreadsheetId={id} activeSheetId={activeSheetId} />;
+  return <Spreadsheet initialData={data} spreadsheetId={id} activeSheetId={activeSheetId} title={title} />;
 }
