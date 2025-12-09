@@ -18,23 +18,6 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b px-6 py-4 flex items-center justify-between sticky top-0 z-10">
-        <div className="flex items-center space-x-3">
-            <div className="w-8 h-8 bg-green-600 rounded flex items-center justify-center text-white font-bold">J</div>
-            <span className="text-xl font-bold text-gray-800">JaSheets</span>
-        </div>
-        <div className="flex items-center space-x-4">
-            <button onClick={() => router.push('/admin')} className="text-gray-600 hover:text-gray-900">Admin</button>
-            <button 
-              onClick={() => setIsProfileOpen(true)}
-              className="w-8 h-8 bg-gray-200 rounded-full hover:ring-2 hover:ring-blue-500 transition focus:outline-none"
-              title="Edit Profile"
-            >
-              <span className="sr-only">Profile</span>
-            </button>
-        </div>
-      </header>
-      
       <main className="container mx-auto max-w-6xl py-8 px-4">
         <NoticeBanner />
         

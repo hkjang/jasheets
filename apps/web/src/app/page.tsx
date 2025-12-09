@@ -1,46 +1,48 @@
 'use client';
 
-import { Spreadsheet } from '@/components/spreadsheet';
-import styles from './page.module.css';
+import { useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';
 
 export default function Home() {
+  const router = useRouter();
+  const { user, loading } = useAuth();
+
+  useEffect(() => {
+    if (!loading) {
+      if (user) {
+        router.replace('/dashboard');
+      } else {
+        router.replace('/login');
+      }
+    }
+  }, [user, loading, router]);
+
+  // Show loading state while checking auth
   return (
-    <div className={styles.container}>
-      <main className={styles.main}>
-        <Spreadsheet
-          title="Untitled Spreadsheet"
-          initialData={{
-            0: {
-              0: { value: 'Item' },
-              1: { value: 'Quantity' },
-              2: { value: 'Price' },
-              3: { value: 'Total' },
-            },
-            1: {
-              0: { value: 'Apple' },
-              1: { value: 10 },
-              2: { value: 1.5 },
-              3: { value: 15, formula: '=B2*C2' },
-            },
-            2: {
-              0: { value: 'Banana' },
-              1: { value: 20 },
-              2: { value: 0.75 },
-              3: { value: 15, formula: '=B3*C3' },
-            },
-            3: {
-              0: { value: 'Orange' },
-              1: { value: 15 },
-              2: { value: 2.0 },
-              3: { value: 30, formula: '=B4*C4' },
-            },
-            4: {
-              0: { value: 'Total' },
-              3: { value: 60, formula: '=SUM(D2:D4)' },
-            },
-          }}
-        />
-      </main>
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: '100vh',
+      backgroundColor: '#f0f2f5',
+    }}>
+      <div style={{
+        textAlign: 'center',
+        color: '#5f6368',
+      }}>
+        <div style={{
+          width: 40,
+          height: 40,
+          border: '3px solid #1a73e8',
+          borderTopColor: 'transparent',
+          borderRadius: '50%',
+          animation: 'spin 1s linear infinite',
+          margin: '0 auto 16px',
+        }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <p>Loading...</p>
+      </div>
     </div>
   );
 }

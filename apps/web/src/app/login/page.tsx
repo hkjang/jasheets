@@ -23,7 +23,7 @@ export default function LoginPage() {
          // Optionally redirect to admin if needed, but for now just go home
       }
       
-      router.push('/');
+      router.push('/dashboard');
     } catch (error) {
       alert('Login failed');
     } finally {

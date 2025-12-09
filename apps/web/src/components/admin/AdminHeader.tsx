@@ -3,46 +3,50 @@
 import { useAuth } from '@/hooks/useAuth';
 
 export function AdminHeader({ title }: { title: string }) {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
 
   return (
     <header style={{
-      height: '64px',
+      height: '60px',
       background: 'white',
-      borderBottom: '1px solid #e2e8f0',
+      borderBottom: '1px solid #e5e7eb',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'space-between',
-      padding: '0 32px',
+      padding: '0 24px',
       position: 'sticky',
       top: 0,
       zIndex: 10
     }}>
-      <h1 style={{ fontSize: '1.25rem', fontWeight: 600, color: '#1e293b' }}>{title}</h1>
+      <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: 0 }}>{title}</h1>
       
-      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img 
-            src={`https://ui-avatars.com/api/?name=${user?.name || 'Admin'}`} 
-            alt="Profile" 
-            style={{ width: '32px', height: '32px', borderRadius: '50%' }}
-          />
-          <span style={{ fontSize: '0.9rem', fontWeight: 500 }}>{user?.name}</span>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '6px 12px',
+          background: '#f3f4f6',
+          borderRadius: '20px'
+        }}>
+          <div style={{
+            width: '28px',
+            height: '28px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            color: 'white',
+            fontSize: '12px',
+            fontWeight: 600
+          }}>
+            {(user?.name || user?.email || 'A')[0].toUpperCase()}
+          </div>
+          <span style={{ fontSize: '14px', fontWeight: 500, color: '#374151' }}>
+            {user?.name || user?.email}
+          </span>
         </div>
-        <button 
-          onClick={logout}
-          style={{
-            padding: '6px 12px',
-            fontSize: '0.8rem',
-            color: '#ef4444',
-            background: '#fee2e2',
-            border: 'none',
-            borderRadius: '4px',
-            cursor: 'pointer'
-          }}
-        >
-          Logout
-        </button>
       </div>
     </header>
   );

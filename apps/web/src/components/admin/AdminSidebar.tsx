@@ -2,38 +2,64 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { useAuth } from '@/hooks/useAuth';
 
 export function AdminSidebar() {
   const pathname = usePathname();
+  const { logout } = useAuth();
 
   const menuItems = [
-    { label: 'Dashboard', href: '/admin', icon: 'dashboard' },
-    { label: 'Users', href: '/admin/users', icon: 'people' },
-    { label: 'Roles', href: '/admin/roles', icon: 'verified_user' },
-    { label: 'Spreadsheets', href: '/admin/spreadsheets', icon: 'table_view' },
-    { label: 'Templates', href: '/admin/templates', icon: 'library_books' },
-    { label: 'Notices', href: '/admin/notices', icon: 'campaign' },
-    { label: 'Audit Logs', href: '/admin/audit', icon: 'security' },
-    { label: 'Settings', href: '/admin/settings', icon: 'settings' },
+    { label: '대시보드', href: '/admin', icon: '📊' },
+    { label: '사용자 관리', href: '/admin/users', icon: '👥' },
+    { label: '역할 및 권한', href: '/admin/roles', icon: '🔐' },
+    { label: '스프레드시트', href: '/admin/spreadsheets', icon: '📑' },
+    { label: '템플릿', href: '/admin/templates', icon: '📋' },
+    { label: '공지사항', href: '/admin/notices', icon: '📢' },
+    { label: '감사 로그', href: '/admin/audit', icon: '🔍' },
+    { label: '설정', href: '/admin/settings', icon: '⚙️' },
   ];
 
   return (
     <aside style={{
-      width: '250px',
-      background: '#1e293b',
-      color: 'white',
+      width: '240px',
+      background: 'white',
+      borderRight: '1px solid #e5e7eb',
       height: '100vh',
       position: 'fixed',
       left: 0,
       top: 0,
       display: 'flex',
-      flexDirection: 'column'
+      flexDirection: 'column',
+      boxShadow: '2px 0 8px rgba(0,0,0,0.04)'
     }}>
-      <div style={{ padding: '20px', borderBottom: '1px solid #334155' }}>
-        <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 'bold', color: '#60a5fa' }}>JaSheets Admin</h2>
+      {/* Header */}
+      <div style={{ 
+        padding: '20px 16px', 
+        borderBottom: '1px solid #e5e7eb',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '10px'
+      }}>
+        <div style={{
+          width: '32px',
+          height: '32px',
+          background: 'linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%)',
+          borderRadius: '8px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'white',
+          fontWeight: 700,
+          fontSize: '14px'
+        }}>J</div>
+        <div>
+          <div style={{ fontWeight: 600, color: '#111827', fontSize: '15px' }}>JaSheets</div>
+          <div style={{ fontSize: '11px', color: '#6b7280' }}>관리자</div>
+        </div>
       </div>
       
-      <nav style={{ flex: 1, padding: '20px 0' }}>
+      {/* Navigation */}
+      <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
         {menuItems.map((item) => {
           const isActive = pathname === item.href;
           return (
@@ -43,26 +69,63 @@ export function AdminSidebar() {
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                padding: '12px 20px',
-                color: isActive ? '#60a5fa' : '#94a3b8',
-                background: isActive ? 'rgba(96, 165, 250, 0.1)' : 'transparent',
+                padding: '10px 12px',
+                margin: '2px 0',
+                color: isActive ? '#1d4ed8' : '#374151',
+                background: isActive ? '#eff6ff' : 'transparent',
                 textDecoration: 'none',
-                borderLeft: isActive ? '3px solid #60a5fa' : '3px solid transparent',
-                transition: 'all 0.2s'
+                borderRadius: '8px',
+                fontSize: '14px',
+                fontWeight: isActive ? 600 : 500,
+                transition: 'all 0.15s ease'
               }}
             >
-              <span className="material-icons" style={{ marginRight: '10px' }}>{item.icon}</span>
+              <span style={{ marginRight: '10px', fontSize: '16px' }}>{item.icon}</span>
               {item.label}
             </Link>
           );
         })}
       </nav>
 
-      <div style={{ padding: '20px', borderTop: '1px solid #334155' }}>
-        <Link href="/" style={{ color: '#94a3b8', textDecoration: 'none', fontSize: '0.9rem', display: 'flex', alignItems: 'center' }}>
-          <span className="material-icons" style={{ marginRight: '8px', fontSize: '1.1rem' }}>arrow_back</span>
-          Back to App
+      {/* Footer */}
+      <div style={{ padding: '16px', borderTop: '1px solid #e5e7eb' }}>
+        <Link 
+          href="/dashboard" 
+          style={{ 
+            display: 'flex',
+            alignItems: 'center',
+            padding: '10px 12px',
+            color: '#6b7280', 
+            textDecoration: 'none', 
+            fontSize: '14px',
+            borderRadius: '8px',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <span style={{ marginRight: '10px' }}>←</span>
+          앱으로 돌아가기
         </Link>
+        <button
+          onClick={logout}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            width: '100%',
+            padding: '10px 12px',
+            marginTop: '4px',
+            color: '#dc2626',
+            background: '#fef2f2',
+            border: 'none',
+            borderRadius: '8px',
+            fontSize: '14px',
+            fontWeight: 500,
+            cursor: 'pointer',
+            transition: 'all 0.15s ease'
+          }}
+        >
+          <span style={{ marginRight: '10px' }}>🚪</span>
+          로그아웃
+        </button>
       </div>
     </aside>
   );
