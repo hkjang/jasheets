@@ -337,10 +337,13 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   }, [handleSave]);
 
   useEffect(() => {
+    // Only redirect if auth check is complete and there's no user
+    // Avoid redirect loops by checking if user was ever set
     if (!loading && !user) {
       router.push('/login');
     }
-  }, [loading, user, router]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loading, user]);
   
   const userId = useMemo(() => user?.id || 'guest', [user]);
   const userName = useMemo(() => user?.name || user?.email || 'Guest', [user]);

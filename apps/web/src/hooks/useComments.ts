@@ -62,7 +62,7 @@ export function useComments({
     setError(null);
     
     try {
-      const token = localStorage.getItem('accessToken');
+      const token = localStorage.getItem('auth_token');
       const response = await fetch(`${apiUrl}/comments/sheet/${sheetId}`, {
         headers: {
           Authorization: token ? `Bearer ${token}` : '',
@@ -89,6 +89,8 @@ export function useComments({
     const socket = io(wsUrl, {
       transports: ['websocket'],
       autoConnect: true,
+      reconnectionAttempts: 3,
+      reconnectionDelay: 2000,
     });
 
     socketRef.current = socket;
@@ -126,7 +128,7 @@ export function useComments({
   const addComment = useCallback(async (row: number, col: number, content: string) => {
     if (!sheetId) return;
 
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('auth_token');
     const response = await fetch(`${apiUrl}/comments`, {
       method: 'POST',
       headers: {
@@ -144,7 +146,7 @@ export function useComments({
   }, [sheetId, apiUrl]);
 
   const replyToComment = useCallback(async (commentId: string, content: string) => {
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('auth_token');
     const response = await fetch(`${apiUrl}/comments/${commentId}/reply`, {
       method: 'POST',
       headers: {
@@ -163,7 +165,7 @@ export function useComments({
   }, [apiUrl, fetchComments]);
 
   const resolveComment = useCallback(async (commentId: string, resolved: boolean) => {
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('auth_token');
     const response = await fetch(`${apiUrl}/comments/${commentId}/resolve`, {
       method: 'PATCH',
       headers: {
@@ -181,7 +183,7 @@ export function useComments({
   }, [apiUrl]);
 
   const deleteComment = useCallback(async (commentId: string) => {
-    const token = localStorage.getItem('accessToken');
+    const token = localStorage.getItem('auth_token');
     const response = await fetch(`${apiUrl}/comments/${commentId}`, {
       method: 'DELETE',
       headers: {

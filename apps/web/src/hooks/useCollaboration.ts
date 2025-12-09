@@ -84,6 +84,8 @@ export function useCollaboration({
     const socket = io(wsUrl, {
       transports: ['websocket'],
       autoConnect: true,
+      reconnectionAttempts: 3,
+      reconnectionDelay: 2000,
     });
 
     socketRef.current = socket;
