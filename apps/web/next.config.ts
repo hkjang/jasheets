@@ -9,7 +9,9 @@ const withPWA = require('next-pwa')({
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
+  // Disable React Strict Mode to prevent double rendering issues
+  // that can cause problems with useEffect cleanup and WebSocket connections
+  reactStrictMode: false,
 };
 
 export default withPWA(nextConfig);

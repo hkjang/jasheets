@@ -880,7 +880,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   return (
     <div className={styles.container}>
       <MenuBar 
-         onExportCSV={() => exportToCSV(data, sheetTitle.trim() || 'spreadsheet')}
+         onExportCSV={() => exportToCSV(data, `${sheetTitle.trim() || 'spreadsheet'}.csv`)}
          onDownloadXLSX={() => {
               const rows = Object.keys(data).map(Number).sort((a,b)=>a-b);
               const maxRow = rows.length ? rows[rows.length-1] : 0;
