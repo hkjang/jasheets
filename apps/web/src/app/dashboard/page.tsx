@@ -1,7 +1,7 @@
 'use client';
 
 import { ProfileDialog } from '@/components/profile/ProfileDialog';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import NoticeBanner from '@/components/dashboard/NoticeBanner';
 import { UserSpreadsheetList } from '@/components/dashboard/UserSpreadsheetList';
 import { TemplateGallery } from '@/components/dashboard/TemplateGallery';
@@ -108,7 +108,7 @@ function SpreadsheetSelector({ value, onChange }: SpreadsheetSelectorProps) {
   const [spreadsheets, setSpreadsheets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useState(() => {
+  useEffect(() => {
     const loadSpreadsheets = async () => {
       try {
         const { api } = await import('@/lib/api');
@@ -121,7 +121,7 @@ function SpreadsheetSelector({ value, onChange }: SpreadsheetSelectorProps) {
       }
     };
     loadSpreadsheets();
-  });
+  }, []);
 
   if (loading) {
     return (
