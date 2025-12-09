@@ -25,6 +25,8 @@ interface ToolbarProps {
   onConditionalFormatting?: () => void;
   onShortcuts?: () => void;
   onAdmin?: () => void;
+  onComments?: () => void;
+  onAI?: () => void;
 }
 
 export default function Toolbar({
@@ -49,6 +51,8 @@ export default function Toolbar({
   onConditionalFormatting,
   onShortcuts,
   onAdmin,
+  onComments,
+  onAI,
 }: ToolbarProps) {
   const [showFormatMenu, setShowFormatMenu] = useState(false);
 
@@ -236,6 +240,31 @@ export default function Toolbar({
              >
                 <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
                     <path d="M12 1L3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5l-9-4zm0 10.99h7c-.53 4.12-3.28 7.79-7 8.94V12H5V6.3l7-3.11v8.8z"/>
+                </svg>
+             </button>
+          )}
+          
+          {onComments && (
+             <button
+               className={styles.button}
+               onClick={onComments}
+               title="댓글"
+             >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                    <path d="M21.99 4c0-1.1-.89-2-1.99-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h14l4 4-.01-18zM18 14H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/>
+                </svg>
+             </button>
+          )}
+          
+          {onAI && (
+             <button
+               className={styles.button}
+               onClick={onAI}
+               title="AI 수식 도우미"
+               style={{ color: '#9c27b0' }}
+             >
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+                    <path d="M21 11.5v-1c0-.8-.7-1.5-1.5-1.5H16v6h1.5v-2h1.1l.9 2H21l-.9-2.1c.5-.3.9-.8.9-1.4zm-1.5 0h-2v-1h2v1zm-13-.5h-2v3H3v-3H1V17h1.5v-3h2v3H6V11h-.5zM13 11H9v6h4c.8 0 1.5-.7 1.5-1.5v-3c0-.8-.7-1.5-1.5-1.5zm0 4.5h-2.5V12.5H13v3z"/>
                 </svg>
              </button>
           )}

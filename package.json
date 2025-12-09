@@ -10,8 +10,10 @@
     "test:e2e": "playwright test",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rimraf node_modules",
-    "db:up": "docker-compose -f docker/docker-compose.yml up -d",
-    "db:down": "docker-compose -f docker/docker-compose.yml down",
+    "db:up": "docker compose -f docker/docker-compose.dev.yml up -d",
+    "db:down": "docker compose -f docker/docker-compose.dev.yml down",
+    "db:up:prod": "docker compose -f docker/docker-compose.prod.yml up -d",
+    "db:down:prod": "docker compose -f docker/docker-compose.prod.yml down",
     "db:generate": "turbo run prisma:generate",
     "db:migrate": "turbo run prisma:migrate",
     "db:studio": "turbo run prisma:studio"

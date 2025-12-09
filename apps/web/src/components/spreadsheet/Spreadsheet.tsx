@@ -7,7 +7,8 @@ import SpreadsheetCanvas from './SpreadsheetCanvas';
 import CellEditor from './CellEditor';
 import FormulaBar from './FormulaBar';
 import Toolbar from './Toolbar';
-import { UserCursors, ChatPanel } from '../collaboration';
+import { UserCursors, ChatPanel, CommentsPanel } from '../collaboration';
+import AIAssistant from './AIAssistant';
 import SmartAutocomplete from './SmartAutocomplete';
 import { ChartDialog } from '../charts';
 import ChartOverlay from '../charts/ChartOverlay';
@@ -50,6 +51,7 @@ import { api } from '@/lib/api';
 import EmailDialog from './EmailDialog';
 import FileOpenDialog from './FileOpenDialog';
 import { ImportResult } from '@/utils/fileImport';
+import { useComments } from '@/hooks/useComments';
 
 interface SpreadsheetProps {
   initialData?: SheetData;
@@ -648,6 +650,22 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   // File Open Dialog state
   const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
 
+  // Comments Panel state
+  const [isCommentsOpen, setIsCommentsOpen] = useState(false);
+
+  // AI Assistant state
+  const [isAIOpen, setIsAIOpen] = useState(false);
+
+  // Comments hook
+  const {
+    comments,
+    addComment,
+    replyToComment,
+    resolveComment,
+    deleteComment,
+  } = useComments({ sheetId: activeSheetId || null });
+
+
   const handleShare = useCallback(async () => {
     if (spreadsheetId) {
         setIsShareDialogOpen(true);
@@ -971,6 +989,8 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
         onConditionalFormatting={handleOpenConditionalDialog}
         onShortcuts={() => setIsShortcutsOpen(true)}
         onAdmin={user?.isAdmin ? () => router.push('/admin') : undefined}
+        onComments={() => setIsCommentsOpen(true)}
+        onAI={() => setIsAIOpen(true)}
       />
 
       {showFormulaBar && (
@@ -1054,6 +1074,51 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
         onToggle={toggleChat}
         unreadCount={unreadCount}
       />
+      
+      <CommentsPanel
+        comments={comments.map(c => ({
+          ...c,
+          author: {
+            id: c.author.id,
+            name: c.author.name,
+            avatar: c.author.avatar,
+          },
+          replies: c.replies.map(r => ({
+            ...r,
+            author: {
+              id: r.author.id,
+              name: r.author.name,
+              avatar: r.author.avatar,
+            },
+          })),
+        }))}
+        currentUserId={userId}
+        onAddComment={addComment}
+        onReply={replyToComment}
+        onResolve={resolveComment}
+        onDelete={deleteComment}
+        selectedCell={selectedCell}
+        isOpen={isCommentsOpen}
+        onClose={() => setIsCommentsOpen(false)}
+      />
+
+      {isAIOpen && (
+        <AIAssistant
+          onFormulaInsert={(formula) => {
+            if (selectedCell) {
+              setCellValue(selectedCell.row, selectedCell.col, formula);
+            }
+            setIsAIOpen(false);
+          }}
+          selectedRange={selection ? {
+            startRow: selection.start.row,
+            startCol: selection.start.col,
+            endRow: selection.end.row,
+            endCol: selection.end.col,
+          } : undefined}
+          sheetName={sheetTitle}
+        />
+      )}
       
       {isChartDialogOpen && (
         <ChartDialog
