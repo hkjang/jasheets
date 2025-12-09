@@ -85,6 +85,12 @@ export function useComments({
   // Initialize websocket connection
   useEffect(() => {
     if (!sheetId) return;
+    
+    // Skip WebSocket in development to avoid Fast Refresh issues
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[useComments] WebSocket disabled in development mode');
+      return;
+    }
 
     const socket = io(wsUrl, {
       transports: ['websocket'],

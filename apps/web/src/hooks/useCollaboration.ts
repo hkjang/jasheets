@@ -81,6 +81,12 @@ export function useCollaboration({
 
   // Initialize socket connection
   useEffect(() => {
+    // Skip WebSocket in development to avoid Fast Refresh issues
+    if (process.env.NODE_ENV === 'development') {
+      console.log('[useCollaboration] WebSocket disabled in development mode');
+      return;
+    }
+
     const socket = io(wsUrl, {
       transports: ['websocket'],
       autoConnect: true,
