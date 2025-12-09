@@ -1,49 +1,66 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useServiceWorker, useOfflineSync } from '@/hooks/usePWA';
 import Toast from './ui/Toast';
-import { useState } from 'react';
 
 export default function PWAHandler() {
-  const { hasUpdate, update, installPrompt, promptInstall } = useServiceWorker();
-  const { isOnline } = useOfflineSync();
+  // Skip PWA functionality entirely in development
+  const isDev = process.env.NODE_ENV === 'development';
+  
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  
+  // Call hooks unconditionally to satisfy React rules
+  const serviceWorker = useServiceWorker();
+  const offlineSync = useOfflineSync();
+  
+  const { hasUpdate, update, installPrompt, promptInstall } = serviceWorker;
+  const { isOnline } = offlineSync;
 
   useEffect(() => {
+    // Skip in development
+    if (isDev) return;
+    
     if (hasUpdate) {
       setToastMsg('New version available. Click to reload.');
     } else if (installPrompt) {
-        setToastMsg('Install JaSheets for offline use.');
+      setToastMsg('Install JaSheets for offline use.');
     }
-  }, [hasUpdate, installPrompt]);
+  }, [hasUpdate, installPrompt, isDev]);
 
   useEffect(() => {
+    // Skip in development
+    if (isDev) return;
+    
     if (!isOnline) {
       setToastMsg('You are offline. Changes will be saved locally.');
     }
-    // Note: sync logic moved to avoid infinite loops
-  }, [isOnline]);
+  }, [isOnline, isDev]);
+
+  // Skip rendering in development
+  if (isDev) {
+    return null;
+  }
 
   const handleToastClose = () => {
-      setToastMsg(null);
+    setToastMsg(null);
   };
 
   const handleToastClick = () => {
-      if (hasUpdate) {
-          update();
-          window.location.reload();
-      } else if (installPrompt) {
-          promptInstall();
-          setToastMsg(null);
-      }
+    if (hasUpdate) {
+      update();
+      window.location.reload();
+    } else if (installPrompt) {
+      promptInstall();
+      setToastMsg(null);
+    }
   };
 
   if (!toastMsg) return null;
 
   return (
     <div onClick={handleToastClick} style={{ cursor: 'pointer' }}>
-        <Toast message={toastMsg} onClose={handleToastClose} />
+      <Toast message={toastMsg} onClose={handleToastClose} />
     </div>
   );
 }

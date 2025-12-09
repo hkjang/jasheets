@@ -336,14 +336,9 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
       return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSave]);
 
-  useEffect(() => {
-    // Only redirect if auth check is complete and there's no user
-    // Avoid redirect loops by checking if user was ever set
-    if (!loading && !user) {
-      router.push('/login');
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, user]);
+  // Note: Auth redirect removed - SpreadsheetPage handles auth errors
+  // Keeping user for collaboration features but not redirecting
+  
   
   const userId = useMemo(() => user?.id || 'guest', [user]);
   const userName = useMemo(() => user?.name || user?.email || 'Guest', [user]);
