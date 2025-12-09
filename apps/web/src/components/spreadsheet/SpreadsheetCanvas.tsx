@@ -32,6 +32,7 @@ interface SpreadsheetCanvasProps {
   onRowResize?: (index: number, height: number) => void;
   onHeaderContextMenu?: (x: number, y: number, type: 'row' | 'col', index: number) => void;
   showGridlines?: boolean;
+  isEditing?: boolean;
 }
 
 export default function SpreadsheetCanvas({
@@ -49,6 +50,7 @@ export default function SpreadsheetCanvas({
   onRowResize,
   onHeaderContextMenu,
   showGridlines = true,
+  isEditing = false,
 }: SpreadsheetCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -323,8 +325,8 @@ export default function SpreadsheetCanvas({
       currentY += rowHeight;
     }
 
-    // Draw selected cell border
-    if (selectedCell && selectedCell.row >= startRow && selectedCell.row <= endRow && selectedCell.col >= startCol && selectedCell.col <= endCol) {
+    // Draw selected cell border (skip when editing - CellEditor shows its own border)
+    if (!isEditing && selectedCell && selectedCell.row >= startRow && selectedCell.row <= endRow && selectedCell.col >= startCol && selectedCell.col <= endCol) {
       const cellX = getColX(selectedCell.col) - scrollX;
       const cellY = getRowY(selectedCell.row) - scrollY;
       const cellWidth = columns[selectedCell.col]?.width ?? config.defaultColWidth;
@@ -432,6 +434,7 @@ export default function SpreadsheetCanvas({
     getColX,
     getRowY,
     showGridlines,
+    isEditing,
   ]);
 
   // Handle resize

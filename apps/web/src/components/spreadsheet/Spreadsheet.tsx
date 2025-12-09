@@ -1033,6 +1033,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
           onRowResize={handleRowResize}
           showGridlines={showGridlines}
           onHeaderContextMenu={handleHeaderContextMenu}
+          isEditing={isEditing}
         />
         
         {isEditing && selectedCell && (
