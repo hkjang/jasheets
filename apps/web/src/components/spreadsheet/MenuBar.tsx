@@ -34,6 +34,18 @@ interface MenuBarProps {
   onOpenFile?: () => void;
   title?: string;
   onTitleChange?: (newTitle: string) => void;
+  // New props for enhanced functionality
+  onInsertChart?: () => void;
+  onInsertPivot?: () => void;
+  onConditionalFormat?: () => void;
+  onInsertLink?: () => void;
+  onUnfreeze?: () => void;
+  onZoomChange?: (zoom: number) => void;
+  onTrimWhitespace?: () => void;
+  onFormatNumber?: (format: string) => void;
+  showFormulaBar?: boolean;
+  showGridlines?: boolean;
+  zoom?: number;
 }
 
 export default function MenuBar({
@@ -65,6 +77,17 @@ export default function MenuBar({
   onOpenFile,
   title,
   onTitleChange,
+  onInsertChart,
+  onInsertPivot,
+  onConditionalFormat,
+  onInsertLink,
+  onUnfreeze,
+  onZoomChange,
+  onTrimWhitespace,
+  onFormatNumber,
+  showFormulaBar = true,
+  showGridlines = true,
+  zoom = 100,
 }: MenuBarProps) {
   const router = useRouter();
   const [activeMenu, setActiveMenu] = useState<string | null>(null);
@@ -198,10 +221,10 @@ export default function MenuBar({
               <MenuItem label="열 (왼쪽)" onClick={onInsertCol} />
               <MenuItem label="열 (오른쪽)" onClick={onInsertCol} />
               <Separator />
-              <MenuItem label="차트" onClick={() => alert('툴바의 차트 버튼을 이용해주세요.')} />
-              <MenuItem label="피벗 테이블" onClick={() => alert('툴바의 피벗 테이블 버튼을 이용해주세요.')} />
-              <MenuItem label="이미지" onClick={() => alert('이미지 삽입 준비 중...')} />
-              <MenuItem label="링크" onClick={() => alert('링크 삽입 준비 중...')} shortcut="Ctrl+K" />
+              <MenuItem label="차트" onClick={onInsertChart} />
+              <MenuItem label="피벗 테이블" onClick={onInsertPivot} />
+              <MenuItem label="이미지" onClick={() => alert('이미지 삽입은 아직 지원하지 않습니다.')} />
+              <MenuItem label="링크" onClick={onInsertLink} shortcut="Ctrl+K" />
             </div>
           )}
         </div>
@@ -217,14 +240,24 @@ export default function MenuBar({
           </button>
           {activeMenu === 'view' && (
             <div className={styles.dropdown}>
-              <MenuItem label="표시 > 수식바" onClick={onToggleFormulaBar} shortcut="✓" />
-              <MenuItem label="표시 > 격자선" onClick={onToggleGridlines} shortcut="✓" />
+              <MenuItem label="표시 > 수식바" onClick={onToggleFormulaBar} shortcut={showFormulaBar ? '✓' : ''} />
+              <MenuItem label="표시 > 격자선" onClick={onToggleGridlines} shortcut={showGridlines ? '✓' : ''} />
               <Separator />
               <MenuItem label="고정 > 행 1개" onClick={onFreezeRow} />
               <MenuItem label="고정 > 열 1개" onClick={onFreezeCol} />
-              <MenuItem label="고정 없음" onClick={() => {}} />
+              <MenuItem label="고정 없음" onClick={onUnfreeze} />
               <Separator />
-              <MenuItem label="확대/축소" onClick={() => {}} />
+              <div className={styles.submenu}>
+                <span className={styles.menuLabel}>확대/축소 ({zoom}%)</span>
+                <div className={styles.submenuDropdown}>
+                  <MenuItem label="50%" onClick={() => onZoomChange?.(50)} />
+                  <MenuItem label="75%" onClick={() => onZoomChange?.(75)} />
+                  <MenuItem label="100%" onClick={() => onZoomChange?.(100)} shortcut={zoom === 100 ? '✓' : ''} />
+                  <MenuItem label="125%" onClick={() => onZoomChange?.(125)} />
+                  <MenuItem label="150%" onClick={() => onZoomChange?.(150)} />
+                  <MenuItem label="200%" onClick={() => onZoomChange?.(200)} />
+                </div>
+              </div>
             </div>
           )}
         </div>
@@ -240,11 +273,21 @@ export default function MenuBar({
           </button>
           {activeMenu === 'format' && (
             <div className={styles.dropdown}>
-               <MenuItem label="테마" onClick={() => alert('테마 설정 준비 중...')} />
-               <MenuItem label="숫자" onClick={() => {}} />
-               <MenuItem label="텍스트" onClick={() => {}} />
+               <MenuItem label="테마" onClick={() => alert('테마 설정은 아직 지원하지 않습니다.')} />
+               <div className={styles.submenu}>
+                 <span className={styles.menuLabel}>숫자 형식</span>
+                 <div className={styles.submenuDropdown}>
+                   <MenuItem label="자동" onClick={() => onFormatNumber?.('general')} />
+                   <MenuItem label="일반 숫자" onClick={() => onFormatNumber?.('number')} />
+                   <MenuItem label="통화" onClick={() => onFormatNumber?.('currency')} />
+                   <MenuItem label="퍼센트" onClick={() => onFormatNumber?.('percent')} />
+                   <MenuItem label="날짜" onClick={() => onFormatNumber?.('date')} />
+                   <MenuItem label="시간" onClick={() => onFormatNumber?.('time')} />
+                 </div>
+               </div>
+               <MenuItem label="텍스트" onClick={() => onFormatNumber?.('text')} />
                <Separator />
-               <MenuItem label="조건부 서식" onClick={() => alert('툴바의 조건부 서식 버튼을 이용해주세요.')} />
+               <MenuItem label="조건부 서식" onClick={onConditionalFormat} />
             </div>
           )}
         </div>
@@ -261,10 +304,12 @@ export default function MenuBar({
           {activeMenu === 'data' && (
             <div className={styles.dropdown}>
                <MenuItem label="시트 정렬 (A-Z)" onClick={onSort} />
-               <MenuItem label="필터 만들기" onClick={() => alert('필터 기능 준비 중...')} />
+               <MenuItem label="시트 정렬 (Z-A)" onClick={onSort} />
                <Separator />
-               <MenuItem label="데이터 확인" onClick={() => alert('데이터 확인 기능 준비 중...')} />
-               <MenuItem label="공백 제거" onClick={() => alert('공백 제거 기능 준비 중...')} />
+               <MenuItem label="필터" onClick={onFilter} />
+               <Separator />
+               <MenuItem label="데이터 확인" onClick={() => alert('데이터 확인은 아직 지원하지 않습니다.')} />
+               <MenuItem label="공백 제거" onClick={onTrimWhitespace} />
             </div>
           )}
         </div>
@@ -280,11 +325,13 @@ export default function MenuBar({
           </button>
           {activeMenu === 'help' && (
             <div className={styles.dropdown}>
-               <MenuItem label="도움말 검색" onClick={() => {}} />
+               <MenuItem label="도움말 검색" onClick={() => window.open('https://support.google.com/docs/answer/6000292', '_blank')} />
                <MenuItem label="단축키" onClick={onShowShortcuts} shortcut="Ctrl+/" />
                <Separator />
-               <MenuItem label="개인정보처리방침" onClick={() => {}} />
-               <MenuItem label="서비스 약관" onClick={() => {}} />
+               <MenuItem label="업데이트 및 새 기능" onClick={() => alert('최신 버전을 사용 중입니다.')} />
+               <Separator />
+               <MenuItem label="개인정보처리방침" onClick={() => window.open('/privacy', '_blank')} />
+               <MenuItem label="서비스 약관" onClick={() => window.open('/terms', '_blank')} />
             </div>
           )}
         </div>

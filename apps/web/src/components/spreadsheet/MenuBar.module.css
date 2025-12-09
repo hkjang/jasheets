@@ -122,3 +122,62 @@
   background-color: #e8eaed;
   margin: 6px 0;
 }
+
+/* Submenu styles for hover dropdowns */
+.submenu {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  font-size: 13px;
+  color: #3c4043;
+  cursor: pointer;
+}
+
+.submenu:hover {
+  background-color: #f1f3f4;
+}
+
+.submenu::after {
+  content: '▶';
+  font-size: 8px;
+  color: #9aa0a6;
+  margin-left: 8px;
+}
+
+.submenuDropdown {
+  display: none;
+  position: absolute;
+  left: 100%;
+  top: 0;
+  background: white;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  box-shadow: 0 2px 6px 2px rgba(60, 64, 67, 0.15);
+  padding: 6px 0;
+  min-width: 120px;
+  z-index: 1001;
+}
+
+.submenu:hover .submenuDropdown {
+  display: block;
+}
+
+/* Disabled menu item state */
+.menuItem.disabled {
+  color: #9aa0a6;
+  cursor: not-allowed;
+}
+
+.menuItem.disabled:hover {
+  background-color: transparent;
+}
+
+/* Checkmark indicator */
+.checkmark {
+  color: #1a73e8;
+  font-weight: bold;
+  margin-left: auto;
+}
+

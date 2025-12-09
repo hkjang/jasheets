@@ -656,6 +656,47 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   // AI Assistant state
   const [isAIOpen, setIsAIOpen] = useState(false);
 
+  // Zoom state for menu
+  const [zoom, setZoom] = useState(100);
+
+  // Link Dialog state
+  const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
+
+  // Handler for clearing all freeze (rows and columns)
+  const handleUnfreeze = useCallback(() => {
+    setConfig(prev => ({ ...prev, frozenRows: 0, frozenCols: 0 }));
+    setToastMessage('모든 고정이 해제되었습니다.');
+  }, [setConfig]);
+
+  // Handler for zoom change
+  const handleZoomChange = useCallback((newZoom: number) => {
+    setZoom(newZoom);
+    // Apply zoom via CSS transform would require more changes to the grid
+    document.documentElement.style.setProperty('--spreadsheet-zoom', `${newZoom / 100}`);
+    setToastMessage(`확대/축소: ${newZoom}%`);
+  }, []);
+
+  // Handler for trim whitespace on selected cells
+  const handleTrimWhitespace = useCallback(() => {
+    if (!selection) {
+      alert('공백을 제거할 범위를 선택해주세요.');
+      return;
+    }
+    const updates: { row: number; col: number; value: string }[] = [];
+    for (let r = selection.start.row; r <= selection.end.row; r++) {
+      for (let c = selection.start.col; c <= selection.end.col; c++) {
+        const val = data[r]?.[c]?.value;
+        if (typeof val === 'string') {
+          updates.push({ row: r, col: c, value: val.trim() });
+        }
+      }
+    }
+    if (updates.length > 0) {
+      updateCells(updates);
+      setToastMessage('공백이 제거되었습니다.');
+    }
+  }, [selection, data, updateCells]);
+
   // Comments hook
   const {
     comments,
@@ -953,6 +994,18 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
          onToggleGridlines={() => setShowGridlines(!showGridlines)}
          onEmail={() => setIsEmailOpen(true)}
          onOpenFile={() => setIsFileDialogOpen(true)}
+         // New props for enhanced menu functionality
+         onInsertChart={handleAddChart}
+         onInsertPivot={handleOpenPivotDialog}
+         onConditionalFormat={handleOpenConditionalDialog}
+         onInsertLink={() => alert('링크 삽입 기능은 추후 지원 예정입니다.')}
+         onUnfreeze={handleUnfreeze}
+         onZoomChange={handleZoomChange}
+         onTrimWhitespace={handleTrimWhitespace}
+         onFormatNumber={(fmt) => updateCellFormat(selection, fmt)}
+         showFormulaBar={showFormulaBar}
+         showGridlines={showGridlines}
+         zoom={zoom}
       />
       <FileOpenDialog
         isOpen={isFileDialogOpen}

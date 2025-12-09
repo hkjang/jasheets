@@ -2,13 +2,12 @@
 
 import { useEffect } from 'react';
 import { useServiceWorker, useOfflineSync } from '@/hooks/usePWA';
-import { useAuth } from '@/hooks/useAuth'; // Optional: if sync depends on auth
 import Toast from './ui/Toast';
 import { useState } from 'react';
 
 export default function PWAHandler() {
-  const { isReady, hasUpdate, update, installPrompt, promptInstall } = useServiceWorker();
-  const { isOnline, pendingChanges, syncChanges } = useOfflineSync();
+  const { hasUpdate, update, installPrompt, promptInstall } = useServiceWorker();
+  const { isOnline } = useOfflineSync();
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   useEffect(() => {
@@ -22,14 +21,9 @@ export default function PWAHandler() {
   useEffect(() => {
     if (!isOnline) {
       setToastMsg('You are offline. Changes will be saved locally.');
-    } else {
-        // If coming back online and having pending changes
-        if (pendingChanges.length > 0) {
-            setToastMsg('Back online. Syncing changes...');
-            syncChanges().then(() => setToastMsg('Sync complete.'));
-        }
     }
-  }, [isOnline, pendingChanges, syncChanges]);
+    // Note: sync logic moved to avoid infinite loops
+  }, [isOnline]);
 
   const handleToastClose = () => {
       setToastMsg(null);

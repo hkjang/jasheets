@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 
 export function useServiceWorker() {
   const [isReady, setIsReady] = useState(false);
@@ -132,7 +132,7 @@ export function useOfflineSync() {
     storeChange(change);
   };
 
-  const syncChanges = async () => {
+  const syncChanges = useCallback(async () => {
     if (pendingChanges.length === 0) return;
 
     try {
@@ -148,7 +148,7 @@ export function useOfflineSync() {
     } catch (error) {
       console.error('Sync failed:', error);
     }
-  };
+  }, [pendingChanges]);
 
   const storeChange = async (change: any) => {
     // Store in IndexedDB
