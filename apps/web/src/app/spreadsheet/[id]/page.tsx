@@ -45,5 +45,5 @@ export default function SpreadsheetPage() {
   if (loading) return <div className="flex h-screen items-center justify-center">Loading...</div>;
   if (error) return <div className="flex h-screen items-center justify-center text-red-500">{error}</div>;
   
-  return <Spreadsheet initialData={data} spreadsheetId={id} activeSheetId={activeSheetId} title={title} />;
+  return <Spreadsheet key={activeSheetId} initialData={data} spreadsheetId={id} activeSheetId={activeSheetId} title={title} />;
 }

@@ -24,17 +24,11 @@ interface UseSpreadsheetDataProps {
 }
 
 export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpreadsheetDataProps) {
-  const [data, setData] = useState<SheetData>(initialData);
+  // Note: initialData is only used for initial state.
+  // External updates should use updateData() directly to avoid infinite loops.
+  const [data, setData] = useState<SheetData>(() => initialData || {});
   const [history, setHistory] = useState<Commit[]>([]);
   const [historyIndex, setHistoryIndex] = useState(-1);
-
-  // Update data if initialData changes (e.g. loaded from server)
-  // Update data if initialData changes (e.g. loaded from server)
-  useEffect(() => {
-    if (initialData) { // Only update if we have data
-        setData(initialData);
-    }
-  }, [initialData]);
 
   // Helper to apply changes and record history
   const applyChange = useCallback((recipe: (draft: SheetData) => void) => {
