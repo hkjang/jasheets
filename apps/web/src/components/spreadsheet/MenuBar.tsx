@@ -43,6 +43,7 @@ interface MenuBarProps {
   onZoomChange?: (zoom: number) => void;
   onTrimWhitespace?: () => void;
   onFormatNumber?: (format: string) => void;
+  onTableFormat?: () => void;
   showFormulaBar?: boolean;
   showGridlines?: boolean;
   zoom?: number;
@@ -85,6 +86,7 @@ export default function MenuBar({
   onZoomChange,
   onTrimWhitespace,
   onFormatNumber,
+  onTableFormat,
   showFormulaBar = true,
   showGridlines = true,
   zoom = 100,
@@ -287,6 +289,7 @@ export default function MenuBar({
               </div>
               <MenuItem label="텍스트" onClick={() => onFormatNumber?.('text')} />
               <Separator />
+              <MenuItem label="테이블 서식" onClick={onTableFormat} />
               <MenuItem label="조건부 서식" onClick={onConditionalFormat} />
             </div>
           )}

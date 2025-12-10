@@ -449,5 +449,64 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                 }
             });
         }, [applyChange]),
+
+        // Table Formatting
+        applyTableFormat: useCallback((
+            range: { start: { row: number, col: number }, end: { row: number, col: number } } | null,
+            config: {
+                headerBg: string;
+                headerColor: string;
+                headerBold: boolean;
+                oddRowBg: string;
+                evenRowBg: string;
+                textColor: string;
+                hasHeader: boolean;
+                alternatingColors: boolean;
+            }
+        ) => {
+            if (!range) return;
+
+            applyChange((draft) => {
+                for (let row = range.start.row; row <= range.end.row; row++) {
+                    for (let col = range.start.col; col <= range.end.col; col++) {
+                        if (!draft[row]) draft[row] = {};
+
+                        const dataRowIndex = config.hasHeader ? row - range.start.row - 1 : row - range.start.row;
+                        const isHeader = config.hasHeader && row === range.start.row;
+                        const isEvenRow = dataRowIndex >= 0 && dataRowIndex % 2 === 1;
+
+                        let backgroundColor: string;
+                        let color: string;
+                        let fontWeight: 'normal' | 'bold' = 'normal';
+
+                        if (isHeader) {
+                            backgroundColor = config.headerBg;
+                            color = config.headerColor;
+                            fontWeight = config.headerBold ? 'bold' : 'normal';
+                        } else if (config.alternatingColors) {
+                            backgroundColor = isEvenRow ? config.evenRowBg : config.oddRowBg;
+                            color = config.textColor;
+                        } else {
+                            backgroundColor = config.oddRowBg;
+                            color = config.textColor;
+                        }
+
+                        const existingStyle = draft[row][col]?.style || {};
+                        const newStyle: CellStyle = {
+                            ...existingStyle,
+                            backgroundColor,
+                            color,
+                            fontWeight,
+                        };
+
+                        if (!draft[row][col]) {
+                            draft[row][col] = { value: null, style: newStyle };
+                        } else {
+                            draft[row][col]!.style = newStyle;
+                        }
+                    }
+                }
+            });
+        }, [applyChange]),
     };
 }

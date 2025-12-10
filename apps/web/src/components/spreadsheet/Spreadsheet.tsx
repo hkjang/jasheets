@@ -14,6 +14,7 @@ import { ChartDialog } from '../charts';
 import ChartOverlay from '../charts/ChartOverlay';
 import VersionHistorySidebar from './VersionHistorySidebar';
 import ConditionalFormattingDialog, { ConditionalRule } from './ConditionalFormattingDialog';
+import TableFormatDialog, { TableFormatConfig } from './TableFormatDialog';
 import FindDialog from './FindDialog';
 
 // ... (in Spreadsheet component)
@@ -106,6 +107,7 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
     replaceAll,
     updateCellFormat,
     updateCells,
+    applyTableFormat,
   } = useSpreadsheetData({ initialData, onDataChange });
 
   // Selection
@@ -624,6 +626,9 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
   // Pivot Table state
   const [isPivotDialogOpen, setIsPivotDialogOpen] = useState(false);
 
+  // Table Format Dialog state
+  const [isTableFormatOpen, setIsTableFormatOpen] = useState(false);
+
   // Keyboard Shortcuts state
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
 
@@ -998,6 +1003,7 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
         onZoomChange={handleZoomChange}
         onTrimWhitespace={handleTrimWhitespace}
         onFormatNumber={(fmt) => updateCellFormat(selection, fmt)}
+        onTableFormat={() => setIsTableFormatOpen(true)}
         showFormulaBar={showFormulaBar}
         showGridlines={showGridlines}
         zoom={zoom}
@@ -1200,6 +1206,29 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
           onCreate={handleCreatePivot}
           selection={selection}
           data={data}
+        />
+      )}
+
+      {isTableFormatOpen && (
+        <TableFormatDialog
+          isOpen={isTableFormatOpen}
+          onClose={() => setIsTableFormatOpen(false)}
+          onApply={(config: TableFormatConfig) => {
+            if (selection) {
+              applyTableFormat(selection, {
+                headerBg: config.preset.headerBg,
+                headerColor: config.preset.headerColor,
+                headerBold: config.preset.headerBold,
+                oddRowBg: config.customOddColor || config.preset.oddRowBg,
+                evenRowBg: config.customEvenColor || config.preset.evenRowBg,
+                textColor: config.preset.textColor,
+                hasHeader: config.hasHeader,
+                alternatingColors: config.alternatingColors,
+              });
+              setToastMessage('테이블 서식이 적용되었습니다.');
+            }
+          }}
+          selection={selection}
         />
       )}
 
