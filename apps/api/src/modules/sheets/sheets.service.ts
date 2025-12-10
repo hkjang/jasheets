@@ -210,6 +210,8 @@ export class SheetsService {
             cells: true,
             rowMeta: true,
             colMeta: true,
+            charts: true,
+            pivotTables: true,
           },
         },
         owner: {
@@ -635,5 +637,109 @@ export class SheetsService {
     });
 
     return newSpreadsheet;
+  }
+
+  // Chart operations
+  async saveCharts(
+    userId: string,
+    sheetId: string,
+    charts: Array<{
+      id?: string;
+      type: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      data: any;
+      options?: any;
+    }>,
+  ) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+    });
+
+    if (!sheet) {
+      throw new NotFoundException('Sheet not found');
+    }
+
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+
+    // Delete existing charts and recreate
+    await this.prisma.chart.deleteMany({
+      where: { sheetId },
+    });
+
+    if (charts.length === 0) {
+      return [];
+    }
+
+    // Create new charts
+    const created = await this.prisma.$transaction(
+      charts.map((chart) =>
+        this.prisma.chart.create({
+          data: {
+            sheetId,
+            type: chart.type,
+            x: chart.x,
+            y: chart.y,
+            width: chart.width,
+            height: chart.height,
+            data: chart.data,
+            options: chart.options,
+          },
+        }),
+      ),
+    );
+
+    return created;
+  }
+
+  // Pivot Table operations
+  async savePivotTables(
+    userId: string,
+    sheetId: string,
+    pivotTables: Array<{
+      id?: string;
+      name?: string;
+      config: any;
+      sourceRange?: string;
+      targetCell?: string;
+    }>,
+  ) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+    });
+
+    if (!sheet) {
+      throw new NotFoundException('Sheet not found');
+    }
+
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+
+    // Delete existing pivot tables and recreate
+    await this.prisma.pivotTable.deleteMany({
+      where: { sheetId },
+    });
+
+    if (pivotTables.length === 0) {
+      return [];
+    }
+
+    // Create new pivot tables
+    const created = await this.prisma.$transaction(
+      pivotTables.map((pt) =>
+        this.prisma.pivotTable.create({
+          data: {
+            sheetId,
+            name: pt.name,
+            config: pt.config,
+            sourceRange: pt.sourceRange,
+            targetCell: pt.targetCell,
+          },
+        }),
+      ),
+    );
+
+    return created;
   }
 }

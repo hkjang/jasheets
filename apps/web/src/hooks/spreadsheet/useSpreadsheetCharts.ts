@@ -27,6 +27,7 @@ export function useSpreadsheetCharts() {
 
   return {
     charts,
+    setCharts,
     isChartDialogOpen,
     setIsChartDialogOpen,
     handleAddChart,

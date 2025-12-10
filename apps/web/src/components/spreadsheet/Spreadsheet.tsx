@@ -56,13 +56,14 @@ import WorkflowManager from '../dashboard/WorkflowManager';
 
 interface SpreadsheetProps {
   initialData?: SheetData;
+  initialCharts?: any[];
   onDataChange?: (data: SheetData) => void;
   spreadsheetId?: string;
   activeSheetId?: string | null;
   title?: string;
 }
 
-export default function Spreadsheet({ initialData = {}, onDataChange, spreadsheetId, activeSheetId, title = 'Untitled Spreadsheet' }: SpreadsheetProps) {
+export default function Spreadsheet({ initialData = {}, initialCharts = [], onDataChange, spreadsheetId, activeSheetId, title = 'Untitled Spreadsheet' }: SpreadsheetProps) {
   const [sheetTitle, setSheetTitle] = useState(title);
 
   // Update title if prop changes (e.g. loaded from server)
@@ -267,80 +268,6 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   const router = useRouter();
   const [isEmailOpen, setIsEmailOpen] = useState(false);
 
-  const handleSave = useCallback(async () => {
-    // ... same as before
-    if (!activeSheetId) {
-      alert('저장할 시트가 없습니다.');
-      return;
-    }
-    try {
-      const updates: any[] = [];
-      Object.keys(data).forEach(r => {
-        const row = Number(r);
-        Object.keys(data[row]).forEach(c => {
-          const col = Number(c);
-          const cell = data[row][col];
-          if (cell) {
-            updates.push({
-              row,
-              col,
-              value: cell.value,
-              formula: cell.formula,
-              format: cell.style // Assuming format mapping or similar
-            });
-          }
-        });
-      });
-
-      if (updates.length === 0) {
-        alert('저장할 데이터가 없습니다.');
-        return;
-      }
-
-      await api.spreadsheets.updateCells(activeSheetId, updates);
-      alert('저장되었습니다.');
-    } catch (e) {
-      console.error(e);
-      alert('저장 중 오류가 발생했습니다.');
-    }
-  }, [data, activeSheetId]);
-
-  // ...
-
-  // To save space in tool call, I'll target the MenuBar props update separately or rely on previous view_file to locate it?
-  // I need to update MenuBar props too.
-  // The replace_content block above replaced the previous clipboard useEffect.
-  // Now I need to update MenuBar.
-  // Wait, I replaced lines 105-199 with the new separate functions + useEffect.
-  // I didn't include MenuBar in the replacement content.
-  // I need to verify line numbers.
-  // The previous tool called replace_file_content lines 105 to 205 (approx).
-
-  // Actually, I'll split this into two edits if needed, but I can do contiguous if I include everything.
-  // Let's just do the `useEffect` replacement first as defined above. I'll need another edit for MenuBar.
-
-
-
-
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        handleSave();
-      }
-      if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
-        e.preventDefault();
-        setIsFileDialogOpen(true);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleSave]);
-
-  // Note: Auth redirect removed - SpreadsheetPage handles auth errors
-  // Keeping user for collaboration features but not redirecting
-
-
   const userId = useMemo(() => user?.id || 'guest', [user]);
   const userName = useMemo(() => user?.name || user?.email || 'Guest', [user]);
 
@@ -363,6 +290,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   // Charts
   const {
     charts,
+    setCharts,
     isChartDialogOpen,
     setIsChartDialogOpen,
     handleAddChart,
@@ -370,6 +298,71 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     handleUpdateChart,
     handleRemoveChart,
   } = useSpreadsheetCharts();
+
+  // Initialize charts from props when component mounts
+  useEffect(() => {
+    if (initialCharts && initialCharts.length > 0) {
+      setCharts(initialCharts);
+    }
+  }, [initialCharts, setCharts]);
+
+  // Save handler - defined after charts to access chart state
+  const handleSave = useCallback(async () => {
+    if (!activeSheetId) {
+      alert('저장할 시트가 없습니다.');
+      return;
+    }
+    try {
+      const updates: any[] = [];
+      Object.keys(data).forEach(r => {
+        const row = Number(r);
+        Object.keys(data[row]).forEach(c => {
+          const col = Number(c);
+          const cell = data[row][col];
+          if (cell) {
+            updates.push({
+              row,
+              col,
+              value: cell.value,
+              formula: cell.formula,
+              format: cell.style
+            });
+          }
+        });
+      });
+
+      // Save cells
+      if (updates.length > 0) {
+        await api.spreadsheets.updateCells(activeSheetId, updates);
+      }
+
+      // Save charts
+      if (charts.length > 0) {
+        await api.spreadsheets.saveCharts(activeSheetId, charts);
+      }
+
+      alert('저장되었습니다.');
+    } catch (e) {
+      console.error(e);
+      alert('저장 중 오류가 발생했습니다.');
+    }
+  }, [data, activeSheetId, charts]);
+
+  // Keyboard shortcut for save
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+        e.preventDefault();
+        setIsFileDialogOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleSave]);
 
   // Columns & Rows
   // View State using new hook

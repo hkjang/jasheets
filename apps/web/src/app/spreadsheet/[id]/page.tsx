@@ -11,14 +11,15 @@ export default function SpreadsheetPage() {
   const router = useRouter();
   const id = params.id as string;
   const [data, setData] = useState<any>(null);
+  const [initialCharts, setInitialCharts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const [title, setTitle] = useState('');
-  
+
   // Prevent duplicate API calls
   const fetchedRef = useRef(false);
-  
+
   // Auth check
   const { user, loading: authLoading } = useAuth();
 
@@ -34,18 +35,18 @@ export default function SpreadsheetPage() {
     if (fetchedRef.current || !id || authLoading || !user) {
       return;
     }
-    
+
     fetchedRef.current = true;
     setLoading(true);
-    
+
     api.spreadsheets.get(id)
       .then(res => {
-        setTitle(res.name || 'Untitled Spreadsheet'); 
+        setTitle(res.name || 'Untitled Spreadsheet');
         const sheets = res.sheets || [];
         if (sheets.length > 0) {
-          const firstSheet = sheets[0]; 
+          const firstSheet = sheets[0];
           setActiveSheetId(firstSheet.id);
-          
+
           const sheetData: any = {};
           if (firstSheet.cells) {
             firstSheet.cells.forEach((c: any) => {
@@ -54,6 +55,11 @@ export default function SpreadsheetPage() {
             });
           }
           setData(sheetData);
+
+          // Load charts
+          if (firstSheet.charts && Array.isArray(firstSheet.charts)) {
+            setInitialCharts(firstSheet.charts);
+          }
         } else {
           setData({});
         }
@@ -85,6 +91,6 @@ export default function SpreadsheetPage() {
 
   if (loading) return <div className="flex h-screen items-center justify-center">Loading...</div>;
   if (error) return <div className="flex h-screen items-center justify-center text-red-500">{error}</div>;
-  
-  return <Spreadsheet key={activeSheetId} initialData={data} spreadsheetId={id} activeSheetId={activeSheetId} title={title} />;
+
+  return <Spreadsheet key={activeSheetId} initialData={data} initialCharts={initialCharts} spreadsheetId={id} activeSheetId={activeSheetId} title={title} />;
 }

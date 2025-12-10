@@ -109,6 +109,8 @@ model Sheet {
   comments        Comment[]
   rowMeta         RowMeta[]
   colMeta         ColMeta[]
+  charts          Chart[]
+  pivotTables     PivotTable[]
 
   @@unique([spreadsheetId, index])
   @@map("sheets")
@@ -130,6 +132,41 @@ model Cell {
   @@unique([sheetId, row, col])
   @@index([sheetId])
   @@map("cells")
+}
+
+// Chart model - 시트에 포함된 차트
+model Chart {
+  id              String    @id @default(uuid())
+  sheetId         String
+  sheet           Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  type            String    // bar, line, pie, doughnut
+  x               Int       @default(100)
+  y               Int       @default(100)
+  width           Int       @default(400)
+  height          Int       @default(300)
+  data            Json      // 차트 데이터 (labels, datasets)
+  options         Json?     // 차트 옵션
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([sheetId])
+  @@map("charts")
+}
+
+// PivotTable model - 피벗테이블 설정
+model PivotTable {
+  id              String    @id @default(uuid())
+  sheetId         String
+  sheet           Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  name            String?
+  config          Json      // PivotConfig (rows, columns, values, aggregation)
+  sourceRange     String?   // 원본 데이터 범위 (예: "A1:D10")
+  targetCell      String?   // 결과가 배치될 시작 셀 (예: "F1")
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([sheetId])
+  @@map("pivot_tables")
 }
 
 // Row metadata (height, hidden)
