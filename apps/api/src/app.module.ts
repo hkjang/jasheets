@@ -20,6 +20,7 @@ import { NoticesModule } from './modules/notices/notices.module';
 import { TemplatesModule } from './modules/templates/templates.module';
 import { EventsModule } from './modules/events/events.module';
 import { FlowsModule } from './modules/flows/flows.module';
+import { EmbedModule } from './modules/embed/embed.module';
 
 @Module({
   imports: [
@@ -45,8 +46,9 @@ import { FlowsModule } from './modules/flows/flows.module';
     TemplatesModule,
     EventsModule,
     FlowsModule,
+    EmbedModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule { }

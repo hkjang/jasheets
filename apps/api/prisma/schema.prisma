@@ -72,8 +72,31 @@ model Spreadsheet {
   webhooks      Webhook[]
   eventRules    EventRule[]
   flows         Flow[]
+  embedConfig   EmbedConfig?
 
   @@map("spreadsheets")
+}
+
+// Embed Configuration - 시트 임베딩 설정
+model EmbedConfig {
+  id              String      @id @default(uuid())
+  spreadsheetId   String      @unique
+  spreadsheet     Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  embedToken      String      @unique @default(uuid())
+  enabled         Boolean     @default(true)
+  
+  // 표시 옵션
+  showToolbar     Boolean     @default(false)
+  showTabs        Boolean     @default(true)
+  showGridlines   Boolean     @default(true)
+  
+  // 제한 옵션
+  allowedDomains  String[]    @default([])  // 빈 배열 = 모든 도메인 허용
+  
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@map("embed_configs")
 }
 
 model Favorite {

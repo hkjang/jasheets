@@ -283,6 +283,55 @@ export const api = {
       if (!res.ok) throw new Error('Failed to save pivot tables');
       return res.json();
     },
+    // Embed settings
+    getEmbed: async (id: string) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/sheets/${id}/embed`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) {
+        if (res.status === 404) return null;
+        throw new Error('Failed to fetch embed config');
+      }
+      return res.json();
+    },
+    createEmbed: async (id: string, config: {
+      enabled?: boolean;
+      showToolbar?: boolean;
+      showTabs?: boolean;
+      showGridlines?: boolean;
+      allowedDomains?: string[];
+    }) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/sheets/${id}/embed`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify(config),
+      });
+      if (!res.ok) throw new Error('Failed to create embed config');
+      return res.json();
+    },
+    deleteEmbed: async (id: string) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/sheets/${id}/embed`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to delete embed config');
+      return res.json();
+    },
+    regenerateEmbedToken: async (id: string) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/sheets/${id}/embed/regenerate`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to regenerate embed token');
+      return res.json();
+    },
   },
   audit: {
     list: async () => {
