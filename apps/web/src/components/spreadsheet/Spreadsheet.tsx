@@ -110,6 +110,8 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
     updateCellFormat,
     updateCells,
     applyTableFormat,
+    sortRange,
+    removeDuplicates,
   } = useSpreadsheetData({ initialData, onDataChange });
 
   // Selection
@@ -749,6 +751,66 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
     }
   }, [selection, data, updateCells]);
 
+  const handleSortRangeAsc = useCallback(() => {
+    if (!selection) {
+      alert('정렬할 범위를 선택해주세요.');
+      return;
+    }
+    let sortCol = selection.start.col;
+    if (selectedCell && selectedCell.col >= Math.min(selection.start.col, selection.end.col) && selectedCell.col <= Math.max(selection.start.col, selection.end.col)) {
+      sortCol = selectedCell.col;
+    }
+    sortRange(selection, sortCol, true);
+    setToastMessage('범위 정렬 완료 (오름차순)');
+  }, [selection, selectedCell, sortRange]);
+
+  const handleSortRangeDesc = useCallback(() => {
+    if (!selection) {
+      alert('정렬할 범위를 선택해주세요.');
+      return;
+    }
+    let sortCol = selection.start.col;
+    if (selectedCell && selectedCell.col >= Math.min(selection.start.col, selection.end.col) && selectedCell.col <= Math.max(selection.start.col, selection.end.col)) {
+      sortCol = selectedCell.col;
+    }
+    sortRange(selection, sortCol, false);
+    setToastMessage('범위 정렬 완료 (내림차순)');
+  }, [selection, selectedCell, sortRange]);
+
+  const handleRemoveDuplicates = useCallback(() => {
+    if (!selection) {
+      alert('중복을 제거할 범위를 선택해주세요.');
+      return;
+    }
+    removeDuplicates(selection);
+    setToastMessage('중복 항목이 제거되었습니다.');
+  }, [selection, removeDuplicates]);
+
+  const handleSplitTextToColumns = useCallback(() => {
+    if (!selection) {
+      alert('텍스트를 나눌 범위를 선택해주세요.');
+      return;
+    }
+    const updates: { row: number; col: number; value: string }[] = [];
+    const startRow = Math.min(selection.start.row, selection.end.row);
+    const endRow = Math.max(selection.start.row, selection.end.row);
+    const col = Math.min(selection.start.col, selection.end.col);
+
+    for (let r = startRow; r <= endRow; r++) {
+      const val = data[r]?.[col]?.value;
+      if (typeof val === 'string') {
+        const parts = val.split(',');
+        parts.forEach((part, idx) => {
+          updates.push({ row: r, col: col + idx, value: part.trim() });
+        });
+      }
+    }
+    if (updates.length > 0) {
+      updateCells(updates);
+      setToastMessage('텍스트 나누기 완료 (쉼표 기준)');
+    }
+  }, [selection, data, updateCells]);
+
   // Comments hook
   const {
     comments,
@@ -1057,6 +1119,13 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
         onFormatNumber={(fmt) => updateCellFormat(selection, fmt)}
         onTableFormat={() => setIsTableFormatOpen(true)}
         onTheme={() => setIsThemeDialogOpen(true)}
+        onSortRangeAsc={handleSortRangeAsc}
+        onSortRangeDesc={handleSortRangeDesc}
+        onRemoveDuplicates={handleRemoveDuplicates}
+        onSplitTextToColumns={handleSplitTextToColumns}
+        onDataValidation={() => alert('데이터 확인 기능은 준비 중입니다. (유효성 검사 규칙 설정)')}
+        onNamedRanges={() => alert('이름이 지정된 범위 기능은 준비 중입니다.')}
+        onProtectedRanges={() => alert('보호된 시트 및 범위 기능은 준비 중입니다.')}
         showFormulaBar={showFormulaBar}
         showGridlines={showGridlines}
         zoom={zoom}

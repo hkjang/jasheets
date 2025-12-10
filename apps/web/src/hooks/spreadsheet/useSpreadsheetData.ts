@@ -398,6 +398,94 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
             });
         }, [applyChange]),
 
+        sortRange: useCallback((range: { start: { row: number, col: number }, end: { row: number, col: number } }, colIndex: number, ascending: boolean = true) => {
+            applyChange((draft) => {
+                const startRow = Math.min(range.start.row, range.end.row);
+                const endRow = Math.max(range.start.row, range.end.row);
+                const minCol = Math.min(range.start.col, range.end.col);
+                const maxCol = Math.max(range.start.col, range.end.col);
+
+                // Extract rows data for the range columns
+                const rowsToSort = [];
+                for (let r = startRow; r <= endRow; r++) {
+                    const cellMap: Record<number, any> = {};
+                    for (let c = minCol; c <= maxCol; c++) {
+                        cellMap[c] = draft[r]?.[c];
+                    }
+                    // Value to sort by
+                    const keyVal = draft[r]?.[colIndex]?.value;
+                    rowsToSort.push({ originalRow: r, keyVal, cellMap });
+                }
+
+                rowsToSort.sort((a, b) => {
+                    const valA = a.keyVal;
+                    const valB = b.keyVal;
+                    if (valA === valB) return 0;
+                    if (valA === null || valA === undefined) return 1;
+                    if (valB === null || valB === undefined) return -1;
+                    if (valA < valB) return ascending ? -1 : 1;
+                    if (valA > valB) return ascending ? 1 : -1;
+                    return 0;
+                });
+
+                // Write back
+                rowsToSort.forEach((item, i) => {
+                    const targetRow = startRow + i;
+                    if (!draft[targetRow]) draft[targetRow] = {};
+
+                    for (let c = minCol; c <= maxCol; c++) {
+                        draft[targetRow][c] = item.cellMap[c];
+                    }
+                });
+            });
+        }, [applyChange]),
+
+        removeDuplicates: useCallback((range: { start: { row: number, col: number }, end: { row: number, col: number } }) => {
+            applyChange((draft) => {
+                const startRow = Math.min(range.start.row, range.end.row);
+                const endRow = Math.max(range.start.row, range.end.row);
+                const minCol = Math.min(range.start.col, range.end.col);
+                const maxCol = Math.max(range.start.col, range.end.col);
+
+                const uniqueRows: any[] = [];
+                const seen = new Set();
+
+                for (let r = startRow; r <= endRow; r++) {
+                    let signature = "";
+                    for (let c = minCol; c <= maxCol; c++) {
+                        signature += String(draft[r]?.[c]?.value ?? "") + "|";
+                    }
+
+                    if (!seen.has(signature)) {
+                        seen.add(signature);
+                        const cellMap: Record<number, any> = {};
+                        for (let c = minCol; c <= maxCol; c++) {
+                            cellMap[c] = draft[r]?.[c];
+                        }
+                        uniqueRows.push(cellMap);
+                    }
+                }
+
+                // Write back unique rows
+                for (let i = 0; i <= (endRow - startRow); i++) {
+                    const targetRow = startRow + i;
+                    if (!draft[targetRow]) draft[targetRow] = {};
+
+                    if (i < uniqueRows.length) {
+                        const cellMap = uniqueRows[i];
+                        for (let c = minCol; c <= maxCol; c++) {
+                            draft[targetRow][c] = cellMap[c];
+                        }
+                    } else {
+                        // Clear remaining rows in range
+                        for (let c = minCol; c <= maxCol; c++) {
+                            if (draft[targetRow][c]) delete draft[targetRow][c];
+                        }
+                    }
+                }
+            });
+        }, [applyChange]),
+
         // Find and Replace
         updateCellFormat,
         findNext: useCallback((query: string, matchCase: boolean, startIndex: { row: number, col: number }) => {

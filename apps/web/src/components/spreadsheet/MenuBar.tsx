@@ -45,6 +45,13 @@ interface MenuBarProps {
   onFormatNumber?: (format: string) => void;
   onTableFormat?: () => void;
   onTheme?: () => void;
+  onSortRangeAsc?: () => void;
+  onSortRangeDesc?: () => void;
+  onRemoveDuplicates?: () => void;
+  onSplitTextToColumns?: () => void;
+  onDataValidation?: () => void;
+  onNamedRanges?: () => void;
+  onProtectedRanges?: () => void;
   showFormulaBar?: boolean;
   showGridlines?: boolean;
   zoom?: number;
@@ -89,6 +96,13 @@ export default function MenuBar({
   onFormatNumber,
   onTableFormat,
   onTheme,
+  onSortRangeAsc,
+  onSortRangeDesc,
+  onRemoveDuplicates,
+  onSplitTextToColumns,
+  onDataValidation,
+  onNamedRanges,
+  onProtectedRanges,
   showFormulaBar = true,
   showGridlines = true,
   zoom = 100,
@@ -311,10 +325,20 @@ export default function MenuBar({
               <MenuItem label="시트 정렬 (A-Z)" onClick={onSort} />
               <MenuItem label="시트 정렬 (Z-A)" onClick={onSort} />
               <Separator />
-              <MenuItem label="필터" onClick={onFilter} />
+              <MenuItem label="범위 정렬 (A-Z)" onClick={onSortRangeAsc} />
+              <MenuItem label="범위 정렬 (Z-A)" onClick={onSortRangeDesc} />
               <Separator />
-              <MenuItem label="데이터 확인" onClick={() => alert('데이터 확인은 아직 지원하지 않습니다.')} />
-              <MenuItem label="공백 제거" onClick={onTrimWhitespace} />
+              <MenuItem label="필터 만들기" onClick={onFilter} />
+              <MenuItem label="필터 뷰" onClick={() => alert('필터 뷰 기능은 준비 중입니다.')} />
+              <Separator />
+              <MenuItem label="데이터 정리 > 중복 항목 삭제" onClick={onRemoveDuplicates} />
+              <MenuItem label="데이터 정리 > 공백 제거" onClick={onTrimWhitespace} />
+              <Separator />
+              <MenuItem label="텍스트를 열로 나누기" onClick={onSplitTextToColumns} />
+              <Separator />
+              <MenuItem label="데이터 확인" onClick={onDataValidation} />
+              <MenuItem label="이름이 지정된 범위" onClick={onNamedRanges} />
+              <MenuItem label="보호된 시트 및 범위" onClick={onProtectedRanges} />
             </div>
           )}
         </div>
