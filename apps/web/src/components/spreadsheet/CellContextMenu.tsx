@@ -46,8 +46,29 @@ export default function CellContextMenu({
                 onClose();
             }
         };
+
+        const handleKeyDown = (event: KeyboardEvent) => {
+            if (event.key === 'Escape') {
+                onClose();
+            }
+        };
+
+        const handleScroll = () => {
+            onClose();
+        };
+
+        // Listen to both mousedown and click for better UX
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        document.addEventListener('click', handleClickOutside);
+        document.addEventListener('keydown', handleKeyDown);
+        window.addEventListener('scroll', handleScroll, true);
+
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('click', handleClickOutside);
+            document.removeEventListener('keydown', handleKeyDown);
+            window.removeEventListener('scroll', handleScroll, true);
+        };
     }, [onClose]);
 
     // Adjust position to keep menu in viewport
@@ -99,14 +120,11 @@ export default function CellContextMenu({
 
             <Separator />
 
-            {hasSelection && (
-                <>
-                    <div className={styles.subMenuLabel}>서식</div>
-                    <MenuItem label="테이블 서식 적용" onClick={onTableFormat} />
-                    <MenuItem label="조건부 서식" onClick={onConditionalFormat} />
-                    <Separator />
-                </>
-            )}
+            <div className={styles.subMenuLabel}>서식</div>
+            <MenuItem label="테이블 서식 적용" onClick={onTableFormat} />
+            <MenuItem label="조건부 서식" onClick={onConditionalFormat} />
+
+            <Separator />
 
             <MenuItem label="행 삭제" onClick={onDeleteRow} danger />
             <MenuItem label="열 삭제" onClick={onDeleteCol} danger />

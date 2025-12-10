@@ -514,6 +514,20 @@ export default function SpreadsheetCanvas({
 
       const cell = getCellFromPoint(x, y);
       if (cell) {
+        // Right-click: preserve selection if clicked cell is within current selection
+        if (e.button === 2 && selection) {
+          const isWithinSelection =
+            cell.row >= selection.start.row &&
+            cell.row <= selection.end.row &&
+            cell.col >= selection.start.col &&
+            cell.col <= selection.end.col;
+          if (isWithinSelection) {
+            // Don't change selection, just return to let context menu handle it
+            return;
+          }
+        }
+
+        // Left-click or right-click outside selection: start new selection
         setIsSelecting(true);
         setSelectionStart(cell);
         onCellSelect(cell);
