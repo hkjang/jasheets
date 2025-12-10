@@ -1056,6 +1056,7 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
         onTrimWhitespace={handleTrimWhitespace}
         onFormatNumber={(fmt) => updateCellFormat(selection, fmt)}
         onTableFormat={() => setIsTableFormatOpen(true)}
+        onTheme={() => setIsThemeDialogOpen(true)}
         showFormulaBar={showFormulaBar}
         showGridlines={showGridlines}
         zoom={zoom}
@@ -1282,6 +1283,14 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
             }
           }}
           selection={selection}
+        />
+      )}
+
+      {isThemeDialogOpen && (
+        <ThemeDialog
+          isOpen={isThemeDialogOpen}
+          onClose={() => setIsThemeDialogOpen(false)}
+          onApply={handleApplyTheme}
         />
       )}
 
