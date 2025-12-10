@@ -1,0 +1,58 @@
+.menu {
+    position: fixed;
+    z-index: 1000;
+    background: white;
+    border: 1px solid #dadce0;
+    border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+    min-width: 200px;
+    padding: 8px 0;
+    font-size: 13px;
+}
+
+.menuItem {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: 8px 16px;
+    border: none;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    color: #202124;
+    transition: background 0.15s;
+}
+
+.menuItem:hover {
+    background: #f1f3f4;
+}
+
+.menuItem.danger {
+    color: #d93025;
+}
+
+.menuItem.danger:hover {
+    background: #fce8e6;
+}
+
+.shortcut {
+    font-size: 12px;
+    color: #80868b;
+    margin-left: 16px;
+}
+
+.separator {
+    height: 1px;
+    background: #e8eaed;
+    margin: 8px 0;
+}
+
+.subMenuLabel {
+    padding: 6px 16px 4px;
+    font-size: 11px;
+    color: #80868b;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}

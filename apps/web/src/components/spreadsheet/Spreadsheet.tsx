@@ -26,6 +26,7 @@ import KeyboardShortcuts from './KeyboardShortcuts';
 import Toast from '../ui/Toast';
 import ShareDialog from './ShareDialog';
 import HeaderContextMenu from './HeaderContextMenu';
+import CellContextMenu from './CellContextMenu';
 import {
   CellPosition,
   CellRange,
@@ -629,6 +630,9 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
   // Table Format Dialog state
   const [isTableFormatOpen, setIsTableFormatOpen] = useState(false);
 
+  // Cell Context Menu state
+  const [cellContextMenu, setCellContextMenu] = useState<{ x: number; y: number } | null>(null);
+
   // Keyboard Shortcuts state
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
 
@@ -1088,6 +1092,7 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
           onRowResize={handleRowResize}
           showGridlines={showGridlines}
           onHeaderContextMenu={handleHeaderContextMenu}
+          onCellContextMenu={(x, y) => setCellContextMenu({ x, y })}
           isEditing={isEditing}
         />
 
@@ -1276,6 +1281,26 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
             <WorkflowManager spreadsheetId={spreadsheetId} />
           </div>
         </div>
+      )}
+
+      {cellContextMenu && (
+        <CellContextMenu
+          x={cellContextMenu.x}
+          y={cellContextMenu.y}
+          onClose={() => setCellContextMenu(null)}
+          onCut={cutoffToClipboard}
+          onCopy={copyToClipboard}
+          onPaste={pasteFromClipboard}
+          onInsertRowAbove={() => { if (selectedCell) insertRow(selectedCell.row); }}
+          onInsertRowBelow={() => { if (selectedCell) insertRow(selectedCell.row + 1); }}
+          onInsertColLeft={() => { if (selectedCell) insertColumn(selectedCell.col); }}
+          onInsertColRight={() => { if (selectedCell) insertColumn(selectedCell.col + 1); }}
+          onDeleteRow={() => { if (selectedCell) deleteRow(selectedCell.row); }}
+          onDeleteCol={() => { if (selectedCell) deleteColumn(selectedCell.col); }}
+          onTableFormat={() => setIsTableFormatOpen(true)}
+          onConditionalFormat={() => alert('조건부 서식 기능은 메뉴 > 서식 > 조건부 서식에서 사용하세요.')}
+          hasSelection={selection !== null && (selection.start.row !== selection.end.row || selection.start.col !== selection.end.col)}
+        />
       )}
 
       {contextMenu && (

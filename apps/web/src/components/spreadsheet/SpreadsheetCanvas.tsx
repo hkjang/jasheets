@@ -31,6 +31,7 @@ interface SpreadsheetCanvasProps {
   onColumnResize?: (index: number, width: number) => void;
   onRowResize?: (index: number, height: number) => void;
   onHeaderContextMenu?: (x: number, y: number, type: 'row' | 'col', index: number) => void;
+  onCellContextMenu?: (x: number, y: number) => void;
   showGridlines?: boolean;
   isEditing?: boolean;
 }
@@ -49,6 +50,7 @@ export default function SpreadsheetCanvas({
   onColumnResize,
   onRowResize,
   onHeaderContextMenu,
+  onCellContextMenu,
   showGridlines = true,
   isEditing = false,
 }: SpreadsheetCanvasProps) {
@@ -65,7 +67,7 @@ export default function SpreadsheetCanvas({
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<CellPosition | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
-  
+
   // Resize State
   const resizingRef = useRef<{ type: 'col' | 'row', index: number, start: number, initialSize: number } | null>(null);
 
@@ -207,7 +209,7 @@ export default function SpreadsheetCanvas({
     for (let row = startRow; row <= endRow; row++) {
       if (rows[row]?.hidden) continue;
       const rowHeight = rows[row]?.height ?? config.defaultRowHeight;
-      
+
       let currentX = getColX(startCol) - scrollX;
       for (let col = startCol; col <= endCol; col++) {
         if (columns[col]?.hidden) continue;
@@ -240,77 +242,77 @@ export default function SpreadsheetCanvas({
         // Apply conditional formatting
         let conditionalStyle = {};
         for (const rule of conditionalRules) {
-             const isInRuleRange = 
-               row >= rule.range.startRow && 
-               row <= rule.range.endRow && 
-               col >= rule.range.startCol && 
-               col <= rule.range.endCol;
-             
-             if (isInRuleRange) {
-               const value = cellData?.value;
-               const cellValue = typeof value === 'number' ? value : String(value ?? '');
-               const ruleValue = parseFloat(rule.value);
-               const ruleValue2 = parseFloat(rule.value2 || '0');
-               
-               let match = false;
-               
-               if (rule.type === 'greaterThan' && typeof cellValue === 'number') {
-                 match = cellValue > ruleValue;
-               } else if (rule.type === 'lessThan' && typeof cellValue === 'number') {
-                 match = cellValue < ruleValue;
-               } else if (rule.type === 'equalTo') {
-                 // eslint-disable-next-line eqeqeq
-                 match = cellValue == rule.value;
-               } else if (rule.type === 'contains') {
-                 match = String(cellValue).includes(rule.value);
-               } else if (rule.type === 'between' && typeof cellValue === 'number') {
-                 match = cellValue >= ruleValue && cellValue <= ruleValue2;
-               }
-               
-               if (match) {
-                 conditionalStyle = { ...conditionalStyle, ...rule.style };
-               }
-             }
+          const isInRuleRange =
+            row >= rule.range.startRow &&
+            row <= rule.range.endRow &&
+            col >= rule.range.startCol &&
+            col <= rule.range.endCol;
+
+          if (isInRuleRange) {
+            const value = cellData?.value;
+            const cellValue = typeof value === 'number' ? value : String(value ?? '');
+            const ruleValue = parseFloat(rule.value);
+            const ruleValue2 = parseFloat(rule.value2 || '0');
+
+            let match = false;
+
+            if (rule.type === 'greaterThan' && typeof cellValue === 'number') {
+              match = cellValue > ruleValue;
+            } else if (rule.type === 'lessThan' && typeof cellValue === 'number') {
+              match = cellValue < ruleValue;
+            } else if (rule.type === 'equalTo') {
+              // eslint-disable-next-line eqeqeq
+              match = cellValue == rule.value;
+            } else if (rule.type === 'contains') {
+              match = String(cellValue).includes(rule.value);
+            } else if (rule.type === 'between' && typeof cellValue === 'number') {
+              match = cellValue >= ruleValue && cellValue <= ruleValue2;
+            }
+
+            if (match) {
+              conditionalStyle = { ...conditionalStyle, ...rule.style };
+            }
+          }
         }
-        
+
         // Apply conditional background if present
         // @ts-ignore
         if (conditionalStyle.backgroundColor) {
-             // @ts-ignore
-             ctx.fillStyle = conditionalStyle.backgroundColor;
-             ctx.fillRect(currentX, currentY, colWidth, rowHeight);
+          // @ts-ignore
+          ctx.fillStyle = conditionalStyle.backgroundColor;
+          ctx.fillRect(currentX, currentY, colWidth, rowHeight);
         }
 
         // Draw cell border
         if (showGridlines) {
-            ctx.strokeStyle = '#e2e2e2';
-            ctx.lineWidth = 1;
-            ctx.strokeRect(currentX + 0.5, currentY + 0.5, colWidth, rowHeight);
+          ctx.strokeStyle = '#e2e2e2';
+          ctx.lineWidth = 1;
+          ctx.strokeRect(currentX + 0.5, currentY + 0.5, colWidth, rowHeight);
         }
 
         // Draw cell content
         if (cellData) {
           const displayValue = cellData.error || cellData.displayValue || String(cellData.value ?? '');
-          
+
           // @ts-ignore
           ctx.fillStyle = conditionalStyle.color || (cellData.error ? '#ea4335' : (cellData.style?.color || '#202124'));
-          
+
           // @ts-ignore
           const fontWeight = conditionalStyle.fontWeight || cellData.style?.fontWeight;
           // @ts-ignore
           const fontStyle = conditionalStyle.fontStyle || cellData.style?.fontStyle;
-          
+
           ctx.font = `${fontWeight === 'bold' ? 'bold ' : ''}${fontStyle === 'italic' ? 'italic ' : ''}${cellData.style?.fontSize || 13}px ${cellData.style?.fontFamily || 'Arial'}`;
-          
-          const textX = cellData.style?.textAlign === 'center' 
-            ? currentX + colWidth / 2 
+
+          const textX = cellData.style?.textAlign === 'center'
+            ? currentX + colWidth / 2
             : cellData.style?.textAlign === 'right'
               ? currentX + colWidth - 4
               : currentX + 4;
-          
+
           ctx.textAlign = (cellData.style?.textAlign as CanvasTextAlign) || 'left';
           ctx.textBaseline = 'middle';
-          
+
           // Clip text to cell bounds
           ctx.save();
           ctx.beginPath();
@@ -319,7 +321,7 @@ export default function SpreadsheetCanvas({
           ctx.fillText(displayValue, textX, currentY + rowHeight / 2);
           ctx.restore();
         }
-        
+
         currentX += colWidth;
       }
       currentY += rowHeight;
@@ -347,7 +349,7 @@ export default function SpreadsheetCanvas({
       const selStartY = getRowY(selection.start.row) - scrollY;
       let selWidth = 0;
       let selHeight = 0;
-      
+
       for (let c = selection.start.col; c <= selection.end.col; c++) {
         selWidth += columns[c]?.width ?? config.defaultColWidth;
       }
@@ -373,9 +375,9 @@ export default function SpreadsheetCanvas({
       if (columns[col]?.hidden) continue;
       const colX = getColX(col) - scrollX;
       const colWidth = columns[col]?.width ?? config.defaultColWidth;
-      
+
       const isColSelected = selection && col >= selection.start.col && col <= selection.end.col;
-      
+
       if (isColSelected) {
         ctx.fillStyle = '#e8f0fe';
         ctx.fillRect(colX, 0, colWidth, config.headerHeight);
@@ -397,9 +399,9 @@ export default function SpreadsheetCanvas({
       if (rows[row]?.hidden) continue;
       const rowY = getRowY(row) - scrollY;
       const rowHeight = rows[row]?.height ?? config.defaultRowHeight;
-      
+
       const isRowSelected = selection && row >= selection.start.row && row <= selection.end.row;
-      
+
       if (isRowSelected) {
         ctx.fillStyle = '#e8f0fe';
         ctx.fillRect(0, rowY, config.headerWidth, rowHeight);
@@ -483,31 +485,31 @@ export default function SpreadsheetCanvas({
 
       // Check for structural resize (Headers)
       if (y < config.headerHeight && x > config.headerWidth) {
-          // Check Col Resize
-          let currentX = config.headerWidth - viewport.scrollX;
-          for (let i = 0; i < config.totalCols; i++) {
-               const width = columns[i]?.width ?? config.defaultColWidth;
-               if (Math.abs(x - (currentX + width)) < 5) {
-                   resizingRef.current = { type: 'col', index: i, start: e.clientX, initialSize: width };
-                   return;
-               }
-               currentX += width;
-               if (currentX > canvasSize.width) break;
+        // Check Col Resize
+        let currentX = config.headerWidth - viewport.scrollX;
+        for (let i = 0; i < config.totalCols; i++) {
+          const width = columns[i]?.width ?? config.defaultColWidth;
+          if (Math.abs(x - (currentX + width)) < 5) {
+            resizingRef.current = { type: 'col', index: i, start: e.clientX, initialSize: width };
+            return;
           }
+          currentX += width;
+          if (currentX > canvasSize.width) break;
+        }
       } else if (x < config.headerWidth && y < config.headerHeight) {
-          // Corner - do nothing for now
+        // Corner - do nothing for now
       } else if (x < config.headerWidth && y > config.headerHeight) {
-           // Check Row Resize
-           let currentY = config.headerHeight - viewport.scrollY;
-           for (let i = 0; i < config.totalRows; i++) {
-               const height = rows[i]?.height ?? config.defaultRowHeight;
-               if (Math.abs(y - (currentY + height)) < 5) {
-                   resizingRef.current = { type: 'row', index: i, start: e.clientY, initialSize: height };
-                   return;
-               }
-               currentY += height;
-               if (currentY > canvasSize.height) break;
-           }
+        // Check Row Resize
+        let currentY = config.headerHeight - viewport.scrollY;
+        for (let i = 0; i < config.totalRows; i++) {
+          const height = rows[i]?.height ?? config.defaultRowHeight;
+          if (Math.abs(y - (currentY + height)) < 5) {
+            resizingRef.current = { type: 'row', index: i, start: e.clientY, initialSize: height };
+            return;
+          }
+          currentY += height;
+          if (currentY > canvasSize.height) break;
+        }
       }
 
       const cell = getCellFromPoint(x, y);
@@ -517,40 +519,40 @@ export default function SpreadsheetCanvas({
         onCellSelect(cell);
         onSelectionChange({ start: cell, end: cell });
       } else if (y < config.headerHeight && x > config.headerWidth) {
-          // Click on Col Header -> Select Col
-          let col = -1;
-          let currentX = config.headerWidth - viewport.scrollX;
-          for (let i = 0; i < config.totalCols; i++) {
-               const width = columns[i]?.width ?? config.defaultColWidth;
-               if (x >= currentX && x < currentX + width) {
-                   col = i;
-                   break;
-               }
-               currentX += width;
+        // Click on Col Header -> Select Col
+        let col = -1;
+        let currentX = config.headerWidth - viewport.scrollX;
+        for (let i = 0; i < config.totalCols; i++) {
+          const width = columns[i]?.width ?? config.defaultColWidth;
+          if (x >= currentX && x < currentX + width) {
+            col = i;
+            break;
           }
-           if (col >= 0) {
-               // Select whole column logic? For now selecting first 1000 rows
-               const range = { start: { row: 0, col }, end: { row: config.totalRows - 1, col } };
-               onSelectionChange(range);
-               onCellSelect({ row: 0, col }); 
-           }
+          currentX += width;
+        }
+        if (col >= 0) {
+          // Select whole column logic? For now selecting first 1000 rows
+          const range = { start: { row: 0, col }, end: { row: config.totalRows - 1, col } };
+          onSelectionChange(range);
+          onCellSelect({ row: 0, col });
+        }
       } else if (x < config.headerWidth && y > config.headerHeight) {
-           // Click on Row Header -> Select Row
-           let row = -1;
-           let currentY = config.headerHeight - viewport.scrollY;
-           for (let i = 0; i < config.totalRows; i++) {
-               const height = rows[i]?.height ?? config.defaultRowHeight;
-               if (y >= currentY && y < currentY + height) {
-                   row = i;
-                   break;
-               }
-               currentY += height;
-           }
-           if (row >= 0) {
-              const range = { start: { row, col: 0 }, end: { row, col: config.totalCols - 1 } };
-              onSelectionChange(range);
-              onCellSelect({ row, col: 0 });
-           }
+        // Click on Row Header -> Select Row
+        let row = -1;
+        let currentY = config.headerHeight - viewport.scrollY;
+        for (let i = 0; i < config.totalRows; i++) {
+          const height = rows[i]?.height ?? config.defaultRowHeight;
+          if (y >= currentY && y < currentY + height) {
+            row = i;
+            break;
+          }
+          currentY += height;
+        }
+        if (row >= 0) {
+          const range = { start: { row, col: 0 }, end: { row, col: config.totalCols - 1 } };
+          onSelectionChange(range);
+          onCellSelect({ row, col: 0 });
+        }
       }
     },
     [getCellFromPoint, onCellSelect, onSelectionChange, config, columns, rows, viewport, canvasSize]
@@ -568,50 +570,50 @@ export default function SpreadsheetCanvas({
 
       // Handle Resize
       if (resizingRef.current) {
-          const { type, index, start, initialSize } = resizingRef.current;
-          if (type === 'col') {
-             const diff = e.clientX - start;
-             const newWidth = Math.max(config.minColWidth, initialSize + diff);
-             onColumnResize?.(index, newWidth);
-          } else {
-             const diff = e.clientY - start;
-             const newHeight = Math.max(config.minRowHeight, initialSize + diff);
-             onRowResize?.(index, newHeight);
-          }
-          return;
+        const { type, index, start, initialSize } = resizingRef.current;
+        if (type === 'col') {
+          const diff = e.clientX - start;
+          const newWidth = Math.max(config.minColWidth, initialSize + diff);
+          onColumnResize?.(index, newWidth);
+        } else {
+          const diff = e.clientY - start;
+          const newHeight = Math.max(config.minRowHeight, initialSize + diff);
+          onRowResize?.(index, newHeight);
+        }
+        return;
       }
-      
+
       // Cursor logic
       let cursor = 'default';
       if (y < config.headerHeight && x > config.headerWidth) {
-           let currentX = config.headerWidth - viewport.scrollX;
-           for (let i = 0; i < config.totalCols; i++) {
-               const width = columns[i]?.width ?? config.defaultColWidth;
-               if (Math.abs(x - (currentX + width)) < 5) {
-                   cursor = 'col-resize';
-                   break;
-               }
-               currentX += width;
-               if (currentX > canvasSize.width) break;
-           }
-           if (cursor === 'default') cursor = 's-resize'; // Click to select column pointer? 's-resize' looks weird. 'pointer' or 's-resize' is for row resize... 'chevron-down'?
-             // Actually standard is down arrow for selection, or col-resize for edge.
-             // Let's use 'pointer' for header selection for now
-             if (cursor === 'default') cursor = 'pointer';
+        let currentX = config.headerWidth - viewport.scrollX;
+        for (let i = 0; i < config.totalCols; i++) {
+          const width = columns[i]?.width ?? config.defaultColWidth;
+          if (Math.abs(x - (currentX + width)) < 5) {
+            cursor = 'col-resize';
+            break;
+          }
+          currentX += width;
+          if (currentX > canvasSize.width) break;
+        }
+        if (cursor === 'default') cursor = 's-resize'; // Click to select column pointer? 's-resize' looks weird. 'pointer' or 's-resize' is for row resize... 'chevron-down'?
+        // Actually standard is down arrow for selection, or col-resize for edge.
+        // Let's use 'pointer' for header selection for now
+        if (cursor === 'default') cursor = 'pointer';
       } else if (x < config.headerWidth && y > config.headerHeight) {
-           let currentY = config.headerHeight - viewport.scrollY;
-           for (let i = 0; i < config.totalRows; i++) {
-               const height = rows[i]?.height ?? config.defaultRowHeight;
-               if (Math.abs(y - (currentY + height)) < 5) {
-                   cursor = 'row-resize';
-                   break;
-               }
-               currentY += height;
-                if (currentY > canvasSize.height) break;
-           }
-           if (cursor === 'default') cursor = 'pointer';
+        let currentY = config.headerHeight - viewport.scrollY;
+        for (let i = 0; i < config.totalRows; i++) {
+          const height = rows[i]?.height ?? config.defaultRowHeight;
+          if (Math.abs(y - (currentY + height)) < 5) {
+            cursor = 'row-resize';
+            break;
+          }
+          currentY += height;
+          if (currentY > canvasSize.height) break;
+        }
+        if (cursor === 'default') cursor = 'pointer';
       } else if (x > config.headerWidth && y > config.headerHeight) {
-          cursor = 'cell'; 
+        cursor = 'cell';
       }
       canvas.style.cursor = cursor;
 
@@ -645,39 +647,43 @@ export default function SpreadsheetCanvas({
   }, []);
 
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-      e.preventDefault();
+    e.preventDefault();
+
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+
+    if (y < config.headerHeight && x > config.headerWidth) {
+      // Col Header
       if (!onHeaderContextMenu) return;
-
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-      const rect = canvas.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-
-      if (y < config.headerHeight && x > config.headerWidth) {
-           // Col Header
-           let currentX = config.headerWidth - viewport.scrollX;
-           for (let i = 0; i < config.totalCols; i++) {
-               const width = columns[i]?.width ?? config.defaultColWidth;
-               if (x >= currentX && x < currentX + width) {
-                   onHeaderContextMenu(e.clientX, e.clientY, 'col', i);
-                   return;
-               }
-               currentX += width;
-           }
-      } else if (x < config.headerWidth && y > config.headerHeight) {
-           // Row Header
-           let currentY = config.headerHeight - viewport.scrollY;
-           for (let i = 0; i < config.totalRows; i++) {
-               const height = rows[i]?.height ?? config.defaultRowHeight;
-               if (y >= currentY && y < currentY + height) {
-                    onHeaderContextMenu(e.clientX, e.clientY, 'row', i);
-                    return;
-               }
-               currentY += height;
-           }
+      let currentX = config.headerWidth - viewport.scrollX;
+      for (let i = 0; i < config.totalCols; i++) {
+        const width = columns[i]?.width ?? config.defaultColWidth;
+        if (x >= currentX && x < currentX + width) {
+          onHeaderContextMenu(e.clientX, e.clientY, 'col', i);
+          return;
+        }
+        currentX += width;
       }
-  }, [config, viewport, onHeaderContextMenu, columns, rows]);
+    } else if (x < config.headerWidth && y > config.headerHeight) {
+      // Row Header
+      if (!onHeaderContextMenu) return;
+      let currentY = config.headerHeight - viewport.scrollY;
+      for (let i = 0; i < config.totalRows; i++) {
+        const height = rows[i]?.height ?? config.defaultRowHeight;
+        if (y >= currentY && y < currentY + height) {
+          onHeaderContextMenu(e.clientX, e.clientY, 'row', i);
+          return;
+        }
+        currentY += height;
+      }
+    } else if (x > config.headerWidth && y > config.headerHeight) {
+      // Cell area - trigger cell context menu
+      onCellContextMenu?.(e.clientX, e.clientY);
+    }
+  }, [config, viewport, onHeaderContextMenu, onCellContextMenu, columns, rows]);
 
   // Handle double click for editing
   const handleDoubleClick = useCallback(
@@ -710,7 +716,7 @@ export default function SpreadsheetCanvas({
   const totalHeight = useMemo(() => {
     let height = config.headerHeight;
     for (let i = 0; i < config.totalRows; i++) {
-        if (rows[i]?.hidden) continue;
+      if (rows[i]?.hidden) continue;
       height += rows[i]?.height ?? config.defaultRowHeight;
     }
     return height;
