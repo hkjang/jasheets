@@ -51,7 +51,7 @@ export default function SpreadsheetPage() {
           if (firstSheet.cells) {
             firstSheet.cells.forEach((c: any) => {
               if (!sheetData[c.row]) sheetData[c.row] = {};
-              sheetData[c.row][c.col] = { value: c.value, style: c.style, formula: c.formula };
+              sheetData[c.row][c.col] = { value: c.value, style: c.format, formula: c.formula };
             });
           }
           setData(sheetData);

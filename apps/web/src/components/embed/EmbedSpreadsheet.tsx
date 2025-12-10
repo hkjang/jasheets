@@ -80,7 +80,7 @@ export default function EmbedSpreadsheet({
         if (sheet.cells) {
             sheet.cells.forEach((c: any) => {
                 if (!newData[c.row]) newData[c.row] = {};
-                newData[c.row][c.col] = { value: c.value, style: c.style, formula: c.formula };
+                newData[c.row][c.col] = { value: c.value, style: c.format, formula: c.formula };
             });
         }
         setCurrentData(newData);
