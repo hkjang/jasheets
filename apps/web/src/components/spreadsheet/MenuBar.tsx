@@ -114,12 +114,12 @@ export default function MenuBar({
   };
 
   const MenuItem = ({ label, onClick, shortcut }: { label: string; onClick?: () => void; shortcut?: string }) => (
-    <div 
-        className={styles.menuItem} 
-        onClick={() => {
-            onClick?.();
-            setActiveMenu(null);
-        }}
+    <div
+      className={styles.menuItem}
+      onClick={() => {
+        onClick?.();
+        setActiveMenu(null);
+      }}
     >
       <span className={styles.menuLabel}>{label}</span>
       {shortcut && <span className={styles.menuShortcut}>{shortcut}</span>}
@@ -131,26 +131,26 @@ export default function MenuBar({
   return (
     <div className={styles.container} ref={menuRef}>
       <div className={styles.leftSection}>
-          <Link href="/dashboard" className={styles.logo} title="대시보드로 이동">
-            <svg viewBox="0 0 24 24" width="24" height="24" fill="#0f9d58">
-                <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/>
-            </svg>
-          </Link>
-          <div className={styles.titleContainer}>
-              <input 
-                  type="text" 
-                  value={title || 'Untitled Spreadsheet'} 
-                  onChange={(e) => onTitleChange?.(e.target.value)}
-                  className={styles.titleInput}
-                  placeholder="제목 없는 스프레드시트"
-              />
-          </div>
+        <Link href="/dashboard" className={styles.logo} title="대시보드로 이동">
+          <svg viewBox="0 0 24 24" width="24" height="24" fill="#0f9d58">
+            <path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z" />
+          </svg>
+        </Link>
+        <div className={styles.titleContainer}>
+          <input
+            type="text"
+            value={title || 'Untitled Spreadsheet'}
+            onChange={(e) => onTitleChange?.(e.target.value)}
+            className={styles.titleInput}
+            placeholder="제목 없는 스프레드시트"
+          />
+        </div>
       </div>
 
       <div className={styles.menus}>
         {/* FILE MENU */}
         <div className={styles.menuWrapper}>
-          <button 
+          <button
             className={`${styles.menuButton} ${activeMenu === 'file' ? styles.active : ''}`}
             onClick={() => handleMenuClick('file')}
             onMouseEnter={() => handleMouseEnter('file')}
@@ -181,7 +181,7 @@ export default function MenuBar({
 
         {/* EDIT MENU */}
         <div className={styles.menuWrapper}>
-          <button 
+          <button
             className={`${styles.menuButton} ${activeMenu === 'edit' ? styles.active : ''}`}
             onClick={() => handleMenuClick('edit')}
             onMouseEnter={() => handleMouseEnter('edit')}
@@ -207,7 +207,7 @@ export default function MenuBar({
 
         {/* INSERT MENU */}
         <div className={styles.menuWrapper}>
-          <button 
+          <button
             className={`${styles.menuButton} ${activeMenu === 'insert' ? styles.active : ''}`}
             onClick={() => handleMenuClick('insert')}
             onMouseEnter={() => handleMouseEnter('insert')}
@@ -231,7 +231,7 @@ export default function MenuBar({
 
         {/* VIEW MENU */}
         <div className={styles.menuWrapper}>
-          <button 
+          <button
             className={`${styles.menuButton} ${activeMenu === 'view' ? styles.active : ''}`}
             onClick={() => handleMenuClick('view')}
             onMouseEnter={() => handleMouseEnter('view')}
@@ -264,7 +264,7 @@ export default function MenuBar({
 
         {/* FORMAT MENU */}
         <div className={styles.menuWrapper}>
-          <button 
+          <button
             className={`${styles.menuButton} ${activeMenu === 'format' ? styles.active : ''}`}
             onClick={() => handleMenuClick('format')}
             onMouseEnter={() => handleMouseEnter('format')}
@@ -273,28 +273,28 @@ export default function MenuBar({
           </button>
           {activeMenu === 'format' && (
             <div className={styles.dropdown}>
-               <MenuItem label="테마" onClick={() => alert('테마 설정은 아직 지원하지 않습니다.')} />
-               <div className={styles.submenu}>
-                 <span className={styles.menuLabel}>숫자 형식</span>
-                 <div className={styles.submenuDropdown}>
-                   <MenuItem label="자동" onClick={() => onFormatNumber?.('general')} />
-                   <MenuItem label="일반 숫자" onClick={() => onFormatNumber?.('number')} />
-                   <MenuItem label="통화" onClick={() => onFormatNumber?.('currency')} />
-                   <MenuItem label="퍼센트" onClick={() => onFormatNumber?.('percent')} />
-                   <MenuItem label="날짜" onClick={() => onFormatNumber?.('date')} />
-                   <MenuItem label="시간" onClick={() => onFormatNumber?.('time')} />
-                 </div>
-               </div>
-               <MenuItem label="텍스트" onClick={() => onFormatNumber?.('text')} />
-               <Separator />
-               <MenuItem label="조건부 서식" onClick={onConditionalFormat} />
+              <MenuItem label="테마" onClick={() => alert('테마 설정은 아직 지원하지 않습니다.')} />
+              <div className={styles.submenu}>
+                <span className={styles.menuLabel}>숫자 형식</span>
+                <div className={styles.submenuDropdown}>
+                  <MenuItem label="자동" onClick={() => onFormatNumber?.('general')} />
+                  <MenuItem label="일반 숫자" onClick={() => onFormatNumber?.('number')} />
+                  <MenuItem label="통화" onClick={() => onFormatNumber?.('currency')} />
+                  <MenuItem label="퍼센트" onClick={() => onFormatNumber?.('percent')} />
+                  <MenuItem label="날짜" onClick={() => onFormatNumber?.('date')} />
+                  <MenuItem label="시간" onClick={() => onFormatNumber?.('time')} />
+                </div>
+              </div>
+              <MenuItem label="텍스트" onClick={() => onFormatNumber?.('text')} />
+              <Separator />
+              <MenuItem label="조건부 서식" onClick={onConditionalFormat} />
             </div>
           )}
         </div>
-        
-         {/* DATA MENU */}
+
+        {/* DATA MENU */}
         <div className={styles.menuWrapper}>
-          <button 
+          <button
             className={`${styles.menuButton} ${activeMenu === 'data' ? styles.active : ''}`}
             onClick={() => handleMenuClick('data')}
             onMouseEnter={() => handleMouseEnter('data')}
@@ -303,20 +303,20 @@ export default function MenuBar({
           </button>
           {activeMenu === 'data' && (
             <div className={styles.dropdown}>
-               <MenuItem label="시트 정렬 (A-Z)" onClick={onSort} />
-               <MenuItem label="시트 정렬 (Z-A)" onClick={onSort} />
-               <Separator />
-               <MenuItem label="필터" onClick={onFilter} />
-               <Separator />
-               <MenuItem label="데이터 확인" onClick={() => alert('데이터 확인은 아직 지원하지 않습니다.')} />
-               <MenuItem label="공백 제거" onClick={onTrimWhitespace} />
+              <MenuItem label="시트 정렬 (A-Z)" onClick={onSort} />
+              <MenuItem label="시트 정렬 (Z-A)" onClick={onSort} />
+              <Separator />
+              <MenuItem label="필터" onClick={onFilter} />
+              <Separator />
+              <MenuItem label="데이터 확인" onClick={() => alert('데이터 확인은 아직 지원하지 않습니다.')} />
+              <MenuItem label="공백 제거" onClick={onTrimWhitespace} />
             </div>
           )}
         </div>
 
         {/* HELP MENU */}
         <div className={styles.menuWrapper}>
-          <button 
+          <button
             className={`${styles.menuButton} ${activeMenu === 'help' ? styles.active : ''}`}
             onClick={() => handleMenuClick('help')}
             onMouseEnter={() => handleMouseEnter('help')}
@@ -325,13 +325,13 @@ export default function MenuBar({
           </button>
           {activeMenu === 'help' && (
             <div className={styles.dropdown}>
-               <MenuItem label="도움말 검색" onClick={() => window.open('https://support.google.com/docs/answer/6000292', '_blank')} />
-               <MenuItem label="단축키" onClick={onShowShortcuts} shortcut="Ctrl+/" />
-               <Separator />
-               <MenuItem label="업데이트 및 새 기능" onClick={() => alert('최신 버전을 사용 중입니다.')} />
-               <Separator />
-               <MenuItem label="개인정보처리방침" onClick={() => window.open('/privacy', '_blank')} />
-               <MenuItem label="서비스 약관" onClick={() => window.open('/terms', '_blank')} />
+              <MenuItem label="도움말 검색" onClick={() => window.open('/help', '_blank')} />
+              <MenuItem label="단축키" onClick={onShowShortcuts} shortcut="Ctrl+/" />
+              <Separator />
+              <MenuItem label="업데이트 및 새 기능" onClick={() => window.open('/updates', '_blank')} />
+              <Separator />
+              <MenuItem label="개인정보처리방침" onClick={() => window.open('/privacy', '_blank')} />
+              <MenuItem label="서비스 약관" onClick={() => window.open('/terms', '_blank')} />
             </div>
           )}
         </div>
