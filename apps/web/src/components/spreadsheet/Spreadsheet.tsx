@@ -341,10 +341,10 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
         await api.spreadsheets.saveCharts(activeSheetId, charts);
       }
 
-      alert('저장되었습니다.');
+      setToastMessage('저장되었습니다.');
     } catch (e) {
       console.error(e);
-      alert('저장 중 오류가 발생했습니다.');
+      setToastMessage('저장 중 오류가 발생했습니다.');
     }
   }, [data, activeSheetId, charts]);
 
