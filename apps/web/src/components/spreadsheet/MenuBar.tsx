@@ -44,6 +44,7 @@ interface MenuBarProps {
   onTrimWhitespace?: () => void;
   onFormatNumber?: (format: string) => void;
   onTableFormat?: () => void;
+  onTheme?: () => void;
   showFormulaBar?: boolean;
   showGridlines?: boolean;
   zoom?: number;
@@ -87,6 +88,7 @@ export default function MenuBar({
   onTrimWhitespace,
   onFormatNumber,
   onTableFormat,
+  onTheme,
   showFormulaBar = true,
   showGridlines = true,
   zoom = 100,
@@ -275,7 +277,7 @@ export default function MenuBar({
           </button>
           {activeMenu === 'format' && (
             <div className={styles.dropdown}>
-              <MenuItem label="테마" onClick={() => alert('테마 설정은 아직 지원하지 않습니다.')} />
+              <MenuItem label="테마" onClick={onTheme} />
               <div className={styles.submenu}>
                 <span className={styles.menuLabel}>숫자 형식</span>
                 <div className={styles.submenuDropdown}>

@@ -15,6 +15,7 @@ import ChartOverlay from '../charts/ChartOverlay';
 import VersionHistorySidebar from './VersionHistorySidebar';
 import ConditionalFormattingDialog, { ConditionalRule } from './ConditionalFormattingDialog';
 import TableFormatDialog, { TableFormatConfig } from './TableFormatDialog';
+import ThemeDialog, { Theme } from './ThemeDialog';
 import FindDialog from './FindDialog';
 
 // ... (in Spreadsheet component)
@@ -630,6 +631,9 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
   // Table Format Dialog state
   const [isTableFormatOpen, setIsTableFormatOpen] = useState(false);
 
+  // Theme Dialog state
+  const [isThemeDialogOpen, setIsThemeDialogOpen] = useState(false);
+
   // Cell Context Menu state
   const [cellContextMenu, setCellContextMenu] = useState<{ x: number; y: number } | null>(null);
 
@@ -665,6 +669,50 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
 
   // Link Dialog state
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
+
+  // Handler for applying theme to selected range
+  const handleApplyTheme = useCallback((theme: Theme) => {
+    if (!selection) {
+      alert('테마를 적용할 셀 범위를 먼저 선택해주세요.');
+      return;
+    }
+
+    const updates: { row: number; col: number; value: string }[] = [];
+    const startRow = Math.min(selection.start.row, selection.end.row);
+    const endRow = Math.max(selection.start.row, selection.end.row);
+    const startCol = Math.min(selection.start.col, selection.end.col);
+    const endCol = Math.max(selection.start.col, selection.end.col);
+
+    // Apply styles to header row (first row of selection)
+    for (let c = startCol; c <= endCol; c++) {
+      updateCellStyle(
+        { start: { row: startRow, col: c }, end: { row: startRow, col: c } },
+        {
+          backgroundColor: theme.colors.headerBg,
+          color: theme.colors.headerText,
+          fontWeight: 'bold',
+        }
+      );
+    }
+
+    // Apply alternating row colors to remaining rows
+    for (let r = startRow + 1; r <= endRow; r++) {
+      const isEvenRow = (r - startRow) % 2 === 0;
+      const bgColor = isEvenRow ? theme.colors.evenRowBg : theme.colors.oddRowBg;
+
+      for (let c = startCol; c <= endCol; c++) {
+        updateCellStyle(
+          { start: { row: r, col: c }, end: { row: r, col: c } },
+          {
+            backgroundColor: bgColor,
+            color: '#202124',
+          }
+        );
+      }
+    }
+
+    setToastMessage(`'${theme.name}' 테마가 적용되었습니다.`);
+  }, [selection, updateCellStyle]);
 
   // Handler for clearing all freeze (rows and columns)
   const handleUnfreeze = useCallback(() => {
