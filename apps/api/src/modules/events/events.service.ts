@@ -175,17 +175,30 @@ export class EventsService {
     const transactionId = crypto.randomUUID();
     const cellCoordinate = this.toCellRef(event.row, event.col);
 
+    this.logger.log(`[Trigger] Cell change detected: ${cellCoordinate} in sheet ${event.sheetId}`);
+    this.logger.debug(`[Trigger] Event details: ${JSON.stringify({ ...event, transactionId })}`);
+
     // Find matching rules
     const rules = await this.findMatchingRules(event);
+    this.logger.log(`[Trigger] Found ${rules.length} matching rule(s) for cell ${cellCoordinate}`);
+
+    if (rules.length === 0) {
+      this.logger.debug(`[Trigger] No rules matched for spreadsheet ${event.spreadsheetId}`);
+      return;
+    }
 
     for (const rule of rules) {
+      this.logger.log(`[Trigger] Processing rule: ${rule.name} (${rule.id})`);
+
       // Apply filters
       if (!this.matchesFilter(event, rule.filterConditions as FilterConditions)) {
+        this.logger.debug(`[Trigger] Rule ${rule.name} filtered out by conditions`);
         continue;
       }
 
       // Handle batch mode
       if (rule.batchMode && rule.batchWindow) {
+        this.logger.debug(`[Trigger] Rule ${rule.name} added to batch queue`);
         this.addToBatch(rule.id, event, rule.batchWindow);
         continue;
       }
@@ -194,37 +207,80 @@ export class EventsService {
       await this.logEvent(rule.id, event, transactionId, cellCoordinate);
 
       // Trigger webhook or flow
+      this.logger.log(`[Trigger] Triggering actions for rule: ${rule.name}`);
       await this.triggerActions(rule, event, transactionId);
     }
   }
 
   async detectMultiCellChange(events: CellChangeEvent[]): Promise<void> {
-    const transactionId = crypto.randomUUID();
-
     if (events.length === 0) return;
 
+    const transactionId = crypto.randomUUID();
     const spreadsheetId = events[0].spreadsheetId;
     const sheetId = events[0].sheetId;
 
-    // Find rules that match MULTI_CELL_CHANGE
+    this.logger.log(`[detectMultiCellChange] Processing ${events.length} cell change events as batch`);
+
+    // Find all active rules for this spreadsheet (CELL_CHANGE or MULTI_CELL_CHANGE)
     const rules = await this.prisma.eventRule.findMany({
       where: {
         spreadsheetId,
         active: true,
-        eventTypes: { has: EventType.MULTI_CELL_CHANGE },
+        OR: [
+          { targetType: TargetType.SPREADSHEET },
+          { targetType: TargetType.SHEET, sheetId },
+          { targetType: TargetType.RANGE },
+          { targetType: TargetType.CELL },
+          { targetType: TargetType.CELL_GROUP },
+        ],
       },
       include: { webhook: true, flow: true },
     });
 
+    this.logger.log(`[detectMultiCellChange] Found ${rules.length} candidate rules`);
+
+    // Group matched events by rule
     for (const rule of rules) {
-      // Log events
-      for (const event of events) {
+      // Check eventTypes - must include CELL_CHANGE or MULTI_CELL_CHANGE
+      const hasMatchingEventType = rule.eventTypes.some(
+        (et: string) => et === 'CELL_CHANGE' || et === 'MULTI_CELL_CHANGE'
+      );
+      if (!hasMatchingEventType) {
+        this.logger.debug(`[detectMultiCellChange] Rule ${rule.name} skipped: no matching eventType`);
+        continue;
+      }
+
+      // Filter events that match this rule's target
+      const matchedEvents = events.filter(event => {
+        if (rule.targetType === TargetType.SPREADSHEET || rule.targetType === TargetType.SHEET) {
+          return true;
+        }
+        if (rule.targetType === TargetType.RANGE && rule.cellRange) {
+          return this.isInRange(event.row, event.col, rule.cellRange);
+        }
+        if (rule.targetType === TargetType.CELL || rule.targetType === TargetType.CELL_GROUP) {
+          const coords = rule.cellCoordinates as { row: number; col: number }[] | null;
+          return coords?.some(c => c.row === event.row && c.col === event.col);
+        }
+        return false;
+      });
+
+      if (matchedEvents.length === 0) {
+        this.logger.debug(`[detectMultiCellChange] Rule ${rule.name}: no matching events`);
+        continue;
+      }
+
+      this.logger.log(`[detectMultiCellChange] Rule ${rule.name}: ${matchedEvents.length} matched events`);
+
+      // Log all events for this rule
+      for (const event of matchedEvents) {
         const cellCoordinate = this.toCellRef(event.row, event.col);
         await this.logEvent(rule.id, event, transactionId, cellCoordinate);
       }
 
-      // Trigger actions with batch data
-      await this.triggerActions(rule, events, transactionId);
+      // Trigger actions ONCE with all matched events as batch
+      this.logger.log(`[detectMultiCellChange] Triggering batch action for rule: ${rule.name}`);
+      await this.triggerActions(rule, matchedEvents, transactionId);
     }
   }
 
@@ -258,6 +314,8 @@ export class EventsService {
   }
 
   private async findMatchingRules(event: CellChangeEvent) {
+    this.logger.debug(`[findMatchingRules] Looking for rules: spreadsheetId=${event.spreadsheetId}, sheetId=${event.sheetId}, row=${event.row}, col=${event.col}`);
+
     const rules = await this.prisma.eventRule.findMany({
       where: {
         spreadsheetId: event.spreadsheetId,
@@ -273,23 +331,43 @@ export class EventsService {
       include: { webhook: true, flow: true },
     });
 
-    // Filter by cell range/coordinates
-    return rules.filter(rule => {
+    this.logger.debug(`[findMatchingRules] Found ${rules.length} candidate rules before filtering`);
+
+    // Filter by cell range/coordinates AND eventTypes
+    const matchedRules = rules.filter(rule => {
+      // Check eventTypes first - must include CELL_CHANGE or MULTI_CELL_CHANGE
+      const hasMatchingEventType = rule.eventTypes.some(
+        (et: string) => et === 'CELL_CHANGE' || et === 'MULTI_CELL_CHANGE'
+      );
+      if (!hasMatchingEventType) {
+        this.logger.debug(`[findMatchingRules] Rule ${rule.name} filtered out: no matching eventType (has: ${rule.eventTypes.join(', ')})`);
+        return false;
+      }
+
+      // Then filter by target
       if (rule.targetType === TargetType.SPREADSHEET || rule.targetType === TargetType.SHEET) {
+        this.logger.debug(`[findMatchingRules] Rule ${rule.name} matched: targetType=${rule.targetType}`);
         return true;
       }
 
       if (rule.targetType === TargetType.RANGE && rule.cellRange) {
-        return this.isInRange(event.row, event.col, rule.cellRange);
+        const inRange = this.isInRange(event.row, event.col, rule.cellRange);
+        this.logger.debug(`[findMatchingRules] Rule ${rule.name} range check: ${rule.cellRange}, inRange=${inRange}`);
+        return inRange;
       }
 
       if (rule.targetType === TargetType.CELL || rule.targetType === TargetType.CELL_GROUP) {
         const coords = rule.cellCoordinates as { row: number; col: number }[] | null;
-        return coords?.some(c => c.row === event.row && c.col === event.col);
+        const matched = coords?.some(c => c.row === event.row && c.col === event.col);
+        this.logger.debug(`[findMatchingRules] Rule ${rule.name} cell check: matched=${matched}`);
+        return matched;
       }
 
       return false;
     });
+
+    this.logger.debug(`[findMatchingRules] Final matched rules count: ${matchedRules.length}`);
+    return matchedRules;
   }
 
   private isInRange(row: number, col: number, range: string): boolean {

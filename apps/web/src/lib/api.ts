@@ -34,9 +34,9 @@ export const api = {
       const token = localStorage.getItem('auth_token');
       const res = await fetch(`${API_URL}/users`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify(data),
       });
@@ -47,9 +47,9 @@ export const api = {
       const token = localStorage.getItem('auth_token');
       const res = await fetch(`${API_URL}/users/${id}`, {
         method: 'PUT',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify(data),
       });
@@ -68,9 +68,9 @@ export const api = {
       const token = localStorage.getItem('auth_token');
       const res = await fetch(`${API_URL}/users/me`, {
         method: 'PUT',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify(data),
       });
@@ -103,9 +103,9 @@ export const api = {
       const token = localStorage.getItem('auth_token');
       const res = await fetch(`${API_URL}/sheets/${id}`, {
         method: 'PUT',
-        headers: { 
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}` 
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify(data),
       });
@@ -122,64 +122,64 @@ export const api = {
       return res.json();
     },
     toggleFavorite: async (id: string) => {
-       const token = localStorage.getItem('auth_token');
-       const res = await fetch(`${API_URL}/sheets/${id}/favorite`, {
-         method: 'POST',
-         headers: { Authorization: `Bearer ${token}` },
-       });
-       if (!res.ok) throw new Error('Failed to toggle favorite');
-       return res.json();
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/sheets/${id}/favorite`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to toggle favorite');
+      return res.json();
     },
     listPermissions: async (id: string) => {
-       const token = localStorage.getItem('auth_token');
-       const res = await fetch(`${API_URL}/sheets/${id}/permissions`, {
-         headers: { Authorization: `Bearer ${token}` },
-       });
-       if (!res.ok) throw new Error('Failed to list permissions');
-       return res.json();
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/sheets/${id}/permissions`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to list permissions');
+      return res.json();
     },
     addPermission: async (id: string, email: string, role: string) => {
-       const token = localStorage.getItem('auth_token');
-       const res = await fetch(`${API_URL}/sheets/${id}/permissions`, {
-         method: 'POST',
-         headers: { 
-           'Content-Type': 'application/json',
-           Authorization: `Bearer ${token}` 
-         },
-         body: JSON.stringify({ email, role }),
-       });
-       if (!res.ok) throw new Error('Failed to add permission');
-       return res.json();
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/sheets/${id}/permissions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ email, role }),
+      });
+      if (!res.ok) throw new Error('Failed to add permission');
+      return res.json();
     },
     removePermission: async (id: string, permId: string) => {
-       const token = localStorage.getItem('auth_token');
-       const res = await fetch(`${API_URL}/sheets/${id}/permissions/${permId}`, {
-         method: 'DELETE',
-         headers: { Authorization: `Bearer ${token}` },
-       });
-       if (!res.ok) throw new Error('Failed to remove permission');
-       return res.json();
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/sheets/${id}/permissions/${permId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to remove permission');
+      return res.json();
     },
     updatePublicAccess: async (id: string, isPublic: boolean) => {
-       const token = localStorage.getItem('auth_token');
-       const res = await fetch(`${API_URL}/sheets/${id}/public`, {
-         method: 'PUT',
-         headers: { 
-           'Content-Type': 'application/json',
-           Authorization: `Bearer ${token}` 
-         },
-         body: JSON.stringify({ isPublic }),
-       });
-       if (!res.ok) throw new Error('Failed to update public access');
-       return res.json();
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/sheets/${id}/public`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ isPublic }),
+      });
+      if (!res.ok) throw new Error('Failed to update public access');
+      return res.json();
     },
     create: async (data: any) => {
       const token = localStorage.getItem('auth_token');
       const res = await fetch(`${API_URL}/sheets`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify(data),
       });
@@ -233,9 +233,9 @@ export const api = {
       const token = localStorage.getItem('auth_token');
       const res = await fetch(`${API_URL}/sheets/sheet/${sheetId}/cells`, {
         method: 'PUT',
-        headers: { 
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${token}` 
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({ updates }),
       });
@@ -266,9 +266,9 @@ export const api = {
       const token = localStorage.getItem('auth_token');
       const res = await fetch(`${API_URL}/settings`, {
         method: 'POST',
-        headers: { 
+        headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}` 
+          Authorization: `Bearer ${token}`
         },
         body: JSON.stringify({ key, value }),
       });
@@ -576,6 +576,79 @@ export const api = {
         headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) throw new Error('Failed to fetch webhook executions');
+      return res.json();
+    },
+  },
+  flows: {
+    list: async (spreadsheetId: string) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/flows/spreadsheet/${spreadsheetId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch flows');
+      return res.json();
+    },
+    get: async (flowId: string) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/flows/${flowId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch flow');
+      return res.json();
+    },
+    create: async (data: any) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/flows`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to create flow');
+      return res.json();
+    },
+    update: async (flowId: string, data: any) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/flows/${flowId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error('Failed to update flow');
+      return res.json();
+    },
+    delete: async (flowId: string) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/flows/${flowId}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to delete flow');
+      return res.json();
+    },
+    toggle: async (flowId: string, active: boolean) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/flows/${flowId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ active }),
+      });
+      if (!res.ok) throw new Error('Failed to toggle flow');
+      return res.json();
+    },
+    getExecutions: async (flowId: string, limit = 50) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/flows/${flowId}/executions?limit=${limit}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch flow executions');
+      return res.json();
+    },
+    getExecution: async (executionId: string) => {
+      const token = localStorage.getItem('auth_token');
+      const res = await fetch(`${API_URL}/flows/executions/${executionId}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error('Failed to fetch flow execution');
       return res.json();
     },
   },

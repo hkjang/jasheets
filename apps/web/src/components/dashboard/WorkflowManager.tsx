@@ -34,16 +34,29 @@ interface EventRule {
   active: boolean;
 }
 
+interface FlowExecution {
+  id: string;
+  flowId: string;
+  transactionId: string;
+  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'CANCELLED';
+  triggerData?: any;
+  startedAt: string;
+  completedAt?: string;
+  error?: string;
+  flow?: { name: string };
+}
+
 interface WorkflowManagerProps {
   spreadsheetId: string;
 }
 
 export default function WorkflowManager({ spreadsheetId }: WorkflowManagerProps) {
   const router = useRouter();
-  const [activeTab, setActiveTab] = useState<'flows' | 'webhooks' | 'rules'>('flows');
+  const [activeTab, setActiveTab] = useState<'flows' | 'webhooks' | 'rules' | 'logs'>('flows');
   const [flows, setFlows] = useState<Flow[]>([]);
   const [webhooks, setWebhooks] = useState<Webhook[]>([]);
   const [eventRules, setEventRules] = useState<EventRule[]>([]);
+  const [executions, setExecutions] = useState<FlowExecution[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +65,7 @@ export default function WorkflowManager({ spreadsheetId }: WorkflowManagerProps)
   const [showCreateWebhook, setShowCreateWebhook] = useState(false);
   const [newFlowName, setNewFlowName] = useState('');
   const [newWebhookData, setNewWebhookData] = useState({ name: '', url: '' });
+  const [selectedExecution, setSelectedExecution] = useState<FlowExecution | null>(null);
 
   useEffect(() => {
     loadData();
@@ -68,6 +82,20 @@ export default function WorkflowManager({ spreadsheetId }: WorkflowManagerProps)
       setFlows(flowsData);
       setWebhooks(webhooksData);
       setEventRules(rulesData);
+
+      // Load executions for all flows
+      if (flowsData.length > 0) {
+        const allExecutions: FlowExecution[] = [];
+        for (const flow of flowsData) {
+          try {
+            const execs = await api.flows.getExecutions(flow.id, 20);
+            allExecutions.push(...execs.map((e: FlowExecution) => ({ ...e, flow: { name: flow.name } })));
+          } catch { }
+        }
+        // Sort by startedAt descending
+        allExecutions.sort((a, b) => new Date(b.startedAt).getTime() - new Date(a.startedAt).getTime());
+        setExecutions(allExecutions.slice(0, 50));
+      }
     } catch (err) {
       setError('Failed to load workflow data');
     } finally {
@@ -191,6 +219,12 @@ export default function WorkflowManager({ spreadsheetId }: WorkflowManagerProps)
           onClick={() => setActiveTab('rules')}
         >
           📋 Event Rules ({eventRules.length})
+        </button>
+        <button
+          className={`${styles.tab} ${activeTab === 'logs' ? styles.activeTab : ''}`}
+          onClick={() => setActiveTab('logs')}
+        >
+          📊 실행 로그 ({executions.length})
         </button>
       </div>
 
@@ -391,6 +425,101 @@ export default function WorkflowManager({ spreadsheetId }: WorkflowManagerProps)
                   </div>
                 </div>
               ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Execution Logs Tab */}
+      {activeTab === 'logs' && (
+        <div className={styles.content}>
+          <div className={styles.header}>
+            <h3>실행 로그</h3>
+            <button className={styles.refreshButton} onClick={loadData}>
+              🔄 새로고침
+            </button>
+          </div>
+
+          {executions.length === 0 ? (
+            <div className={styles.empty}>
+              <span className={styles.emptyIcon}>📊</span>
+              <p>실행 로그가 없습니다</p>
+              <span className={styles.emptyHint}>Flow가 트리거되면 여기에 기록됩니다</span>
+            </div>
+          ) : (
+            <div className={styles.list}>
+              {executions.map(exec => (
+                <div key={exec.id} className={styles.logItem} onClick={() => setSelectedExecution(exec)}>
+                  <div className={styles.logInfo}>
+                    <span className={styles.logFlowName}>{exec.flow?.name || 'Unknown Flow'}</span>
+                    <span className={styles.logTime}>
+                      {new Date(exec.startedAt).toLocaleString('ko-KR')}
+                    </span>
+                  </div>
+                  <div className={styles.logStatus}>
+                    <span className={`${styles.statusBadge} ${styles[`status${exec.status}`]}`}>
+                      {exec.status === 'COMPLETED' && '✓ 성공'}
+                      {exec.status === 'FAILED' && '✕ 실패'}
+                      {exec.status === 'RUNNING' && '⏳ 실행 중'}
+                      {exec.status === 'PENDING' && '⏸ 대기'}
+                      {exec.status === 'CANCELLED' && '⊘ 취소'}
+                    </span>
+                    {exec.completedAt && (
+                      <span className={styles.logDuration}>
+                        {Math.round((new Date(exec.completedAt).getTime() - new Date(exec.startedAt).getTime()) / 1000)}s
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Execution Detail Modal */}
+          {selectedExecution && (
+            <div className={styles.modal}>
+              <div className={styles.modalContent} style={{ maxWidth: '600px' }}>
+                <h4>실행 상세 정보</h4>
+                <div className={styles.executionDetail}>
+                  <div className={styles.detailRow}>
+                    <span className={styles.detailLabel}>Flow:</span>
+                    <span>{selectedExecution.flow?.name}</span>
+                  </div>
+                  <div className={styles.detailRow}>
+                    <span className={styles.detailLabel}>상태:</span>
+                    <span className={`${styles.statusBadge} ${styles[`status${selectedExecution.status}`]}`}>
+                      {selectedExecution.status}
+                    </span>
+                  </div>
+                  <div className={styles.detailRow}>
+                    <span className={styles.detailLabel}>시작:</span>
+                    <span>{new Date(selectedExecution.startedAt).toLocaleString('ko-KR')}</span>
+                  </div>
+                  {selectedExecution.completedAt && (
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>완료:</span>
+                      <span>{new Date(selectedExecution.completedAt).toLocaleString('ko-KR')}</span>
+                    </div>
+                  )}
+                  {selectedExecution.error && (
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>오류:</span>
+                      <span className={styles.errorText}>{selectedExecution.error}</span>
+                    </div>
+                  )}
+                  {selectedExecution.triggerData && (
+                    <div className={styles.detailRow}>
+                      <span className={styles.detailLabel}>트리거 데이터:</span>
+                      <pre className={styles.jsonData}>
+                        {JSON.stringify(selectedExecution.triggerData, null, 2)}
+                      </pre>
+                    </div>
+                  )}
+                </div>
+                <div className={styles.modalActions}>
+                  <button onClick={() => setSelectedExecution(null)}>닫기</button>
+                </div>
+              </div>
             </div>
           )}
         </div>
