@@ -16,7 +16,7 @@ export { CreateFlowDto, UpdateFlowDto } from './dto/flow.dto';
 export class FlowsService {
   private readonly logger = new Logger(FlowsService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService) { }
 
   // =====================================================
   // Permission Check Helper
@@ -24,7 +24,7 @@ export class FlowsService {
 
   private async checkSpreadsheetAccess(userId: string, spreadsheetId: string): Promise<boolean> {
     this.logger.log(`Checking access for userId: ${userId}, spreadsheetId: ${spreadsheetId}`);
-    
+
     const spreadsheet = await this.prisma.spreadsheet.findUnique({
       where: { id: spreadsheetId },
       include: { permissions: true },
@@ -36,7 +36,7 @@ export class FlowsService {
     }
 
     this.logger.log(`Spreadsheet owner: ${spreadsheet.ownerId}, Current user: ${userId}`);
-    
+
     if (spreadsheet.ownerId === userId) {
       this.logger.log('User is owner, access granted');
       return true;
@@ -45,9 +45,9 @@ export class FlowsService {
     const hasPermission = spreadsheet.permissions.some(
       (p) => p.userId === userId && p.role !== 'VIEWER'
     );
-    
+
     this.logger.log(`Permissions check: ${hasPermission}, Permissions count: ${spreadsheet.permissions.length}`);
-    
+
     return hasPermission;
   }
 
@@ -70,6 +70,9 @@ export class FlowsService {
 
     // Create initial version
     await this.createFlowVersion(flow.id, userId);
+
+    // Auto-create Event Rule based on trigger node configuration
+    await this.syncEventRuleFromFlow(flow.id, dto.spreadsheetId, dto.nodes || []);
 
     return flow;
   }
@@ -104,6 +107,11 @@ export class FlowsService {
     // Save new version
     if (dto.nodes || dto.edges) {
       await this.createFlowVersion(flowId, userId);
+    }
+
+    // Sync Event Rule when nodes are updated
+    if (dto.nodes) {
+      await this.syncEventRuleFromFlow(flowId, flow.spreadsheetId, dto.nodes);
     }
 
     return updated;
@@ -278,5 +286,80 @@ export class FlowsService {
     }
 
     return execution;
+  }
+
+  // =====================================================
+  // Event Rule Synchronization
+  // =====================================================
+
+  /**
+   * Sync Event Rule based on trigger node configuration in the flow.
+   * This ensures that cell changes matching the trigger's cellRange will execute the flow.
+   */
+  private async syncEventRuleFromFlow(flowId: string, spreadsheetId: string, nodes: FlowNode[]): Promise<void> {
+    const triggerNode = nodes.find(n => n.type === 'trigger');
+    if (!triggerNode) {
+      this.logger.log(`No trigger node found in flow ${flowId}, skipping event rule sync`);
+      return;
+    }
+
+    const { cellRange, eventType } = triggerNode.data || {};
+
+    // Map flow trigger eventType to Prisma EventType enum
+    const eventTypeMap: Record<string, string> = {
+      'cell_change': 'CELL_CHANGE',
+      'row_insert': 'ROW_INSERT',
+      'row_delete': 'ROW_DELETE',
+    };
+
+    const prismaEventType = eventTypeMap[eventType] || 'CELL_CHANGE';
+
+    // Determine target type based on cellRange
+    let targetType: 'SPREADSHEET' | 'SHEET' | 'RANGE' = 'SPREADSHEET';
+    if (cellRange && cellRange.trim()) {
+      targetType = 'RANGE';
+    }
+
+    try {
+      // Check if an event rule already exists for this flow
+      const existingRule = await this.prisma.eventRule.findFirst({
+        where: { flowId },
+      });
+
+      if (existingRule) {
+        // Update existing rule
+        await this.prisma.eventRule.update({
+          where: { id: existingRule.id },
+          data: {
+            cellRange: cellRange || null,
+            eventTypes: [prismaEventType] as any,
+            targetType,
+            version: { increment: 1 },
+          },
+        });
+        this.logger.log(`Updated event rule ${existingRule.id} for flow ${flowId}`);
+      } else {
+        // Create new rule
+        const flow = await this.prisma.flow.findUnique({ where: { id: flowId } });
+        const ruleName = flow ? `Auto: ${flow.name}` : `Auto: Flow ${flowId}`;
+
+        await this.prisma.eventRule.create({
+          data: {
+            spreadsheetId,
+            name: ruleName,
+            description: 'Auto-generated event rule for flow trigger',
+            targetType,
+            cellRange: cellRange || null,
+            eventTypes: [prismaEventType] as any,
+            flowId,
+            active: true,
+          },
+        });
+        this.logger.log(`Created event rule for flow ${flowId}`);
+      }
+    } catch (error) {
+      this.logger.error(`Failed to sync event rule for flow ${flowId}:`, error);
+      // Don't throw - this is a non-critical operation
+    }
   }
 }

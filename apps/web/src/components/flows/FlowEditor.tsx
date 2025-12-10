@@ -221,13 +221,22 @@ export default function FlowEditor({ nodes, edges, onChange, onSave, readonly, s
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (readonly) return;
+      
+      // Don't delete nodes when typing in input fields
+      const activeElement = document.activeElement;
+      const tagName = activeElement?.tagName.toLowerCase();
+      const isInputField = tagName === 'input' || tagName === 'textarea' || tagName === 'select';
+      
       if (e.key === 'Delete' || e.key === 'Backspace') {
-        if (selectedNode) {
-          e.preventDefault();
-          deleteNode(selectedNode);
-        } else if (selectedEdge) {
-          e.preventDefault();
-          deleteEdge(selectedEdge);
+        // Only delete nodes/edges if NOT typing in an input field
+        if (!isInputField) {
+          if (selectedNode) {
+            e.preventDefault();
+            deleteNode(selectedNode);
+          } else if (selectedEdge) {
+            e.preventDefault();
+            deleteEdge(selectedEdge);
+          }
         }
       }
       if (e.key === 'Escape') {

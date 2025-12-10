@@ -52,6 +52,7 @@ import EmailDialog from './EmailDialog';
 import FileOpenDialog from './FileOpenDialog';
 import { ImportResult } from '@/utils/fileImport';
 import { useComments } from '@/hooks/useComments';
+import WorkflowManager from '../dashboard/WorkflowManager';
 
 interface SpreadsheetProps {
   initialData?: SheetData;
@@ -72,12 +73,12 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   const handleTitleChange = useCallback(async (newTitle: string) => {
     setSheetTitle(newTitle);
     if (spreadsheetId) {
-        try {
-            await api.spreadsheets.update(spreadsheetId, { name: newTitle });
-        } catch (e) {
-            console.error('Failed to update title', e);
-            setToastMessage('Failed to save title');
-        }
+      try {
+        await api.spreadsheets.update(spreadsheetId, { name: newTitle });
+      } catch (e) {
+        console.error('Failed to update title', e);
+        setToastMessage('Failed to save title');
+      }
     }
   }, [spreadsheetId]);
 
@@ -130,135 +131,135 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
 
   // --- Clipboard Handling ---
   const copyToClipboard = useCallback(async () => {
-      if (!selection) return;
+    if (!selection) return;
 
-      const rows = [];
-      for (let r = selection.start.row; r <= selection.end.row; r++) {
-          const rowData = [];
-          for (let c = selection.start.col; c <= selection.end.col; c++) {
-              const val = data[r]?.[c]?.value;
-              rowData.push(val === null || val === undefined ? '' : String(val));
-          }
-          rows.push(rowData.join('\t'));
+    const rows = [];
+    for (let r = selection.start.row; r <= selection.end.row; r++) {
+      const rowData = [];
+      for (let c = selection.start.col; c <= selection.end.col; c++) {
+        const val = data[r]?.[c]?.value;
+        rowData.push(val === null || val === undefined ? '' : String(val));
       }
-      const text = rows.join('\n');
-      
-      try {
-          await navigator.clipboard.writeText(text);
-          setToastMessage('Copied to clipboard');
-      } catch (err) {
-          console.error('Failed to copy', err);
-          alert('Failed to copy to clipboard');
-      }
+      rows.push(rowData.join('\t'));
+    }
+    const text = rows.join('\n');
+
+    try {
+      await navigator.clipboard.writeText(text);
+      setToastMessage('Copied to clipboard');
+    } catch (err) {
+      console.error('Failed to copy', err);
+      alert('Failed to copy to clipboard');
+    }
   }, [data, selection]);
 
   const cutoffToClipboard = useCallback(async () => {
-      if (!selection) return;
+    if (!selection) return;
 
-      // Copy first
-      await copyToClipboard();
-      
-      // Execute delete
-      const updates: { row: number; col: number; value: string }[] = [];
-      for (let r = selection.start.row; r <= selection.end.row; r++) {
-          for (let c = selection.start.col; c <= selection.end.col; c++) {
-              updates.push({ row: r, col: c, value: '' });
-          }
+    // Copy first
+    await copyToClipboard();
+
+    // Execute delete
+    const updates: { row: number; col: number; value: string }[] = [];
+    for (let r = selection.start.row; r <= selection.end.row; r++) {
+      for (let c = selection.start.col; c <= selection.end.col; c++) {
+        updates.push({ row: r, col: c, value: '' });
       }
-      updateCells(updates);
+    }
+    updateCells(updates);
   }, [selection, copyToClipboard, updateCells]);
 
   const pasteFromClipboard = useCallback(async () => {
-      if (!selectedCell) return;
-      
-      try {
-          const text = await navigator.clipboard.readText();
-          if (!text) return;
+    if (!selectedCell) return;
 
-          const rows = text.split(/\r\n|\n|\r/);
-          const updates: { row: number; col: number; value: string }[] = [];
-          
-          rows.forEach((rowStr, rIdx) => {
-              if (rIdx === rows.length - 1 && rowStr === '') return; 
-              const cols = rowStr.split('\t');
-              cols.forEach((val, cIdx) => {
-                  updates.push({
-                      row: selectedCell.row + rIdx,
-                      col: selectedCell.col + cIdx,
-                      value: val
-                  });
-              });
+    try {
+      const text = await navigator.clipboard.readText();
+      if (!text) return;
+
+      const rows = text.split(/\r\n|\n|\r/);
+      const updates: { row: number; col: number; value: string }[] = [];
+
+      rows.forEach((rowStr, rIdx) => {
+        if (rIdx === rows.length - 1 && rowStr === '') return;
+        const cols = rowStr.split('\t');
+        cols.forEach((val, cIdx) => {
+          updates.push({
+            row: selectedCell.row + rIdx,
+            col: selectedCell.col + cIdx,
+            value: val
           });
-          
-          if (updates.length > 0) {
-              updateCells(updates);
-          }
-      } catch (err) {
-          console.error('Failed to paste', err);
-          // Fallback or alert? 
-          // Often triggered if permission denied or not focused
-          alert('Failed to paste from clipboard. Please allow clipboard access.');
+        });
+      });
+
+      if (updates.length > 0) {
+        updateCells(updates);
       }
+    } catch (err) {
+      console.error('Failed to paste', err);
+      // Fallback or alert? 
+      // Often triggered if permission denied or not focused
+      alert('Failed to paste from clipboard. Please allow clipboard access.');
+    }
   }, [selectedCell, updateCells]);
 
   useEffect(() => {
-      const handleCopy = (e: ClipboardEvent) => {
-          const activeTag = document.activeElement?.tagName.toLowerCase();
-          if (activeTag === 'input' || activeTag === 'textarea') return;
-          if (!selection) return;
-          e.preventDefault();
-          copyToClipboard(); 
-      };
+    const handleCopy = (e: ClipboardEvent) => {
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+      if (!selection) return;
+      e.preventDefault();
+      copyToClipboard();
+    };
 
-      const handleCut = (e: ClipboardEvent) => {
-          const activeTag = document.activeElement?.tagName.toLowerCase();
-          if (activeTag === 'input' || activeTag === 'textarea') return;
-          if (!selection) return;
-          e.preventDefault();
-          cutoffToClipboard();
-      };
+    const handleCut = (e: ClipboardEvent) => {
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+      if (!selection) return;
+      e.preventDefault();
+      cutoffToClipboard();
+    };
 
-      const handlePaste = (e: ClipboardEvent) => {
-          const activeTag = document.activeElement?.tagName.toLowerCase();
-          if (activeTag === 'input' || activeTag === 'textarea') return;
-          if (!selectedCell) return;
-          e.preventDefault();
-          
-          // For paste event, we can access data directly which is better than readText() permission-wise within the event
-          const text = e.clipboardData?.getData('text/plain');
-          if (text) {
-               // Reuse logic? Or just duplicate the parsing for the event version?
-               // The event version is synchronous and doesn't need promise.
-               // Let's just use the logic inline effectively or refactor parsing.
-               // Refactoring parsing to separate function is cleaner but for now let's just duplicate the parsing logic
-               // or updates logic.
-               
-              const rows = text.split(/\r\n|\n|\r/);
-              const updates: { row: number; col: number; value: string }[] = [];
-              rows.forEach((rowStr, rIdx) => {
-                  if (rIdx === rows.length - 1 && rowStr === '') return;
-                  const cols = rowStr.split('\t');
-                  cols.forEach((val, cIdx) => {
-                      updates.push({
-                          row: selectedCell.row + rIdx,
-                          col: selectedCell.col + cIdx,
-                          value: val
-                      });
-                  });
-              });
-              if (updates.length > 0) updateCells(updates);
-          }
-      };
+    const handlePaste = (e: ClipboardEvent) => {
+      const activeTag = document.activeElement?.tagName.toLowerCase();
+      if (activeTag === 'input' || activeTag === 'textarea') return;
+      if (!selectedCell) return;
+      e.preventDefault();
 
-      document.addEventListener('copy', handleCopy);
-      document.addEventListener('cut', handleCut);
-      document.addEventListener('paste', handlePaste);
+      // For paste event, we can access data directly which is better than readText() permission-wise within the event
+      const text = e.clipboardData?.getData('text/plain');
+      if (text) {
+        // Reuse logic? Or just duplicate the parsing for the event version?
+        // The event version is synchronous and doesn't need promise.
+        // Let's just use the logic inline effectively or refactor parsing.
+        // Refactoring parsing to separate function is cleaner but for now let's just duplicate the parsing logic
+        // or updates logic.
 
-      return () => {
-          document.removeEventListener('copy', handleCopy);
-          document.removeEventListener('cut', handleCut);
-          document.removeEventListener('paste', handlePaste);
-      };
+        const rows = text.split(/\r\n|\n|\r/);
+        const updates: { row: number; col: number; value: string }[] = [];
+        rows.forEach((rowStr, rIdx) => {
+          if (rIdx === rows.length - 1 && rowStr === '') return;
+          const cols = rowStr.split('\t');
+          cols.forEach((val, cIdx) => {
+            updates.push({
+              row: selectedCell.row + rIdx,
+              col: selectedCell.col + cIdx,
+              value: val
+            });
+          });
+        });
+        if (updates.length > 0) updateCells(updates);
+      }
+    };
+
+    document.addEventListener('copy', handleCopy);
+    document.addEventListener('cut', handleCut);
+    document.addEventListener('paste', handlePaste);
+
+    return () => {
+      document.removeEventListener('copy', handleCopy);
+      document.removeEventListener('cut', handleCut);
+      document.removeEventListener('paste', handlePaste);
+    };
   }, [selection, selectedCell, copyToClipboard, cutoffToClipboard, updateCells]);
 
   // Collaboration
@@ -269,38 +270,38 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   const handleSave = useCallback(async () => {
     // ... same as before
     if (!activeSheetId) {
-        alert('저장할 시트가 없습니다.');
-        return;
+      alert('저장할 시트가 없습니다.');
+      return;
     }
     try {
-        const updates: any[] = [];
-        Object.keys(data).forEach(r => {
-            const row = Number(r);
-            Object.keys(data[row]).forEach(c => {
-                const col = Number(c);
-                const cell = data[row][col];
-                if (cell) {
-                    updates.push({
-                        row,
-                        col,
-                        value: cell.value,
-                        formula: cell.formula,
-                        format: cell.style // Assuming format mapping or similar
-                    });
-                }
+      const updates: any[] = [];
+      Object.keys(data).forEach(r => {
+        const row = Number(r);
+        Object.keys(data[row]).forEach(c => {
+          const col = Number(c);
+          const cell = data[row][col];
+          if (cell) {
+            updates.push({
+              row,
+              col,
+              value: cell.value,
+              formula: cell.formula,
+              format: cell.style // Assuming format mapping or similar
             });
+          }
         });
+      });
 
-        if (updates.length === 0) {
-            alert('저장할 데이터가 없습니다.');
-            return;
-        }
+      if (updates.length === 0) {
+        alert('저장할 데이터가 없습니다.');
+        return;
+      }
 
-        await api.spreadsheets.updateCells(activeSheetId, updates);
-        alert('저장되었습니다.');
+      await api.spreadsheets.updateCells(activeSheetId, updates);
+      alert('저장되었습니다.');
     } catch (e) {
-        console.error(e);
-        alert('저장 중 오류가 발생했습니다.');
+      console.error(e);
+      alert('저장 중 오류가 발생했습니다.');
     }
   }, [data, activeSheetId]);
 
@@ -314,35 +315,35 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   // I didn't include MenuBar in the replacement content.
   // I need to verify line numbers.
   // The previous tool called replace_file_content lines 105 to 205 (approx).
-  
+
   // Actually, I'll split this into two edits if needed, but I can do contiguous if I include everything.
   // Let's just do the `useEffect` replacement first as defined above. I'll need another edit for MenuBar.
-  
+
 
 
 
   useEffect(() => {
-      const handleKeyDown = (e: KeyboardEvent) => {
-          if ((e.ctrlKey || e.metaKey) && e.key === 's') {
-              e.preventDefault();
-              handleSave();
-          }
-          if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
-              e.preventDefault();
-              setIsFileDialogOpen(true);
-          }
-      };
-      window.addEventListener('keydown', handleKeyDown);
-      return () => window.removeEventListener('keydown', handleKeyDown);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSave();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
+        e.preventDefault();
+        setIsFileDialogOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleSave]);
 
   // Note: Auth redirect removed - SpreadsheetPage handles auth errors
   // Keeping user for collaboration features but not redirecting
-  
-  
+
+
   const userId = useMemo(() => user?.id || 'guest', [user]);
   const userName = useMemo(() => user?.name || user?.email || 'Guest', [user]);
-  
+
   const {
     users,
     chatMessages,
@@ -373,24 +374,24 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
   // Columns & Rows
   // View State using new hook
   const {
-      columns,
-      setColumns,
-      rows,
-      setRows,
-      config,
-      setConfig,
-      showFormulaBar,
-      setShowFormulaBar,
-      showGridlines,
-      setShowGridlines,
-      handleColumnResize,
-      handleRowResize,
-      handleFreezeRow,
-      handleFreezeCol,
-      hideRow,
-      unhideRow,
-      hideColumn,
-      unhideColumn,
+    columns,
+    setColumns,
+    rows,
+    setRows,
+    config,
+    setConfig,
+    showFormulaBar,
+    setShowFormulaBar,
+    showGridlines,
+    setShowGridlines,
+    handleColumnResize,
+    handleRowResize,
+    handleFreezeRow,
+    handleFreezeCol,
+    hideRow,
+    unhideRow,
+    hideColumn,
+    unhideColumn,
   } = useSpreadsheetView();
 
   // Context Menu State
@@ -409,21 +410,21 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     if (!contextMenu || contextMenu.type !== 'row') return;
     const index = contextMenu.index;
     setRows(prev => {
-        const newRows = [...prev];
-        newRows.splice(index, 0, { height: DEFAULT_CONFIG.defaultRowHeight });
-        return newRows;
+      const newRows = [...prev];
+      newRows.splice(index, 0, { height: DEFAULT_CONFIG.defaultRowHeight });
+      return newRows;
     });
     insertRow(index);
     setContextMenu(null);
   }, [contextMenu, insertRow]);
-  
+
   const handleInsertRowAfter = useCallback(() => {
     if (!contextMenu || contextMenu.type !== 'row') return;
     const index = contextMenu.index + 1;
     setRows(prev => {
-        const newRows = [...prev];
-        newRows.splice(index, 0, { height: DEFAULT_CONFIG.defaultRowHeight });
-        return newRows;
+      const newRows = [...prev];
+      newRows.splice(index, 0, { height: DEFAULT_CONFIG.defaultRowHeight });
+      return newRows;
     });
     insertRow(index);
     setContextMenu(null);
@@ -433,61 +434,61 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     if (!contextMenu || contextMenu.type !== 'row') return;
     const index = contextMenu.index;
     setRows(prev => {
-        const newRows = [...prev];
-        newRows.splice(index, 1);
-        newRows.push({ height: DEFAULT_CONFIG.defaultRowHeight }); 
-        return newRows;
+      const newRows = [...prev];
+      newRows.splice(index, 1);
+      newRows.push({ height: DEFAULT_CONFIG.defaultRowHeight });
+      return newRows;
     });
     deleteRow(index);
     setContextMenu(null);
   }, [contextMenu, deleteRow]);
 
   const handleHideRow = useCallback(() => {
-      if (!contextMenu || contextMenu.type !== 'row') return;
-      const index = contextMenu.index;
-      setRows(prev => {
-          const newRows = [...prev];
-          if (newRows[index]) newRows[index] = { ...newRows[index], hidden: true };
-          return newRows;
-      });
-      setContextMenu(null);
+    if (!contextMenu || contextMenu.type !== 'row') return;
+    const index = contextMenu.index;
+    setRows(prev => {
+      const newRows = [...prev];
+      if (newRows[index]) newRows[index] = { ...newRows[index], hidden: true };
+      return newRows;
+    });
+    setContextMenu(null);
   }, [contextMenu]);
 
   const handleUnhideRow = useCallback(() => {
-      // Logic: If user specifically clicked a hidden row placeholder? 
-      // Or we unhide all in selection?
-      // For now, let's implement a simple "Unhide all rows" or unhide specific if we can target it.
-      // But context menu is usually on visible headers.
-      // Typical UX: Select Row 2 and 4 (where 3 is hidden), right click -> Unhide.
-      // Or right click on the boundary marker.
-      // Simplified: If context menu is on a row, we check if there are hidden rows nearby?
-      // Let's rely on selection-based unhide if implemented.
-      // Or just a global unhide for the current selection range if it exists?
-      
-      // Let's assume for this step we might pass "Unhide" for the current selection if it spans hidden rows.
-      if (!contextMenu || contextMenu.type !== 'row') return;
-      
-      // If we have a selection that includes hidden rows, unhide them. 
-      // Otherwise, check if adjacent rows are hidden?
-      // Simple MVP: Unhide ALL hidden rows in the current selection range, or globally if no selection?
-      // Let's do: Unhide rows adjacent to current index?
-      // Or just unhide the specific index if we could somehow right-click it (not possible if hidden).
-      // Standard Excel: Select range covering hidden rows -> Right Click -> Unhide.
-      
-      if (selection && selection.start.row <= contextMenu.index && selection.end.row >= contextMenu.index) {
-          const start = Math.min(selection.start.row, selection.end.row);
-          const end = Math.max(selection.end.row, selection.start.row);
-          setRows(prev => {
-              const newRows = [...prev];
-              for (let i = start; i <= end; i++) {
-                  if (newRows[i]?.hidden) {
-                      newRows[i] = { ...newRows[i], hidden: false };
-                  }
-              }
-              return newRows;
-          });
-      }
-      setContextMenu(null);
+    // Logic: If user specifically clicked a hidden row placeholder? 
+    // Or we unhide all in selection?
+    // For now, let's implement a simple "Unhide all rows" or unhide specific if we can target it.
+    // But context menu is usually on visible headers.
+    // Typical UX: Select Row 2 and 4 (where 3 is hidden), right click -> Unhide.
+    // Or right click on the boundary marker.
+    // Simplified: If context menu is on a row, we check if there are hidden rows nearby?
+    // Let's rely on selection-based unhide if implemented.
+    // Or just a global unhide for the current selection range if it exists?
+
+    // Let's assume for this step we might pass "Unhide" for the current selection if it spans hidden rows.
+    if (!contextMenu || contextMenu.type !== 'row') return;
+
+    // If we have a selection that includes hidden rows, unhide them. 
+    // Otherwise, check if adjacent rows are hidden?
+    // Simple MVP: Unhide ALL hidden rows in the current selection range, or globally if no selection?
+    // Let's do: Unhide rows adjacent to current index?
+    // Or just unhide the specific index if we could somehow right-click it (not possible if hidden).
+    // Standard Excel: Select range covering hidden rows -> Right Click -> Unhide.
+
+    if (selection && selection.start.row <= contextMenu.index && selection.end.row >= contextMenu.index) {
+      const start = Math.min(selection.start.row, selection.end.row);
+      const end = Math.max(selection.end.row, selection.start.row);
+      setRows(prev => {
+        const newRows = [...prev];
+        for (let i = start; i <= end; i++) {
+          if (newRows[i]?.hidden) {
+            newRows[i] = { ...newRows[i], hidden: false };
+          }
+        }
+        return newRows;
+      });
+    }
+    setContextMenu(null);
   }, [contextMenu, selection]);
 
 
@@ -495,9 +496,9 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     if (!contextMenu || contextMenu.type !== 'col') return;
     const index = contextMenu.index;
     setColumns(prev => {
-        const newCols = [...prev];
-        newCols.splice(index, 0, { width: DEFAULT_CONFIG.defaultColWidth });
-        return newCols;
+      const newCols = [...prev];
+      newCols.splice(index, 0, { width: DEFAULT_CONFIG.defaultColWidth });
+      return newCols;
     });
     insertColumn(index);
     setContextMenu(null);
@@ -507,9 +508,9 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     if (!contextMenu || contextMenu.type !== 'col') return;
     const index = contextMenu.index + 1;
     setColumns(prev => {
-        const newCols = [...prev];
-        newCols.splice(index, 0, { width: DEFAULT_CONFIG.defaultColWidth });
-        return newCols;
+      const newCols = [...prev];
+      newCols.splice(index, 0, { width: DEFAULT_CONFIG.defaultColWidth });
+      return newCols;
     });
     insertColumn(index);
     setContextMenu(null);
@@ -519,50 +520,50 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     if (!contextMenu || contextMenu.type !== 'col') return;
     const index = contextMenu.index;
     setColumns(prev => {
-        const newCols = [...prev];
-        newCols.splice(index, 1);
-        newCols.push({ width: DEFAULT_CONFIG.defaultColWidth });
-        return newCols;
+      const newCols = [...prev];
+      newCols.splice(index, 1);
+      newCols.push({ width: DEFAULT_CONFIG.defaultColWidth });
+      return newCols;
     });
     deleteColumn(index);
     setContextMenu(null);
   }, [contextMenu, deleteColumn]);
 
   const handleHideCol = useCallback(() => {
-      if (!contextMenu || contextMenu.type !== 'col') return;
-      const index = contextMenu.index;
-      setColumns(prev => {
-          const newCols = [...prev];
-          if (newCols[index]) newCols[index] = { ...newCols[index], hidden: true };
-          return newCols;
-      });
-      setContextMenu(null);
+    if (!contextMenu || contextMenu.type !== 'col') return;
+    const index = contextMenu.index;
+    setColumns(prev => {
+      const newCols = [...prev];
+      if (newCols[index]) newCols[index] = { ...newCols[index], hidden: true };
+      return newCols;
+    });
+    setContextMenu(null);
   }, [contextMenu]);
 
   const handleUnhideCol = useCallback(() => {
-      if (!contextMenu || contextMenu.type !== 'col') return;
-      if (selection && selection.start.col <= contextMenu.index && selection.end.col >= contextMenu.index) {
-          const start = Math.min(selection.start.col, selection.end.col);
-          const end = Math.max(selection.end.col, selection.start.col);
-          setColumns(prev => {
-              const newCols = [...prev];
-              for (let i = start; i <= end; i++) {
-                  if (newCols[i]?.hidden) {
-                      newCols[i] = { ...newCols[i], hidden: false };
-                  }
-              }
-              return newCols;
-          });
-      }
-      setContextMenu(null);
+    if (!contextMenu || contextMenu.type !== 'col') return;
+    if (selection && selection.start.col <= contextMenu.index && selection.end.col >= contextMenu.index) {
+      const start = Math.min(selection.start.col, selection.end.col);
+      const end = Math.max(selection.end.col, selection.start.col);
+      setColumns(prev => {
+        const newCols = [...prev];
+        for (let i = start; i <= end; i++) {
+          if (newCols[i]?.hidden) {
+            newCols[i] = { ...newCols[i], hidden: false };
+          }
+        }
+        return newCols;
+      });
+    }
+    setContextMenu(null);
   }, [contextMenu, selection]);
 
 
 
   const getCellPosition = useCallback((row: number, col: number) => {
-    let x = 50; 
+    let x = 50;
     for (let c = 0; c < col; c++) x += columns[c]?.width || DEFAULT_CONFIG.defaultColWidth;
-    let y = 30; 
+    let y = 30;
     for (let r = 0; r < row; r++) y += rows[r]?.height || DEFAULT_CONFIG.defaultRowHeight;
     const width = columns[col]?.width || DEFAULT_CONFIG.defaultColWidth;
     const height = rows[row]?.height || DEFAULT_CONFIG.defaultRowHeight;
@@ -571,20 +572,20 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
 
   // Wrap selection handlers
   const handleCellSelect = useCallback((pos: CellPosition) => {
-    if (!pos) return; 
-    
+    if (!pos) return;
+
     // Check if we are re-selecting the currently edited cell
     if (isEditing && selectedCell && selectedCell.row === pos.row && selectedCell.col === pos.col) {
-        return;
+      return;
     }
 
     // Auto-commit if moving to another cell while editing
     if (isEditing) {
-        commitEditing();
+      commitEditing();
     }
 
     _handleCellSelect(pos);
-    
+
     const cell = data[pos.row]?.[pos.col];
     setEditValue(cell?.formula || String(cell?.value ?? ''));
   }, [_handleCellSelect, setEditValue, data, isEditing, selectedCell, commitEditing]);
@@ -602,20 +603,20 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     onCancel: cancelEditing,
     onStartEdit: (val) => selectedCell && startEditing(selectedCell, val),
     onNavigate: (row, col) => {
-        handleCellSelect({ row, col });
-        setSelection({ start: { row, col }, end: { row, col } });
+      handleCellSelect({ row, col });
+      setSelection({ start: { row, col }, end: { row, col } });
     },
     onClearSelection: () => {
-        if (!selection) return;
-         const newData = { ...data };
-            for (let row = selection.start.row; row <= selection.end.row; row++) {
-              for (let col = selection.start.col; col <= selection.end.col; col++) {
-                if (newData[row]?.[col]) {
-                  newData[row][col] = { value: null, style: newData[row][col].style };
-                }
-              }
-            }
-            updateData(newData);
+      if (!selection) return;
+      const newData = { ...data };
+      for (let row = selection.start.row; row <= selection.end.row; row++) {
+        for (let col = selection.start.col; col <= selection.end.col; col++) {
+          if (newData[row]?.[col]) {
+            newData[row][col] = { value: null, style: newData[row][col].style };
+          }
+        }
+      }
+      updateData(newData);
     },
     totalRows: DEFAULT_CONFIG.totalRows,
     totalCols: DEFAULT_CONFIG.totalCols,
@@ -653,6 +654,9 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
 
   // AI Assistant state
   const [isAIOpen, setIsAIOpen] = useState(false);
+
+  // Workflow Manager state
+  const [isWorkflowOpen, setIsWorkflowOpen] = useState(false);
 
   // Zoom state for menu
   const [zoom, setZoom] = useState(100);
@@ -707,15 +711,15 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
 
   const handleShare = useCallback(async () => {
     if (spreadsheetId) {
-        setIsShareDialogOpen(true);
+      setIsShareDialogOpen(true);
     } else {
-        // Fallback for demo/unsaved sheets
-        try {
-            await navigator.clipboard.writeText(window.location.href);
-            setToastMessage('Link copied to clipboard (Unsaved sheet)');
-        } catch (err) {
-            setToastMessage('Failed to copy link');
-        }
+      // Fallback for demo/unsaved sheets
+      try {
+        await navigator.clipboard.writeText(window.location.href);
+        setToastMessage('Link copied to clipboard (Unsaved sheet)');
+      } catch (err) {
+        setToastMessage('Failed to copy link');
+      }
     }
   }, [spreadsheetId]);
 
@@ -791,42 +795,42 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
 
   // Find Handlers
   const handleFind = useCallback((query: string, matchCase: boolean) => {
-      const start = selectedCell || { row: -1, col: -1 };
-      const next = findNext(query, matchCase, start);
-      if (next) {
-          _handleCellSelect(next);
+    const start = selectedCell || { row: -1, col: -1 };
+    const next = findNext(query, matchCase, start);
+    if (next) {
+      _handleCellSelect(next);
+    } else {
+      const nextWrap = findNext(query, matchCase, { row: -1, col: -1 });
+      if (nextWrap) {
+        _handleCellSelect(nextWrap);
       } else {
-          const nextWrap = findNext(query, matchCase, { row: -1, col: -1 });
-          if (nextWrap) {
-               _handleCellSelect(nextWrap);
-          } else {
-               alert('검색 결과가 없습니다.');
-          }
+        alert('검색 결과가 없습니다.');
       }
+    }
   }, [findNext, selectedCell, _handleCellSelect]);
 
   const handleReplace = useCallback((query: string, replacement: string, matchCase: boolean) => {
-      if (!selectedCell) {
-          handleFind(query, matchCase);
-          return;
-      }
-      
-      const val = String(currentCell?.value ?? '');
-      const target = matchCase ? query : query.toLowerCase();
-      const source = matchCase ? val : val.toLowerCase();
-      
-      if (source.includes(target)) {
-             if (matchCase) {
-                 setCellValue(selectedCell.row, selectedCell.col, val.replace(query, replacement));
-             } else {
-                 const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-                 // Replace only first?
-                 setCellValue(selectedCell.row, selectedCell.col, val.replace(re, replacement));
-             }
-             handleFind(query, matchCase);
+    if (!selectedCell) {
+      handleFind(query, matchCase);
+      return;
+    }
+
+    const val = String(currentCell?.value ?? '');
+    const target = matchCase ? query : query.toLowerCase();
+    const source = matchCase ? val : val.toLowerCase();
+
+    if (source.includes(target)) {
+      if (matchCase) {
+        setCellValue(selectedCell.row, selectedCell.col, val.replace(query, replacement));
       } else {
-          handleFind(query, matchCase);
+        const re = new RegExp(query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+        // Replace only first?
+        setCellValue(selectedCell.row, selectedCell.col, val.replace(re, replacement));
       }
+      handleFind(query, matchCase);
+    } else {
+      handleFind(query, matchCase);
+    }
   }, [selectedCell, currentCell, handleFind, setCellValue]);
 
   // Feature Handlers
@@ -854,7 +858,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
     const pivotData = calculatePivotData(data, config);
     const usedRows = Object.keys(data).map(Number);
     const maxRow = usedRows.length > 0 ? Math.max(...usedRows) : -1;
-    const startTargetRow = maxRow + 5; 
+    const startTargetRow = maxRow + 5;
 
     const newData = { ...data };
     Object.keys(pivotData).forEach(rIdx => {
@@ -879,143 +883,143 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
 
   return (
     <div className={styles.container}>
-      <MenuBar 
-         onExportCSV={() => exportToCSV(data, `${sheetTitle.trim() || 'spreadsheet'}.csv`)}
-         onDownloadXLSX={() => {
-              const rows = Object.keys(data).map(Number).sort((a,b)=>a-b);
-              const maxRow = rows.length ? rows[rows.length-1] : 0;
-              const maxCol = 26; 
-              const aoa = [];
-              for(let r=0; r<=maxRow; r++) {
-                  const rowData = [];
-                  for(let c=0; c<maxCol; c++) {
-                      rowData.push(data[r]?.[c]?.value ?? '');
-                  }
-                  aoa.push(rowData);
-              }
-              const wb = XLSX.utils.book_new();
-              const wsFull = XLSX.utils.aoa_to_sheet(aoa);
-              XLSX.utils.book_append_sheet(wb, wsFull, "Sheet1");
-              XLSX.writeFile(wb, `${sheetTitle.trim() || 'spreadsheet'}.xlsx`);
-         }}
-         onDownloadPDF={() => {
-              const doc = new jsPDF();
-              const rows = Object.keys(data).map(Number).sort((a,b)=>a-b);
-              const maxRow = rows.length ? rows[rows.length-1] : 0;
-              const maxCol = 10; 
-              const body = [];
-              for(let r=0; r<=maxRow; r++) {
-                  const rowData = [];
-                  for(let c=0; c<maxCol; c++) {
-                      rowData.push(String(data[r]?.[c]?.value ?? ''));
-                  }
-                  body.push(rowData);
-              }
-              autoTable(doc, {
-                  head: [],
-                  body: body,
-              });
-              doc.save(`${sheetTitle.trim() || 'spreadsheet'}.pdf`);
-         }}
-         onMakeCopy={async () => {
-              if(!spreadsheetId) {
-                  alert('저장된 시트만 복사할 수 있습니다.');
-                  return;
-              }
-              try {
-                  const newSheet = await api.spreadsheets.copy(spreadsheetId);
-                  if(confirm('복사가 완료되었습니다. 복사된 시트로 이동하시겠습니까?')) {
-                      router.push(`/spreadsheet/${newSheet.id}`);
-                  }
-              } catch(e) {
-                  alert('오류가 발생했습니다.');
-              }
-         }}
-         onSave={handleSave}
-         title={sheetTitle}
-         onTitleChange={handleTitleChange}
-         onPrint={() => window.print()}
-         onUndo={handleUndo}
-         onRedo={handleRedo}
-         onCut={cutoffToClipboard}
-         onCopy={copyToClipboard}
-         onPaste={pasteFromClipboard}
-         onFind={() => setIsFindOpen(true)}
-         onShowShortcuts={() => setIsShortcutsOpen(true)}
-         onVersionHistory={() => setIsHistoryOpen(true)}
-         onInsertRow={() => { if (selectedCell) insertRow(selectedCell.row); }}
-         onInsertCol={() => { if (selectedCell) insertColumn(selectedCell.col); }}
-         onDeleteRow={() => { if (selectedCell) deleteRow(selectedCell.row); }}
-         onDeleteCol={() => { if (selectedCell) deleteColumn(selectedCell.col); }}
-         onFreezeRow={() => {
-             if (selectedCell) {
-                 handleFreezeRow(selectedCell.row);
-             } else {
-                 alert('고정할 행 아래의 셀을 선택해주세요.');
-             }
-         }}
-         onFreezeCol={() => {
-             if (selectedCell) {
-                 handleFreezeCol(selectedCell.col);
-             } else {
-                 alert('고정할 열 오른쪽의 셀을 선택해주세요.');
-             }
-         }}
-         onFilter={() => {
-             if (!selectedCell) {
-                 if (rows.some(r => r?.hidden)) {
-                     setRows(prev => prev.map(r => ({ ...r, hidden: false })));
-                     alert('필터가 해제되었습니다.');
-                 } else {
-                     alert('필터를 적용할 셀을 선택해주세요.');
-                 }
-                 return;
-             }
-             const targetValue = data[selectedCell.row]?.[selectedCell.col]?.value;
-             const targetCol = selectedCell.col;
-             setRows(prev => prev.map((r, i) => {
-                 const cellValue = data[i]?.[targetCol]?.value;
-                 if (cellValue !== targetValue) {
-                     return { ...r, hidden: true };
-                 }
-                 return { ...r, hidden: false };
-             }));
-         }}
-         onSort={() => {
-             if (selectedCell) {
-                 sortRows(selectedCell.col, true); 
-             } else {
-                 alert('정렬할 열의 셀을 선택해주세요.');
-             }
-         }}
-         onToggleFormulaBar={() => setShowFormulaBar(!showFormulaBar)}
-         onToggleGridlines={() => setShowGridlines(!showGridlines)}
-         onEmail={() => setIsEmailOpen(true)}
-         onOpenFile={() => setIsFileDialogOpen(true)}
-         // New props for enhanced menu functionality
-         onInsertChart={handleAddChart}
-         onInsertPivot={handleOpenPivotDialog}
-         onConditionalFormat={handleOpenConditionalDialog}
-         onInsertLink={() => alert('링크 삽입 기능은 추후 지원 예정입니다.')}
-         onUnfreeze={handleUnfreeze}
-         onZoomChange={handleZoomChange}
-         onTrimWhitespace={handleTrimWhitespace}
-         onFormatNumber={(fmt) => updateCellFormat(selection, fmt)}
-         showFormulaBar={showFormulaBar}
-         showGridlines={showGridlines}
-         zoom={zoom}
+      <MenuBar
+        onExportCSV={() => exportToCSV(data, `${sheetTitle.trim() || 'spreadsheet'}.csv`)}
+        onDownloadXLSX={() => {
+          const rows = Object.keys(data).map(Number).sort((a, b) => a - b);
+          const maxRow = rows.length ? rows[rows.length - 1] : 0;
+          const maxCol = 26;
+          const aoa = [];
+          for (let r = 0; r <= maxRow; r++) {
+            const rowData = [];
+            for (let c = 0; c < maxCol; c++) {
+              rowData.push(data[r]?.[c]?.value ?? '');
+            }
+            aoa.push(rowData);
+          }
+          const wb = XLSX.utils.book_new();
+          const wsFull = XLSX.utils.aoa_to_sheet(aoa);
+          XLSX.utils.book_append_sheet(wb, wsFull, "Sheet1");
+          XLSX.writeFile(wb, `${sheetTitle.trim() || 'spreadsheet'}.xlsx`);
+        }}
+        onDownloadPDF={() => {
+          const doc = new jsPDF();
+          const rows = Object.keys(data).map(Number).sort((a, b) => a - b);
+          const maxRow = rows.length ? rows[rows.length - 1] : 0;
+          const maxCol = 10;
+          const body = [];
+          for (let r = 0; r <= maxRow; r++) {
+            const rowData = [];
+            for (let c = 0; c < maxCol; c++) {
+              rowData.push(String(data[r]?.[c]?.value ?? ''));
+            }
+            body.push(rowData);
+          }
+          autoTable(doc, {
+            head: [],
+            body: body,
+          });
+          doc.save(`${sheetTitle.trim() || 'spreadsheet'}.pdf`);
+        }}
+        onMakeCopy={async () => {
+          if (!spreadsheetId) {
+            alert('저장된 시트만 복사할 수 있습니다.');
+            return;
+          }
+          try {
+            const newSheet = await api.spreadsheets.copy(spreadsheetId);
+            if (confirm('복사가 완료되었습니다. 복사된 시트로 이동하시겠습니까?')) {
+              router.push(`/spreadsheet/${newSheet.id}`);
+            }
+          } catch (e) {
+            alert('오류가 발생했습니다.');
+          }
+        }}
+        onSave={handleSave}
+        title={sheetTitle}
+        onTitleChange={handleTitleChange}
+        onPrint={() => window.print()}
+        onUndo={handleUndo}
+        onRedo={handleRedo}
+        onCut={cutoffToClipboard}
+        onCopy={copyToClipboard}
+        onPaste={pasteFromClipboard}
+        onFind={() => setIsFindOpen(true)}
+        onShowShortcuts={() => setIsShortcutsOpen(true)}
+        onVersionHistory={() => setIsHistoryOpen(true)}
+        onInsertRow={() => { if (selectedCell) insertRow(selectedCell.row); }}
+        onInsertCol={() => { if (selectedCell) insertColumn(selectedCell.col); }}
+        onDeleteRow={() => { if (selectedCell) deleteRow(selectedCell.row); }}
+        onDeleteCol={() => { if (selectedCell) deleteColumn(selectedCell.col); }}
+        onFreezeRow={() => {
+          if (selectedCell) {
+            handleFreezeRow(selectedCell.row);
+          } else {
+            alert('고정할 행 아래의 셀을 선택해주세요.');
+          }
+        }}
+        onFreezeCol={() => {
+          if (selectedCell) {
+            handleFreezeCol(selectedCell.col);
+          } else {
+            alert('고정할 열 오른쪽의 셀을 선택해주세요.');
+          }
+        }}
+        onFilter={() => {
+          if (!selectedCell) {
+            if (rows.some(r => r?.hidden)) {
+              setRows(prev => prev.map(r => ({ ...r, hidden: false })));
+              alert('필터가 해제되었습니다.');
+            } else {
+              alert('필터를 적용할 셀을 선택해주세요.');
+            }
+            return;
+          }
+          const targetValue = data[selectedCell.row]?.[selectedCell.col]?.value;
+          const targetCol = selectedCell.col;
+          setRows(prev => prev.map((r, i) => {
+            const cellValue = data[i]?.[targetCol]?.value;
+            if (cellValue !== targetValue) {
+              return { ...r, hidden: true };
+            }
+            return { ...r, hidden: false };
+          }));
+        }}
+        onSort={() => {
+          if (selectedCell) {
+            sortRows(selectedCell.col, true);
+          } else {
+            alert('정렬할 열의 셀을 선택해주세요.');
+          }
+        }}
+        onToggleFormulaBar={() => setShowFormulaBar(!showFormulaBar)}
+        onToggleGridlines={() => setShowGridlines(!showGridlines)}
+        onEmail={() => setIsEmailOpen(true)}
+        onOpenFile={() => setIsFileDialogOpen(true)}
+        // New props for enhanced menu functionality
+        onInsertChart={handleAddChart}
+        onInsertPivot={handleOpenPivotDialog}
+        onConditionalFormat={handleOpenConditionalDialog}
+        onInsertLink={() => alert('링크 삽입 기능은 추후 지원 예정입니다.')}
+        onUnfreeze={handleUnfreeze}
+        onZoomChange={handleZoomChange}
+        onTrimWhitespace={handleTrimWhitespace}
+        onFormatNumber={(fmt) => updateCellFormat(selection, fmt)}
+        showFormulaBar={showFormulaBar}
+        showGridlines={showGridlines}
+        zoom={zoom}
       />
       <FileOpenDialog
         isOpen={isFileDialogOpen}
         onClose={() => setIsFileDialogOpen(false)}
         onFileImport={handleFileImport}
       />
-      <EmailDialog 
-        isOpen={isEmailOpen} 
-        onClose={() => setIsEmailOpen(false)} 
+      <EmailDialog
+        isOpen={isEmailOpen}
+        onClose={() => setIsEmailOpen(false)}
         onSend={(email, subject, message) => {
-            alert(`이메일을 보냈습니다! (시뮬레이션)\nTo: ${email}\nSubject: ${subject}\nMsg: ${message}`);
-            setIsEmailOpen(false);
+          alert(`이메일을 보냈습니다! (시뮬레이션)\nTo: ${email}\nSubject: ${subject}\nMsg: ${message}`);
+          setIsEmailOpen(false);
         }}
       />
       <Toolbar
@@ -1042,32 +1046,33 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
         onAdmin={user?.isAdmin ? () => router.push('/admin') : undefined}
         onComments={() => setIsCommentsOpen(true)}
         onAI={() => setIsAIOpen(true)}
+        onWorkflow={spreadsheetId ? () => setIsWorkflowOpen(true) : undefined}
       />
 
       {showFormulaBar && (
         <FormulaBar
-            selectedCell={selectedCell}
-            value={isEditing ? editValue : String(currentCell?.value ?? '')}
-            formula={currentCell?.formula ?? null}
-            isEditing={isEditing}
-            onValueChange={setEditValue}
-            onSubmit={commitEditing}
-            onCancel={cancelEditing}
-            onEdit={() => selectedCell && startEditing(selectedCell)}
+          selectedCell={selectedCell}
+          value={isEditing ? editValue : String(currentCell?.value ?? '')}
+          formula={currentCell?.formula ?? null}
+          isEditing={isEditing}
+          onValueChange={setEditValue}
+          onSubmit={commitEditing}
+          onCancel={cancelEditing}
+          onEdit={() => selectedCell && startEditing(selectedCell)}
         />
       )}
-      
+
       <div className={styles.canvasWrapper} style={{ position: 'relative' }}>
-         <VersionHistorySidebar
-            isOpen={isHistoryOpen}
-            onClose={() => setIsHistoryOpen(false)}
-            history={history}
-            onRestore={(index) => alert(`Restore version ${index} logic (requires patching)`)}
-         />
-        <UserCursors 
-          users={users} 
-          getCellPosition={getCellPosition} 
-          scrollOffset={{ x: 0, y: 0 }} 
+        <VersionHistorySidebar
+          isOpen={isHistoryOpen}
+          onClose={() => setIsHistoryOpen(false)}
+          history={history}
+          onRestore={(index) => alert(`Restore version ${index} logic (requires patching)`)}
+        />
+        <UserCursors
+          users={users}
+          getCellPosition={getCellPosition}
+          scrollOffset={{ x: 0, y: 0 }}
         />
         <SpreadsheetCanvas
           data={data}
@@ -1079,23 +1084,23 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
           onCellSelect={handleCellSelect}
           onSelectionChange={handleSelectionChange}
           onCellEdit={(pos) => startEditing(pos)}
-          conditionalRules={conditionalRules} 
+          conditionalRules={conditionalRules}
           onColumnResize={handleColumnResize}
           onRowResize={handleRowResize}
           showGridlines={showGridlines}
           onHeaderContextMenu={handleHeaderContextMenu}
           isEditing={isEditing}
         />
-        
+
         {isEditing && selectedCell && (
-             <CellEditor
-                key={`${selectedCell.row}-${selectedCell.col}`}
-                position={getCellPosition(selectedCell.row, selectedCell.col)}
-                value={editValue}
-                onChange={setEditValue}
-                onCommit={commitEditing}
-                onCancel={cancelEditing}
-             />
+          <CellEditor
+            key={`${selectedCell.row}-${selectedCell.col}`}
+            position={getCellPosition(selectedCell.row, selectedCell.col)}
+            value={editValue}
+            onChange={setEditValue}
+            onCommit={commitEditing}
+            onCancel={cancelEditing}
+          />
         )}
 
         {isEditing && selectedCell && (
@@ -1108,7 +1113,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
               setEditValue(val);
               setTimeout(commitEditing, 0);
             }}
-            onClose={() => {}}
+            onClose={() => { }}
           />
         )}
         <ChartOverlay
@@ -1117,7 +1122,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
           onRemoveChart={handleRemoveChart}
         />
       </div>
-      
+
       <ChatPanel
         currentUserId={userId}
         messages={chatMessages}
@@ -1126,7 +1131,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
         onToggle={toggleChat}
         unreadCount={unreadCount}
       />
-      
+
       <CommentsPanel
         comments={comments.map(c => ({
           ...c,
@@ -1171,7 +1176,7 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
           sheetName={sheetTitle}
         />
       )}
-      
+
       {isChartDialogOpen && (
         <ChartDialog
           isOpen={isChartDialogOpen}
@@ -1218,18 +1223,37 @@ export default function Spreadsheet({ initialData = {}, onDataChange, spreadshee
       />
 
       {toastMessage && (
-        <Toast 
-          message={toastMessage} 
-          onClose={() => setToastMessage(null)} 
+        <Toast
+          message={toastMessage}
+          onClose={() => setToastMessage(null)}
         />
       )}
 
       {isShareDialogOpen && spreadsheetId && (
         <ShareDialog
-            isOpen={isShareDialogOpen}
-            onClose={() => setIsShareDialogOpen(false)}
-            spreadsheetId={spreadsheetId}
+          isOpen={isShareDialogOpen}
+          onClose={() => setIsShareDialogOpen(false)}
+          spreadsheetId={spreadsheetId}
         />
+      )}
+
+      {/* Workflow Manager Side Panel */}
+      {isWorkflowOpen && spreadsheetId && (
+        <div className={styles.workflowPanel}>
+          <div className={styles.workflowPanelHeader}>
+            <h3>워크플로우 관리</h3>
+            <button
+              className={styles.workflowCloseBtn}
+              onClick={() => setIsWorkflowOpen(false)}
+              title="닫기"
+            >
+              ✕
+            </button>
+          </div>
+          <div className={styles.workflowPanelContent}>
+            <WorkflowManager spreadsheetId={spreadsheetId} />
+          </div>
+        </div>
       )}
 
       {contextMenu && (

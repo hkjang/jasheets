@@ -4,9 +4,79 @@
   width: 100%;
   height: 100%;
   background: var(--bg-primary);
+  position: relative;
 }
 
 .canvasWrapper {
   flex: 1;
   overflow: hidden;
+}
+
+/* Workflow Panel Styles */
+.workflowPanel {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 480px;
+  max-width: 90vw;
+  height: 100vh;
+  background: var(--bg-primary, #fff);
+  border-left: 1px solid var(--border-color, #e0e0e0);
+  box-shadow: -4px 0 20px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  animation: slideIn 0.2s ease-out;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.workflowPanelHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
+  background: linear-gradient(135deg, #f57c00 0%, #ff9800 100%);
+  color: white;
+}
+
+.workflowPanelHeader h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.workflowCloseBtn {
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  color: white;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.workflowCloseBtn:hover {
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.workflowPanelContent {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0;
 }

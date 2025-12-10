@@ -1,8 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException, Logger } from '@nestjs/common';
+import { Injectable, NotFoundException, ForbiddenException, Logger, Inject, forwardRef } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateEventRuleDto, UpdateEventRuleDto, FilterConditions } from './dto/event-rule.dto';
 import { EventType, TargetType } from '@prisma/client';
 import * as crypto from 'crypto';
+import { FlowEngineService } from '../flows/flow-engine.service';
 
 export interface CellChangeEvent {
   spreadsheetId: string;
@@ -31,11 +32,15 @@ export interface EventPayload {
 @Injectable()
 export class EventsService {
   private readonly logger = new Logger(EventsService.name);
-  
+
   // Batch event buffer
   private batchBuffer: Map<string, { events: CellChangeEvent[], timeout: NodeJS.Timeout }> = new Map();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Inject(forwardRef(() => FlowEngineService))
+    private readonly flowEngineService: FlowEngineService,
+  ) { }
 
   // =====================================================
   // Permission Check Helper
@@ -338,7 +343,7 @@ export class EventsService {
 
   private async triggerActions(rule: any, eventData: CellChangeEvent | CellChangeEvent[], transactionId: string): Promise<void> {
     const events = Array.isArray(eventData) ? eventData : [eventData];
-    
+
     const payload: EventPayload[] = events.map(event => ({
       transactionId,
       eventType: events.length > 1 ? EventType.MULTI_CELL_CHANGE : EventType.CELL_CHANGE,
@@ -369,8 +374,17 @@ export class EventsService {
   }
 
   private async triggerFlow(flow: any, payload: EventPayload[], transactionId: string): Promise<void> {
-    // This will be implemented in FlowEngineService
     this.logger.log(`Triggering flow ${flow.id} for transaction ${transactionId}`);
+    try {
+      // Execute the flow with the event payload as trigger data
+      await this.flowEngineService.executeFlow(flow.id, {
+        transactionId,
+        events: payload,
+        triggeredAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      this.logger.error(`Failed to execute flow ${flow.id}:`, error);
+    }
   }
 
   // =====================================================
