@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "turbo run dev",
     "build": "turbo run build",
+    "start": "turbo run start",
+    "start:prod": "turbo run start:prod",
     "test": "turbo run test",
     "test:e2e": "playwright test",
     "lint": "turbo run lint",
