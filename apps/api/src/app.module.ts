@@ -21,6 +21,10 @@ import { TemplatesModule } from './modules/templates/templates.module';
 import { EventsModule } from './modules/events/events.module';
 import { FlowsModule } from './modules/flows/flows.module';
 import { EmbedModule } from './modules/embed/embed.module';
+import { NormalizerModule } from './modules/normalizer/normalizer.module';
+import { ProfilerModule } from './modules/profiler/profiler.module';
+import { UDFModule } from './modules/udf/udf.module';
+import { DocumentationModule } from './modules/documentation/documentation.module';
 
 @Module({
   imports: [
@@ -47,8 +51,15 @@ import { EmbedModule } from './modules/embed/embed.module';
     EventsModule,
     FlowsModule,
     EmbedModule,
+    NormalizerModule,
+    ProfilerModule,
+    UDFModule,
+    DocumentationModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule { }
+
+
+

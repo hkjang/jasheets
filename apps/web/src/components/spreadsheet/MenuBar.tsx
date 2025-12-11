@@ -52,6 +52,12 @@ interface MenuBarProps {
   onDataValidation?: () => void;
   onNamedRanges?: () => void;
   onProtectedRanges?: () => void;
+  // AI & Tools menu props
+  onSheetBuilder?: () => void;
+  onProfiler?: () => void;
+  onNormalizer?: () => void;
+  onUDFEditor?: () => void;
+  onDocumentation?: () => void;
   showFormulaBar?: boolean;
   showGridlines?: boolean;
   zoom?: number;
@@ -103,6 +109,11 @@ export default function MenuBar({
   onDataValidation,
   onNamedRanges,
   onProtectedRanges,
+  onSheetBuilder,
+  onProfiler,
+  onNormalizer,
+  onUDFEditor,
+  onDocumentation,
   showFormulaBar = true,
   showGridlines = true,
   zoom = 100,
@@ -339,6 +350,28 @@ export default function MenuBar({
               <MenuItem label="데이터 확인" onClick={onDataValidation} />
               <MenuItem label="이름이 지정된 범위" onClick={onNamedRanges} />
               <MenuItem label="보호된 시트 및 범위" onClick={onProtectedRanges} />
+            </div>
+          )}
+        </div>
+
+        {/* TOOLS MENU - AI & Advanced Features */}
+        <div className={styles.menuWrapper}>
+          <button
+            className={`${styles.menuButton} ${activeMenu === 'tools' ? styles.active : ''}`}
+            onClick={() => handleMenuClick('tools')}
+            onMouseEnter={() => handleMouseEnter('tools')}
+          >
+            도구
+          </button>
+          {activeMenu === 'tools' && (
+            <div className={styles.dropdown}>
+              <MenuItem label="✨ AI 시트 생성" onClick={onSheetBuilder} />
+              <MenuItem label="📊 데이터 프로파일러" onClick={onProfiler} />
+              <Separator />
+              <MenuItem label="🔄 데이터 정규화" onClick={onNormalizer} />
+              <MenuItem label="📄 자동 문서화" onClick={onDocumentation} />
+              <Separator />
+              <MenuItem label="⚡ 사용자 정의 함수" onClick={onUDFEditor} />
             </div>
           )}
         </div>

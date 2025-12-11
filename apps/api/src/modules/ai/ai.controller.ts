@@ -1,10 +1,13 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
+  Param,
   UseGuards,
 } from '@nestjs/common';
 import { AIService } from './ai.service';
+import { SheetBuilderService } from './sheet-builder.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 interface GenerateFormulaDto {
@@ -46,10 +49,17 @@ interface SummarizeDataDto {
   headers?: string[];
 }
 
+interface GenerateSheetDto {
+  prompt: string;
+}
+
 @Controller('ai')
 @UseGuards(JwtAuthGuard)
 export class AIController {
-  constructor(private readonly aiService: AIService) {}
+  constructor(
+    private readonly aiService: AIService,
+    private readonly sheetBuilderService: SheetBuilderService,
+  ) { }
 
   @Post('formula/generate')
   generateFormula(@Body() dto: GenerateFormulaDto) {
@@ -80,4 +90,21 @@ export class AIController {
   summarizeData(@Body() dto: SummarizeDataDto) {
     return this.aiService.summarizeData(dto.data, dto.headers);
   }
+
+  // Sheet Builder Endpoints
+  @Post('sheet/generate')
+  generateSheet(@Body() dto: GenerateSheetDto) {
+    return this.sheetBuilderService.generateSheetFromPrompt(dto.prompt);
+  }
+
+  @Get('sheet/templates')
+  getTemplates() {
+    return this.sheetBuilderService.getTemplates();
+  }
+
+  @Get('sheet/templates/:key')
+  buildFromTemplate(@Param('key') key: string) {
+    return this.sheetBuilderService.buildFromTemplate(key);
+  }
 }
+

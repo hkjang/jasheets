@@ -1,0 +1,277 @@
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+}
+
+.dialog {
+    background: white;
+    border-radius: 12px;
+    width: 700px;
+    max-width: 90vw;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 20px;
+    border-bottom: 1px solid #e0e0e0;
+}
+
+.header h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 600;
+    color: #ff6b35;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.closeBtn {
+    background: none;
+    border: none;
+    font-size: 24px;
+    cursor: pointer;
+    color: #5f6368;
+}
+
+.content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+}
+
+.row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+    margin-bottom: 16px;
+}
+
+.field {
+    margin-bottom: 16px;
+}
+
+.field label {
+    display: block;
+    font-size: 13px;
+    font-weight: 500;
+    color: #202124;
+    margin-bottom: 6px;
+}
+
+.field input,
+.field select,
+.field textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #dadce0;
+    border-radius: 6px;
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+    box-sizing: border-box;
+}
+
+.field input:focus,
+.field select:focus,
+.field textarea:focus {
+    border-color: #ff6b35;
+    box-shadow: 0 0 0 2px rgba(255, 107, 53, 0.1);
+}
+
+.codeEditor {
+    font-family: 'Monaco', 'Menlo', 'Consolas', monospace;
+    font-size: 13px;
+    line-height: 1.5;
+    min-height: 150px;
+    resize: vertical;
+    background: #1e1e1e;
+    color: #d4d4d4;
+}
+
+.paramsSection {
+    background: #f8f9fa;
+    border-radius: 8px;
+    padding: 16px;
+    margin-bottom: 16px;
+}
+
+.paramsSection h3 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: #202124;
+}
+
+.paramRow {
+    display: grid;
+    grid-template-columns: 2fr 1fr 1fr auto;
+    gap: 8px;
+    margin-bottom: 8px;
+    align-items: end;
+}
+
+.paramRow input,
+.paramRow select {
+    padding: 8px 10px;
+    border: 1px solid #dadce0;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.addParamBtn {
+    padding: 8px 16px;
+    background: #f1f3f4;
+    border: 1px dashed #dadce0;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    color: #5f6368;
+}
+
+.addParamBtn:hover {
+    background: #e8eaed;
+}
+
+.removeBtn {
+    width: 32px;
+    height: 32px;
+    background: #fce8e6;
+    border: none;
+    border-radius: 6px;
+    color: #ea4335;
+    cursor: pointer;
+    font-size: 16px;
+}
+
+.removeBtn:hover {
+    background: #f5c6c6;
+}
+
+.testSection {
+    background: #e8f5e9;
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 16px;
+}
+
+.testSection h3 {
+    margin: 0 0 12px 0;
+    font-size: 14px;
+    font-weight: 500;
+    color: #1e8e3e;
+}
+
+.testRow {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+}
+
+.testInput {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #a8dab5;
+    border-radius: 6px;
+    font-size: 14px;
+    background: white;
+}
+
+.testBtn {
+    padding: 10px 20px;
+    background: #1e8e3e;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.testBtn:hover {
+    background: #188038;
+}
+
+.testResult {
+    margin-top: 12px;
+    padding: 12px;
+    background: white;
+    border-radius: 6px;
+    font-size: 13px;
+}
+
+.testResult.success {
+    border: 1px solid #a8dab5;
+    color: #1e8e3e;
+}
+
+.testResult.error {
+    border: 1px solid #f5c6c6;
+    color: #ea4335;
+}
+
+.footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 16px 20px;
+    border-top: 1px solid #e0e0e0;
+}
+
+.cancelBtn {
+    padding: 10px 20px;
+    background: none;
+    border: 1px solid #dadce0;
+    border-radius: 6px;
+    font-size: 14px;
+    color: #5f6368;
+    cursor: pointer;
+}
+
+.saveBtn {
+    padding: 10px 24px;
+    background: #ff6b35;
+    border: none;
+    border-radius: 6px;
+    font-size: 14px;
+    color: white;
+    cursor: pointer;
+    font-weight: 500;
+}
+
+.saveBtn:hover {
+    background: #e55a28;
+}
+
+.saveBtn:disabled {
+    background: #dadce0;
+    cursor: not-allowed;
+}
+
+.error {
+    background: #fce8e6;
+    color: #c5221f;
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 16px;
+}
+
+.hint {
+    font-size: 11px;
+    color: #5f6368;
+    margin-top: 4px;
+}

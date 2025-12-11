@@ -73,13 +73,194 @@ export class AIService {
     return this.generateFormulaRuleBased(prompt, context);
   }
 
+  // Prompt templates for common business formulas
+  private readonly promptTemplates = {
+    growthRate: {
+      keywords: ['증감률', '성장률', '변화율', 'growth rate', 'change rate', '증가율', '감소율'],
+      formula: (prev: string, curr: string) => `=(${curr}-${prev})/${prev}*100`,
+      explanation: '두 값 사이의 증감률을 퍼센트로 계산합니다. (현재값-이전값)/이전값*100',
+    },
+    profitMargin: {
+      keywords: ['이익률', '수익률', '마진', 'profit margin', 'margin', '영업이익률'],
+      formula: (revenue: string, cost: string) => `=(${revenue}-${cost})/${revenue}*100`,
+      explanation: '수익 대비 이익의 비율을 계산합니다.',
+    },
+    yoyComparison: {
+      keywords: ['전년대비', '전년동기대비', 'yoy', 'year over year', '작년대비'],
+      formula: (thisYear: string, lastYear: string) => `=(${thisYear}-${lastYear})/${lastYear}*100`,
+      explanation: '전년 동기 대비 증감률을 계산합니다.',
+    },
+    movingAverage: {
+      keywords: ['이동평균', 'moving average', 'ma', '평활', '추세'],
+      formula: (range: string) => `=AVERAGE(${range})`,
+      explanation: '지정된 구간의 이동 평균을 계산합니다.',
+    },
+    variance: {
+      keywords: ['분산', 'variance', 'var', '변동성'],
+      formula: (range: string) => `=VAR(${range})`,
+      explanation: '데이터의 분산을 계산합니다.',
+    },
+    standardDeviation: {
+      keywords: ['표준편차', 'standard deviation', 'std', 'stdev'],
+      formula: (range: string) => `=STDEV(${range})`,
+      explanation: '데이터의 표준편차를 계산합니다.',
+    },
+    rankPercentile: {
+      keywords: ['순위', 'rank', '백분위', 'percentile', '등수'],
+      formula: (value: string, range: string) => `=RANK(${value},${range})`,
+      explanation: '범위 내에서 값의 순위를 계산합니다.',
+    },
+    cumulative: {
+      keywords: ['누적', 'cumulative', '누계', '총누적', 'running total'],
+      formula: (cell: string, startRow: string) => `=SUM($A$${startRow}:${cell})`,
+      explanation: '시작 셀부터 현재 셀까지의 누적 합계를 계산합니다.',
+    },
+    weightedAverage: {
+      keywords: ['가중평균', 'weighted average', '가중치평균'],
+      formula: (values: string, weights: string) => `=SUMPRODUCT(${values},${weights})/SUM(${weights})`,
+      explanation: '가중치를 적용한 평균을 계산합니다.',
+    },
+    compoundGrowth: {
+      keywords: ['복리', '복합성장률', 'cagr', 'compound growth', '연평균성장률'],
+      formula: (start: string, end: string, years: string) => `=POWER(${end}/${start},1/${years})-1`,
+      explanation: '연평균 복합 성장률(CAGR)을 계산합니다.',
+    },
+  };
+
   // Pattern matching for common formula requests
   private tryPatternMatch(prompt: string, context: FormulaContext): FormulaResult | null {
     const lowerPrompt = prompt.toLowerCase();
     const range = context.selectedRange;
-    const rangeStr = range 
+    const rangeStr = range
       ? `${this.colToLetter(range.startCol)}${range.startRow + 1}:${this.colToLetter(range.endCol)}${range.endRow + 1}`
       : 'A1:A10';
+
+    // Get start and end cells for two-value formulas
+    const startCell = range
+      ? `${this.colToLetter(range.startCol)}${range.startRow + 1}`
+      : 'A1';
+    const endCell = range
+      ? `${this.colToLetter(range.endCol)}${range.endRow + 1}`
+      : 'B1';
+
+    // === Business Formula Patterns ===
+
+    // Growth Rate / 증감률 patterns
+    if (this.promptTemplates.growthRate.keywords.some(k => lowerPrompt.includes(k))) {
+      return {
+        formula: this.promptTemplates.growthRate.formula(startCell, endCell),
+        explanation: this.promptTemplates.growthRate.explanation,
+        confidence: 0.92,
+        alternatives: [
+          `=IFERROR((${endCell}-${startCell})/${startCell}*100, 0)`,
+          `=(${endCell}/${startCell}-1)*100`,
+        ],
+      };
+    }
+
+    // Profit Margin / 이익률 patterns
+    if (this.promptTemplates.profitMargin.keywords.some(k => lowerPrompt.includes(k))) {
+      return {
+        formula: this.promptTemplates.profitMargin.formula(startCell, endCell),
+        explanation: this.promptTemplates.profitMargin.explanation,
+        confidence: 0.9,
+        alternatives: [
+          `=IFERROR((${startCell}-${endCell})/${startCell}*100, 0)`,
+        ],
+      };
+    }
+
+    // YoY Comparison / 전년대비 patterns
+    if (this.promptTemplates.yoyComparison.keywords.some(k => lowerPrompt.includes(k))) {
+      return {
+        formula: this.promptTemplates.yoyComparison.formula(endCell, startCell),
+        explanation: this.promptTemplates.yoyComparison.explanation,
+        confidence: 0.9,
+        alternatives: [
+          `=${endCell}-${startCell}`,
+          `=IFERROR((${endCell}-${startCell})/${startCell}*100, "N/A")`,
+        ],
+      };
+    }
+
+    // Variance / 분산 patterns
+    if (this.promptTemplates.variance.keywords.some(k => lowerPrompt.includes(k))) {
+      return {
+        formula: `=VAR(${rangeStr})`,
+        explanation: this.promptTemplates.variance.explanation,
+        confidence: 0.93,
+        alternatives: [`=VAR.P(${rangeStr})`, `=VAR.S(${rangeStr})`],
+      };
+    }
+
+    // Standard Deviation / 표준편차 patterns
+    if (this.promptTemplates.standardDeviation.keywords.some(k => lowerPrompt.includes(k))) {
+      return {
+        formula: `=STDEV(${rangeStr})`,
+        explanation: this.promptTemplates.standardDeviation.explanation,
+        confidence: 0.93,
+        alternatives: [`=STDEV.P(${rangeStr})`, `=STDEV.S(${rangeStr})`],
+      };
+    }
+
+    // Rank / 순위 patterns
+    if (this.promptTemplates.rankPercentile.keywords.some(k => lowerPrompt.includes(k))) {
+      return {
+        formula: `=RANK(${startCell},${rangeStr})`,
+        explanation: this.promptTemplates.rankPercentile.explanation,
+        confidence: 0.88,
+        alternatives: [
+          `=RANK(${startCell},${rangeStr},1)`,
+          `=PERCENTRANK(${rangeStr},${startCell})`,
+        ],
+      };
+    }
+
+    // Cumulative / 누적 patterns
+    if (this.promptTemplates.cumulative.keywords.some(k => lowerPrompt.includes(k))) {
+      const startRow = range ? range.startRow + 1 : 1;
+      return {
+        formula: `=SUM($${this.colToLetter(range?.startCol || 0)}$${startRow}:${startCell})`,
+        explanation: this.promptTemplates.cumulative.explanation,
+        confidence: 0.88,
+        alternatives: [`=SUMIF($A$1:${startCell},">0")`],
+      };
+    }
+
+    // Weighted Average / 가중평균 patterns
+    if (this.promptTemplates.weightedAverage.keywords.some(k => lowerPrompt.includes(k))) {
+      return {
+        formula: `=SUMPRODUCT(A:A,B:B)/SUM(B:B)`,
+        explanation: this.promptTemplates.weightedAverage.explanation,
+        confidence: 0.85,
+        alternatives: [`=SUMPRODUCT(${rangeStr},C:C)/SUM(C:C)`],
+      };
+    }
+
+    // Compound Growth / 복리성장률 patterns
+    if (this.promptTemplates.compoundGrowth.keywords.some(k => lowerPrompt.includes(k))) {
+      return {
+        formula: `=POWER(${endCell}/${startCell},1/5)-1`,
+        explanation: this.promptTemplates.compoundGrowth.explanation,
+        confidence: 0.85,
+        alternatives: [`=(${endCell}/${startCell})^(1/5)-1`],
+      };
+    }
+
+    // Moving Average / 이동평균 patterns
+    if (this.promptTemplates.movingAverage.keywords.some(k => lowerPrompt.includes(k))) {
+      return {
+        formula: `=AVERAGE(${rangeStr})`,
+        explanation: this.promptTemplates.movingAverage.explanation,
+        confidence: 0.88,
+        alternatives: [
+          `=AVERAGE(OFFSET(${startCell},-2,0,3,1))`,
+          `=AVERAGE(INDIRECT("A"&(ROW()-2)&":A"&ROW()))`,
+        ],
+      };
+    }
+
+    // === Basic Formula Patterns ===
 
     // Sum patterns
     if (lowerPrompt.includes('합계') || lowerPrompt.includes('sum') || lowerPrompt.includes('더해') || lowerPrompt.includes('총합')) {
@@ -128,6 +309,25 @@ export class AIService {
       };
     }
 
+    // Median / 중위수 patterns
+    if (lowerPrompt.includes('중위수') || lowerPrompt.includes('중앙값') || lowerPrompt.includes('median')) {
+      return {
+        formula: `=MEDIAN(${rangeStr})`,
+        explanation: '데이터의 중앙값(중위수)을 계산합니다.',
+        confidence: 0.93,
+      };
+    }
+
+    // Mode / 최빈값 patterns
+    if (lowerPrompt.includes('최빈값') || lowerPrompt.includes('최빈수') || lowerPrompt.includes('mode')) {
+      return {
+        formula: `=MODE(${rangeStr})`,
+        explanation: '가장 자주 나타나는 값을 찾습니다.',
+        confidence: 0.9,
+        alternatives: [`=MODE.MULT(${rangeStr})`],
+      };
+    }
+
     // Conditional patterns
     if (lowerPrompt.includes('만약') || lowerPrompt.includes('if') || lowerPrompt.includes('조건')) {
       return {
@@ -157,13 +357,43 @@ export class AIService {
       };
     }
 
+    // Round / 반올림 patterns
+    if (lowerPrompt.includes('반올림') || lowerPrompt.includes('round')) {
+      return {
+        formula: `=ROUND(${startCell}, 2)`,
+        explanation: '지정된 자릿수로 반올림합니다.',
+        confidence: 0.9,
+        alternatives: [`=ROUNDUP(${startCell}, 2)`, `=ROUNDDOWN(${startCell}, 2)`],
+      };
+    }
+
+    // Concatenate / 문자열 결합 patterns
+    if (lowerPrompt.includes('결합') || lowerPrompt.includes('합치') || lowerPrompt.includes('concat') || lowerPrompt.includes('문자열')) {
+      return {
+        formula: `=CONCAT(${startCell}, " ", ${endCell})`,
+        explanation: '여러 셀의 텍스트를 하나로 결합합니다.',
+        confidence: 0.85,
+        alternatives: [`=${startCell}&" "&${endCell}`, `=TEXTJOIN(" ", TRUE, ${rangeStr})`],
+      };
+    }
+
+    // Date difference / 날짜 차이 patterns
+    if (lowerPrompt.includes('날짜 차이') || lowerPrompt.includes('며칠') || lowerPrompt.includes('일수') || lowerPrompt.includes('기간')) {
+      return {
+        formula: `=DATEDIF(${startCell}, ${endCell}, "D")`,
+        explanation: '두 날짜 사이의 일수를 계산합니다.',
+        confidence: 0.88,
+        alternatives: [`=${endCell}-${startCell}`, `=DATEDIF(${startCell}, ${endCell}, "M")`],
+      };
+    }
+
     return null;
   }
 
   // Rule-based formula generation (fallback)
   private generateFormulaRuleBased(prompt: string, context: FormulaContext): FormulaResult {
     const range = context.selectedRange;
-    const rangeStr = range 
+    const rangeStr = range
       ? `${this.colToLetter(range.startCol)}${range.startRow + 1}:${this.colToLetter(range.endCol)}${range.endRow + 1}`
       : 'A1:A10';
 
@@ -346,7 +576,7 @@ Respond in JSON format:
       return { values: [], pattern: 'No data' };
     }
 
-    const flatData = direction === 'down' 
+    const flatData = direction === 'down'
       ? existingData.map(row => row[0])
       : existingData[0];
 

@@ -57,6 +57,13 @@ import { ImportResult } from '@/utils/fileImport';
 import { useComments } from '@/hooks/useComments';
 import WorkflowManager from '../dashboard/WorkflowManager';
 
+// Advanced Feature Dialogs
+import SheetBuilderDialog from './SheetBuilderDialog';
+import ProfilerPanel from './ProfilerPanel';
+import NormalizerDialog from './NormalizerDialog';
+import UDFEditorDialog from './UDFEditorDialog';
+import DocumentationDialog from './DocumentationDialog';
+
 interface SpreadsheetProps {
   initialData?: SheetData;
   initialCharts?: any[];
@@ -672,6 +679,13 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
   // Link Dialog state
   const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
 
+  // Advanced Feature Dialog states
+  const [isSheetBuilderOpen, setIsSheetBuilderOpen] = useState(false);
+  const [isProfilerOpen, setIsProfilerOpen] = useState(false);
+  const [isNormalizerOpen, setIsNormalizerOpen] = useState(false);
+  const [isUDFEditorOpen, setIsUDFEditorOpen] = useState(false);
+  const [isDocumentationOpen, setIsDocumentationOpen] = useState(false);
+
   // Handler for applying theme to selected range
   const handleApplyTheme = useCallback((theme: Theme) => {
     if (!selection) {
@@ -1129,6 +1143,12 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
         showFormulaBar={showFormulaBar}
         showGridlines={showGridlines}
         zoom={zoom}
+        // Advanced Tools Menu
+        onSheetBuilder={() => setIsSheetBuilderOpen(true)}
+        onProfiler={() => setIsProfilerOpen(true)}
+        onNormalizer={() => setIsNormalizerOpen(true)}
+        onUDFEditor={() => setIsUDFEditorOpen(true)}
+        onDocumentation={() => setIsDocumentationOpen(true)}
       />
       <FileOpenDialog
         isOpen={isFileDialogOpen}
@@ -1443,6 +1463,74 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
           onUnhide={contextMenu.type === 'row' ? handleUnhideRow : handleUnhideCol}
         />
       )}
+
+      {/* Advanced Feature Dialogs */}
+      <SheetBuilderDialog
+        isOpen={isSheetBuilderOpen}
+        onClose={() => setIsSheetBuilderOpen(false)}
+        onApply={(result) => {
+          if (result.cells) {
+            const newData = { ...data };
+            result.cells.forEach((row, rIdx) => {
+              if (!newData[rIdx]) newData[rIdx] = {};
+              row.forEach((cell, cIdx) => {
+                newData[rIdx][cIdx] = { value: cell };
+              });
+            });
+            updateData(newData);
+            setToastMessage('AI 시트가 생성되었습니다.');
+          }
+        }}
+      />
+
+      {isProfilerOpen && (
+        <div className={styles.profilerSidePanel}>
+          <ProfilerPanel
+            isOpen={isProfilerOpen}
+            onClose={() => setIsProfilerOpen(false)}
+            data={selectedData}
+            sheetName={sheetTitle}
+          />
+        </div>
+      )}
+
+      <NormalizerDialog
+        isOpen={isNormalizerOpen}
+        onClose={() => setIsNormalizerOpen(false)}
+        onApply={(normalizedData) => {
+          if (!selection) return;
+          const startRow = Math.min(selection.start.row, selection.end.row);
+          const startCol = Math.min(selection.start.col, selection.end.col);
+          const newData = { ...data };
+          normalizedData.forEach((row, rIdx) => {
+            row.forEach((val, cIdx) => {
+              const r = startRow + rIdx;
+              const c = startCol + cIdx;
+              if (!newData[r]) newData[r] = {};
+              newData[r][c] = { ...newData[r]?.[c], value: val };
+            });
+          });
+          updateData(newData);
+          setToastMessage('데이터가 정규화되었습니다.');
+        }}
+        data={selectedData}
+      />
+
+      <UDFEditorDialog
+        isOpen={isUDFEditorOpen}
+        onClose={() => setIsUDFEditorOpen(false)}
+        onSave={(udf) => {
+          setToastMessage(`함수 ${udf.name}이(가) 저장되었습니다.`);
+        }}
+        spreadsheetId={spreadsheetId || 'demo'}
+      />
+
+      <DocumentationDialog
+        isOpen={isDocumentationOpen}
+        onClose={() => setIsDocumentationOpen(false)}
+        data={selectedData}
+        sheetName={sheetTitle}
+      />
     </div>
   );
 }
