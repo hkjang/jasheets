@@ -39,6 +39,11 @@ model User {
   roleId              String?
   role                Role?           @relation(fields: [roleId], references: [id])
   flowPermissions     FlowPermission[]
+  
+  // Phase 1: Advanced Features
+  sheetPermissions    SheetPermission[]
+  revisionLogs        RevisionLog[]
+  sheetSnapshots      SheetSnapshot[]
 }
 
 model Session {
@@ -73,6 +78,10 @@ model Spreadsheet {
   eventRules    EventRule[]
   flows         Flow[]
   embedConfig   EmbedConfig?
+  
+  // Phase 3: Advanced Features
+  customCommands  CustomCommand[]
+  masterViews     MasterView[]
 
   @@map("spreadsheets")
 }
@@ -134,6 +143,16 @@ model Sheet {
   colMeta         ColMeta[]
   charts          Chart[]
   pivotTables     PivotTable[]
+  
+  // Phase 1: Advanced Features
+  sheetPermissions      SheetPermission[]
+  revisionLogs          RevisionLog[]
+  conditionalRules      ConditionalRule[]
+  sourceReferences      CrossSheetReference[] @relation("SourceReferences")
+  targetReferences      CrossSheetReference[] @relation("TargetReferences")
+  sheetSnapshots        SheetSnapshot[]
+  filterProfiles        FilterProfile[]
+  sheetAutomations      SheetAutomation[]
 
   @@unique([spreadsheetId, index])
   @@map("sheets")
@@ -605,4 +624,183 @@ enum FlowRole {
   VIEWER
   EDITOR
   OWNER
+}
+
+// =====================================================
+// PHASE 1-3: ADVANCED SHEET FEATURES
+// =====================================================
+
+// 시트별 권한 관리
+model SheetPermission {
+  id        String              @id @default(uuid())
+  sheetId   String
+  sheet     Sheet               @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email     String?             // 비등록 사용자 초대용
+  role      SheetPermissionRole
+  createdAt DateTime            @default(now())
+
+  @@unique([sheetId, userId])
+  @@unique([sheetId, email])
+  @@map("sheet_permissions")
+}
+
+enum SheetPermissionRole {
+  VIEWER      // 읽기 전용
+  COMMENTER   // 댓글 전용
+  EDITOR      // 편집 가능
+}
+
+// 시트 변경 내역 로그
+model RevisionLog {
+  id            String    @id @default(uuid())
+  sheetId       String
+  sheet         Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  action        String    // CELL_UPDATE, ROW_INSERT, COL_DELETE, BULK_UPDATE 등
+  targetRange   String?   // 영향받은 범위 (예: "A1:B10")
+  previousData  Json?     // 이전 상태
+  newData       Json?     // 새 상태
+  userId        String
+  user          User      @relation(fields: [userId], references: [id])
+  description   String?   // 변경 설명
+  createdAt     DateTime  @default(now())
+
+  @@index([sheetId, createdAt(sort: Desc)])
+  @@map("revision_logs")
+}
+
+// 조건부 서식 규칙
+model ConditionalRule {
+  id          String    @id @default(uuid())
+  sheetId     String
+  sheet       Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  name        String
+  priority    Int       @default(0)   // 낮을수록 우선순위 높음
+  ranges      String[]  // 적용 범위 (예: ["A1:Z100", "AA1:AZ50"])
+  conditions  Json      // 조건 배열 [{type, operator, value}]
+  format      Json      // 적용할 서식 {backgroundColor, textColor, bold, italic, ...}
+  active      Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([sheetId])
+  @@map("conditional_rules")
+}
+
+// 시트 간 참조
+model CrossSheetReference {
+  id            String    @id @default(uuid())
+  sourceSheetId String
+  sourceSheet   Sheet     @relation("SourceReferences", fields: [sourceSheetId], references: [id], onDelete: Cascade)
+  sourceCell    String    // 참조하는 셀 (예: "A1")
+  targetSheetId String
+  targetSheet   Sheet     @relation("TargetReferences", fields: [targetSheetId], references: [id], onDelete: Cascade)
+  targetCell    String    // 참조되는 셀 (예: "B5")
+  formula       String?   // 원본 수식 (예: "='Sheet2'!B5")
+  createdAt     DateTime  @default(now())
+
+  @@index([sourceSheetId])
+  @@index([targetSheetId])
+  @@map("cross_sheet_references")
+}
+
+// 시트 자동화 규칙
+model SheetAutomation {
+  id          String    @id @default(uuid())
+  sheetId     String
+  sheet       Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  trigger     Json      // 트리거 정의 {eventType, conditions}
+  actions     Json      // 액션 배열 [{type, config}]
+  active      Boolean   @default(true)
+  runCount    Int       @default(0)
+  lastRunAt   DateTime?
+  createdById String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([sheetId])
+  @@map("sheet_automations")
+}
+
+// 필터 프로필
+model FilterProfile {
+  id        String    @id @default(uuid())
+  sheetId   String
+  sheet     Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  name      String
+  filters   Json      // 필터 조건 배열 [{column, operator, value}]
+  sortings  Json?     // 정렬 설정 [{column, direction}]
+  hiddenCols Int[]    // 숨긴 열 인덱스
+  hiddenRows Int[]    // 숨긴 행 인덱스
+  isDefault Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([sheetId])
+  @@map("filter_profiles")
+}
+
+// 시트 스냅샷
+model SheetSnapshot {
+  id          String    @id @default(uuid())
+  sheetId     String
+  sheet       Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  data        Json      // 전체 시트 데이터 스냅샷
+  parentId    String?   // 브랜치 부모 스냅샷
+  isBranch    Boolean   @default(false)
+  createdById String
+  createdBy   User      @relation(fields: [createdById], references: [id])
+  createdAt   DateTime  @default(now())
+
+  @@index([sheetId])
+  @@map("sheet_snapshots")
+}
+
+// 사용자 정의 명령어
+model CustomCommand {
+  id            String      @id @default(uuid())
+  spreadsheetId String
+  spreadsheet   Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  name          String      // 명령어 이름 (예: "fill-dates")
+  description   String?
+  script        String      @db.Text  // JavaScript 코드
+  shortcuts     String[]    // 단축키 배열 (예: ["Ctrl+Shift+D"])
+  isGlobal      Boolean     @default(false)  // 전역 명령어 여부
+  createdById   String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  @@unique([spreadsheetId, name])
+  @@map("custom_commands")
+}
+
+// 마스터 뷰
+model MasterView {
+  id              String      @id @default(uuid())
+  spreadsheetId   String
+  spreadsheet     Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  name            String
+  description     String?
+  sourceSheets    Json        // [{sheetId, columnMappings, rowFilter}]
+  syncEnabled     Boolean     @default(true)
+  lastSyncAt      DateTime?
+  createdById     String
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@index([spreadsheetId])
+  @@map("master_views")
+}
+
+// 시트 뷰 모드
+enum SheetViewMode {
+  EDIT          // 편집 모드
+  VIEW          // 읽기 전용 모드
+  ANALYSIS      // 데이터 분석 모드
+  PRESENTATION  // 프레젠테이션 모드
 }

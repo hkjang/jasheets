@@ -25,6 +25,17 @@ import { NormalizerModule } from './modules/normalizer/normalizer.module';
 import { ProfilerModule } from './modules/profiler/profiler.module';
 import { UDFModule } from './modules/udf/udf.module';
 import { DocumentationModule } from './modules/documentation/documentation.module';
+// Phase 1: Advanced Sheet Features
+import { SheetPermissionsModule } from './modules/sheet-permissions/sheet-permissions.module';
+import { RevisionLogsModule } from './modules/revision-logs/revision-logs.module';
+import { ConditionalRulesModule } from './modules/conditional-rules/conditional-rules.module';
+import { CrossSheetReferenceModule } from './modules/cross-sheet-reference/cross-sheet-reference.module';
+// Phase 2-3: Advanced Features
+import { SheetAutomationModule } from './modules/sheet-automation/sheet-automation.module';
+import { FilterProfilesModule } from './modules/filter-profiles/filter-profiles.module';
+import { SheetSnapshotsModule } from './modules/sheet-snapshots/sheet-snapshots.module';
+import { CustomCommandsModule } from './modules/custom-commands/custom-commands.module';
+import { MasterViewModule } from './modules/master-view/master-view.module';
 
 @Module({
   imports: [
@@ -55,11 +66,19 @@ import { DocumentationModule } from './modules/documentation/documentation.modul
     ProfilerModule,
     UDFModule,
     DocumentationModule,
+    // Phase 1: Advanced Sheet Features
+    SheetPermissionsModule,
+    RevisionLogsModule,
+    ConditionalRulesModule,
+    CrossSheetReferenceModule,
+    // Phase 2-3: Advanced Features
+    SheetAutomationModule,
+    FilterProfilesModule,
+    SheetSnapshotsModule,
+    CustomCommandsModule,
+    MasterViewModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
 export class AppModule { }
-
-
-

@@ -64,6 +64,14 @@ import NormalizerDialog from './NormalizerDialog';
 import UDFEditorDialog from './UDFEditorDialog';
 import DocumentationDialog from './DocumentationDialog';
 
+// New Advanced Features
+import SheetPermissionsDialog from './SheetPermissionsDialog';
+import HistoryTimelinePanel from './HistoryTimelinePanel';
+import SheetAutomationDialog from './SheetAutomationDialog';
+import FilterProfilesDropdown from './FilterProfilesDropdown';
+import SnapshotManagerPanel from './SnapshotManagerPanel';
+import CommandPalette from './CommandPalette';
+
 interface SpreadsheetProps {
   initialData?: SheetData;
   initialCharts?: any[];
@@ -371,6 +379,11 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
       if ((e.ctrlKey || e.metaKey) && e.key === 'o') {
         e.preventDefault();
         setIsFileDialogOpen(true);
+      }
+      // Command Palette shortcut
+      if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+        e.preventDefault();
+        setIsCommandPaletteOpen(true);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -685,6 +698,13 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
   const [isNormalizerOpen, setIsNormalizerOpen] = useState(false);
   const [isUDFEditorOpen, setIsUDFEditorOpen] = useState(false);
   const [isDocumentationOpen, setIsDocumentationOpen] = useState(false);
+
+  // New Advanced Feature states
+  const [isSheetPermissionsOpen, setIsSheetPermissionsOpen] = useState(false);
+  const [isHistoryPanelOpen, setIsHistoryPanelOpen] = useState(false);
+  const [isAutomationDialogOpen, setIsAutomationDialogOpen] = useState(false);
+  const [isSnapshotPanelOpen, setIsSnapshotPanelOpen] = useState(false);
+  const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
 
   // Handler for applying theme to selected range
   const handleApplyTheme = useCallback((theme: Theme) => {
@@ -1530,6 +1550,52 @@ export default function Spreadsheet({ initialData = {}, initialCharts = [], onDa
         onClose={() => setIsDocumentationOpen(false)}
         data={selectedData}
         sheetName={sheetTitle}
+      />
+
+      {/* New Advanced Feature Components */}
+      <SheetPermissionsDialog
+        isOpen={isSheetPermissionsOpen}
+        onClose={() => setIsSheetPermissionsOpen(false)}
+        sheetId={activeSheetId || ''}
+        sheetName={sheetTitle}
+      />
+
+      <HistoryTimelinePanel
+        isOpen={isHistoryPanelOpen}
+        onClose={() => setIsHistoryPanelOpen(false)}
+        sheetId={activeSheetId || ''}
+        onRollback={() => {
+          setToastMessage('시트가 이전 버전으로 복원되었습니다.');
+          // Reload data after rollback
+        }}
+      />
+
+      <SheetAutomationDialog
+        isOpen={isAutomationDialogOpen}
+        onClose={() => setIsAutomationDialogOpen(false)}
+        sheetId={activeSheetId || ''}
+      />
+
+      <SnapshotManagerPanel
+        isOpen={isSnapshotPanelOpen}
+        onClose={() => setIsSnapshotPanelOpen(false)}
+        sheetId={activeSheetId || ''}
+        onRestore={() => {
+          setToastMessage('스냅샷이 복원되었습니다.');
+        }}
+      />
+
+      <CommandPalette
+        isOpen={isCommandPaletteOpen}
+        onClose={() => setIsCommandPaletteOpen(false)}
+        spreadsheetId={spreadsheetId || ''}
+        sheetId={activeSheetId || ''}
+        onExecute={(commandName, result) => {
+          setToastMessage(`명령어 '${commandName}' 실행 완료`);
+          if (result?.cellUpdates) {
+            // Handle cell updates if any
+          }
+        }}
       />
     </div>
   );

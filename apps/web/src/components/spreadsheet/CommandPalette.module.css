@@ -1,0 +1,132 @@
+.overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.4);
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 15vh;
+    z-index: 1100;
+}
+
+.palette {
+    width: 560px;
+    max-width: 90vw;
+    background: #1e1e1e;
+    border-radius: 10px;
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.5);
+    overflow: hidden;
+}
+
+.inputWrapper {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid #333;
+}
+
+.prompt {
+    color: #888;
+    font-family: monospace;
+    font-size: 18px;
+    margin-right: 12px;
+}
+
+.input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: white;
+    font-size: 16px;
+    font-family: inherit;
+    outline: none;
+}
+
+.input::placeholder {
+    color: #666;
+}
+
+.commands {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.empty {
+    padding: 24px;
+    text-align: center;
+    color: #666;
+}
+
+.command {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.command:hover,
+.command.selected {
+    background: #2a2a2a;
+}
+
+.commandInfo {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.commandName {
+    color: #e0e0e0;
+    font-size: 14px;
+}
+
+.commandDesc {
+    color: #888;
+    font-size: 12px;
+}
+
+.commandMeta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.builtInBadge {
+    font-size: 10px;
+    padding: 2px 6px;
+    background: #333;
+    color: #888;
+    border-radius: 4px;
+}
+
+.shortcut {
+    padding: 3px 8px;
+    background: #333;
+    color: #aaa;
+    border-radius: 4px;
+    font-size: 11px;
+    font-family: system-ui, sans-serif;
+}
+
+.footer {
+    display: flex;
+    gap: 24px;
+    padding: 10px 16px;
+    background: #252525;
+    border-top: 1px solid #333;
+    font-size: 11px;
+    color: #666;
+}
+
+.footer kbd {
+    padding: 2px 5px;
+    background: #333;
+    color: #aaa;
+    border-radius: 3px;
+    margin-right: 4px;
+}
