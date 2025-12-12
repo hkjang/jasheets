@@ -894,6 +894,8 @@ model AIModelConfig {
   provider    AIProvider
   modelId     String   // 실제 모델 ID (gpt-4, gemini-pro 등)
   version     String
+  baseUrl     String?  // CUSTOM 프로바이더용 OpenAI 호환 API URL (vLLM, Ollama 등)
+  apiKey      String?  // CUSTOM 프로바이더용 API 키 (선택사항)
   isActive    Boolean  @default(true)
   isDefault   Boolean  @default(false)
   config      Json?    // 모델별 설정 (temperature, maxTokens 등)
@@ -902,6 +904,7 @@ model AIModelConfig {
 
   @@map("ai_model_configs")
 }
+
 
 enum AIModelType {
   FORMULA_SUGGEST    // 수식 추천

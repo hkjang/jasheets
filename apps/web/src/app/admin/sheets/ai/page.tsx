@@ -4,6 +4,9 @@ import { useState, useEffect } from 'react';
 import { AdminHeader } from '../../../../components/admin/AdminHeader';
 import styles from '../udf/page.module.css';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
+
+
 interface AIModelConfig {
     id: string;
     name: string;
@@ -11,6 +14,8 @@ interface AIModelConfig {
     provider: string;
     modelId: string;
     version: string;
+    baseUrl?: string;
+    apiKey?: string;
     isActive: boolean;
     isDefault: boolean;
     config?: Record<string, any>;
@@ -27,9 +32,9 @@ interface PromptTemplate {
     isActive: boolean;
 }
 
-const MODEL_TYPES = ['CHAT', 'COMPLETION', 'EMBEDDING', 'VISION'];
-const PROVIDERS = ['OPENAI', 'ANTHROPIC', 'GOOGLE', 'AZURE', 'CUSTOM'];
-const CATEGORIES = ['FORMULA_HELP', 'DATA_ANALYSIS', 'CHART_SUGGESTION', 'ERROR_FIX', 'CUSTOM'];
+const MODEL_TYPES = ['FORMULA_SUGGEST', 'SHEET_GENERATE', 'DATA_ANALYSIS', 'CHAT_ASSISTANT'];
+const PROVIDERS = ['OPENAI', 'GEMINI', 'ANTHROPIC', 'CUSTOM'];
+const CATEGORIES = ['SHEET_CREATION', 'FORMULA_GENERATION', 'DATA_ANALYSIS', 'CHART_SUGGESTION', 'AUTOMATION', 'CUSTOM'];
 
 export default function AISettingsPage() {
     const [models, setModels] = useState<AIModelConfig[]>([]);
@@ -45,7 +50,8 @@ export default function AISettingsPage() {
 
     // Form states
     const [modelForm, setModelForm] = useState({
-        name: '', modelType: 'CHAT', provider: 'OPENAI', modelId: '', version: '1.0', isActive: true, isDefault: false
+        name: '', modelType: 'FORMULA_SUGGEST', provider: 'OPENAI', modelId: '', version: '1.0',
+        baseUrl: '', apiKey: '', isActive: true, isDefault: false
     });
     const [templateForm, setTemplateForm] = useState({
         name: '', category: 'FORMULA_HELP', content: '', variables: '', description: '', isActive: true, isDefault: false
@@ -59,8 +65,8 @@ export default function AISettingsPage() {
         try {
             const token = localStorage.getItem('auth_token');
             const [modelsRes, templatesRes] = await Promise.all([
-                fetch('/api/admin/ai-configs', { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch('/api/admin/prompt-templates', { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${API_URL}/admin/ai-configs`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                fetch(`${API_URL}/admin/prompt-templates`, { headers: { 'Authorization': `Bearer ${token}` } }),
             ]);
 
             if (modelsRes.ok) setModels(await modelsRes.json());
@@ -75,7 +81,7 @@ export default function AISettingsPage() {
     // Model CRUD
     const handleSaveModel = async () => {
         const token = localStorage.getItem('auth_token');
-        const url = editingModel ? `/api/admin/ai-configs/${editingModel.id}` : '/api/admin/ai-configs';
+        const url = editingModel ? `${API_URL}/admin/ai-configs/${editingModel.id}` : `${API_URL}/admin/ai-configs`;
         const method = editingModel ? 'PUT' : 'POST';
 
         try {
@@ -98,7 +104,7 @@ export default function AISettingsPage() {
         if (!confirm('정말 삭제하시겠습니까?')) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`/api/admin/ai-configs/${id}`, {
+            const res = await fetch(`${API_URL}/admin/ai-configs/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` },
             });
@@ -112,20 +118,21 @@ export default function AISettingsPage() {
         setEditingModel(model);
         setModelForm({
             name: model.name, modelType: model.modelType, provider: model.provider,
-            modelId: model.modelId, version: model.version, isActive: model.isActive, isDefault: model.isDefault
+            modelId: model.modelId, version: model.version, baseUrl: model.baseUrl || '',
+            apiKey: model.apiKey || '', isActive: model.isActive, isDefault: model.isDefault
         });
         setShowModelModal(true);
     };
 
     const resetModelForm = () => {
         setEditingModel(null);
-        setModelForm({ name: '', modelType: 'CHAT', provider: 'OPENAI', modelId: '', version: '1.0', isActive: true, isDefault: false });
+        setModelForm({ name: '', modelType: 'FORMULA_SUGGEST', provider: 'OPENAI', modelId: '', version: '1.0', baseUrl: '', apiKey: '', isActive: true, isDefault: false });
     };
 
     // Template CRUD
     const handleSaveTemplate = async () => {
         const token = localStorage.getItem('auth_token');
-        const url = editingTemplate ? `/api/admin/prompt-templates/${editingTemplate.id}` : '/api/admin/prompt-templates';
+        const url = editingTemplate ? `${API_URL}/admin/prompt-templates/${editingTemplate.id}` : `${API_URL}/admin/prompt-templates`;
         const method = editingTemplate ? 'PUT' : 'POST';
 
         try {
@@ -151,7 +158,7 @@ export default function AISettingsPage() {
         if (!confirm('정말 삭제하시겠습니까?')) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`/api/admin/prompt-templates/${id}`, {
+            const res = await fetch(`${API_URL}/admin/prompt-templates/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` },
             });
@@ -294,8 +301,27 @@ export default function AISettingsPage() {
                                 {PROVIDERS.map(p => <option key={p} value={p}>{p}</option>)}
                             </select>
 
+                            {modelForm.provider === 'CUSTOM' && (
+                                <>
+                                    <label>API Base URL (OpenAI 호환)</label>
+                                    <input
+                                        value={modelForm.baseUrl}
+                                        onChange={e => setModelForm({ ...modelForm, baseUrl: e.target.value })}
+                                        placeholder="http://localhost:11434/v1 (Ollama) 또는 http://localhost:8000/v1 (vLLM)"
+                                    />
+
+                                    <label>API Key (선택사항)</label>
+                                    <input
+                                        type="password"
+                                        value={modelForm.apiKey}
+                                        onChange={e => setModelForm({ ...modelForm, apiKey: e.target.value })}
+                                        placeholder="API 키가 필요한 경우 입력"
+                                    />
+                                </>
+                            )}
+
                             <label>모델 ID</label>
-                            <input value={modelForm.modelId} onChange={e => setModelForm({ ...modelForm, modelId: e.target.value })} placeholder="gpt-4, claude-3, etc." />
+                            <input value={modelForm.modelId} onChange={e => setModelForm({ ...modelForm, modelId: e.target.value })} placeholder={modelForm.provider === 'CUSTOM' ? "llama3, mistral, qwen2 등" : "gpt-4, claude-3 등"} />
 
                             <label>버전</label>
                             <input value={modelForm.version} onChange={e => setModelForm({ ...modelForm, version: e.target.value })} />
@@ -309,6 +335,7 @@ export default function AISettingsPage() {
                                 </label>
                             </div>
                         </div>
+
                         <div className={styles.modalActions}>
                             <button className={styles.rejectBtn} onClick={() => setShowModelModal(false)}>취소</button>
                             <button className={styles.approveBtn} onClick={handleSaveModel}>저장</button>
