@@ -1,8 +1,14 @@
 'use client';
 
+import Link from 'next/link';
 import { useAuth } from '@/hooks/useAuth';
 
-export function AdminHeader({ title }: { title: string }) {
+interface AdminHeaderProps {
+  title: string;
+  backLink?: string;
+}
+
+export function AdminHeader({ title, backLink }: AdminHeaderProps) {
   const { user } = useAuth();
 
   return (
@@ -18,8 +24,21 @@ export function AdminHeader({ title }: { title: string }) {
       top: 0,
       zIndex: 10
     }}>
-      <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: 0 }}>{title}</h1>
-      
+      <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+        {backLink && (
+          <Link href={backLink} style={{
+            color: '#6b7280',
+            textDecoration: 'none',
+            fontSize: '20px',
+            display: 'flex',
+            alignItems: 'center'
+          }}>
+            ←
+          </Link>
+        )}
+        <h1 style={{ fontSize: '18px', fontWeight: 600, color: '#111827', margin: 0 }}>{title}</h1>
+      </div>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
         <div style={{
           display: 'flex',

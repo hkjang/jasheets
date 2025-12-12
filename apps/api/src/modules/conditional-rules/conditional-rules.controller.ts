@@ -61,3 +61,4 @@ export class ConditionalRulesController {
         return this.conditionalRulesService.deleteRule(req.user.id, ruleId);
     }
 }
+

@@ -36,6 +36,16 @@ import { FilterProfilesModule } from './modules/filter-profiles/filter-profiles.
 import { SheetSnapshotsModule } from './modules/sheet-snapshots/sheet-snapshots.module';
 import { CustomCommandsModule } from './modules/custom-commands/custom-commands.module';
 import { MasterViewModule } from './modules/master-view/master-view.module';
+// Admin Features - Sheet Advanced Management
+import { PermissionPolicyModule } from './modules/permission-policy/permission-policy.module';
+import { SheetLockModule } from './modules/sheet-lock/sheet-lock.module';
+import { UDFApprovalModule } from './modules/udf-approval/udf-approval.module';
+import { AIConfigModule } from './modules/ai-config/ai-config.module';
+import { PromptTemplateModule } from './modules/prompt-template/prompt-template.module';
+import { QuotaModule } from './modules/quota/quota.module';
+import { MacroApprovalModule } from './modules/macro-approval/macro-approval.module';
+import { ActivityTrackerModule } from './modules/activity-tracker/activity-tracker.module';
+import { APIUsageModule } from './modules/api-usage/api-usage.module';
 
 @Module({
   imports: [
@@ -77,6 +87,16 @@ import { MasterViewModule } from './modules/master-view/master-view.module';
     SheetSnapshotsModule,
     CustomCommandsModule,
     MasterViewModule,
+    // Admin Features - Sheet Advanced Management
+    PermissionPolicyModule,
+    SheetLockModule,
+    UDFApprovalModule,
+    AIConfigModule,
+    PromptTemplateModule,
+    QuotaModule,
+    MacroApprovalModule,
+    ActivityTrackerModule,
+    APIUsageModule,
   ],
   controllers: [AppController],
   providers: [AppService],

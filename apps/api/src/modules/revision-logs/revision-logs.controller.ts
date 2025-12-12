@@ -57,3 +57,4 @@ export class RevisionLogsController {
         return this.revisionLogsService.rollbackToRevision(req.user.id, revisionId);
     }
 }
+

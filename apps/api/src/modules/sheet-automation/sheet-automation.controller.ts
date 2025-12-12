@@ -68,3 +68,4 @@ export class SheetAutomationController {
         return this.sheetAutomationService.toggleAutomation(req.user.id, automationId);
     }
 }
+

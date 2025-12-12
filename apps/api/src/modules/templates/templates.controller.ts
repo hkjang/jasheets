@@ -37,3 +37,4 @@ export class TemplatesController {
     return this.templatesService.remove(id);
   }
 }
+

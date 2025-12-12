@@ -1,0 +1,206 @@
+.container {
+    padding: 24px 32px;
+    max-width: 1200px;
+}
+
+.header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+}
+
+.description {
+    margin: 0;
+    color: #64748b;
+}
+
+.addButton {
+    padding: 10px 20px;
+    background: #3b82f6;
+    color: white;
+    border: none;
+    border-radius: 8px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.addButton:hover {
+    background: #2563eb;
+}
+
+/* Form Card */
+.formCard {
+    background: white;
+    border-radius: 12px;
+    padding: 24px;
+    margin-bottom: 24px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    border: 1px solid #e2e8f0;
+}
+
+.formCard h3 {
+    margin: 0 0 20px 0;
+    font-size: 1.1rem;
+    color: #1e293b;
+}
+
+.formGroup {
+    margin-bottom: 16px;
+}
+
+.formGroup label {
+    display: block;
+    margin-bottom: 6px;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #374151;
+}
+
+.formGroup input[type="text"],
+.formGroup textarea {
+    width: 100%;
+    padding: 10px 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    font-size: 0.9rem;
+}
+
+.formGroup textarea {
+    min-height: 80px;
+    resize: vertical;
+}
+
+.rulesGrid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 10px;
+}
+
+.ruleItem {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px;
+    background: #f8fafc;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+
+.ruleItem:hover {
+    background: #f1f5f9;
+}
+
+.checkboxLabel {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+}
+
+.formActions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 12px;
+    margin-top: 20px;
+}
+
+.formActions button {
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.formActions button:first-child {
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    color: #64748b;
+}
+
+.formActions button.primary {
+    background: #3b82f6;
+    border: none;
+    color: white;
+}
+
+.formActions button.primary:hover {
+    background: #2563eb;
+}
+
+/* Table */
+.table {
+    background: white;
+    border-radius: 12px;
+    overflow: hidden;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.table table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.table th,
+.table td {
+    padding: 12px 16px;
+    text-align: left;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.table th {
+    background: #f8fafc;
+    font-weight: 600;
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+.table td {
+    font-size: 0.9rem;
+}
+
+.nameCell {
+    font-weight: 500;
+    color: #1e293b;
+}
+
+.rulesCell {
+    max-width: 300px;
+    color: #64748b;
+    font-size: 0.8rem;
+}
+
+.table td button {
+    padding: 6px 12px;
+    margin-right: 8px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8rem;
+}
+
+.table td button:hover {
+    background: #e2e8f0;
+}
+
+.deleteBtn {
+    color: #ef4444 !important;
+}
+
+.deleteBtn:hover {
+    background: #fef2f2 !important;
+}
+
+/* Loading & Empty */
+.loading,
+.empty {
+    padding: 48px;
+    text-align: center;
+    color: #64748b;
+    background: white;
+    border-radius: 12px;
+}

@@ -13,11 +13,13 @@ export function AdminSidebar() {
     { label: '사용자 관리', href: '/admin/users', icon: '👥' },
     { label: '역할 및 권한', href: '/admin/roles', icon: '🔐' },
     { label: '스프레드시트', href: '/admin/spreadsheets', icon: '📑' },
+    { label: '시트 관리', href: '/admin/sheets', icon: '📄' },
     { label: '템플릿', href: '/admin/templates', icon: '📋' },
     { label: '공지사항', href: '/admin/notices', icon: '📢' },
     { label: '감사 로그', href: '/admin/audit', icon: '🔍' },
     { label: '설정', href: '/admin/settings', icon: '⚙️' },
   ];
+
 
   return (
     <aside style={{
@@ -33,8 +35,8 @@ export function AdminSidebar() {
       boxShadow: '2px 0 8px rgba(0,0,0,0.04)'
     }}>
       {/* Header */}
-      <div style={{ 
-        padding: '20px 16px', 
+      <div style={{
+        padding: '20px 16px',
         borderBottom: '1px solid #e5e7eb',
         display: 'flex',
         alignItems: 'center',
@@ -57,14 +59,14 @@ export function AdminSidebar() {
           <div style={{ fontSize: '11px', color: '#6b7280' }}>관리자</div>
         </div>
       </div>
-      
+
       {/* Navigation */}
       <nav style={{ flex: 1, padding: '12px 8px', overflowY: 'auto' }}>
         {menuItems.map((item) => {
           const isActive = pathname === item.href;
           return (
-            <Link 
-              key={item.href} 
+            <Link
+              key={item.href}
               href={item.href}
               style={{
                 display: 'flex',
@@ -89,14 +91,14 @@ export function AdminSidebar() {
 
       {/* Footer */}
       <div style={{ padding: '16px', borderTop: '1px solid #e5e7eb' }}>
-        <Link 
-          href="/dashboard" 
-          style={{ 
+        <Link
+          href="/dashboard"
+          style={{
             display: 'flex',
             alignItems: 'center',
             padding: '10px 12px',
-            color: '#6b7280', 
-            textDecoration: 'none', 
+            color: '#6b7280',
+            textDecoration: 'none',
             fontSize: '14px',
             borderRadius: '8px',
             transition: 'all 0.15s ease'

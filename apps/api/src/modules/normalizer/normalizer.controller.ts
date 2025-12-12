@@ -51,3 +51,4 @@ export class NormalizerController {
         return this.normalizerService.analyzeColumnTypes(dto.data);
     }
 }
+

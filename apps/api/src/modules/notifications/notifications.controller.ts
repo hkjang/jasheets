@@ -51,3 +51,4 @@ export class NotificationsController {
     return this.notificationsService.registerPushSubscription(req.user.id, subscription);
   }
 }
+

@@ -98,3 +98,4 @@ export class MasterViewController {
         return this.masterViewService.syncToSource(req.user.id, viewId, dto.changes);
     }
 }
+

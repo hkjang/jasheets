@@ -123,3 +123,4 @@ export class WebhooksController {
     return this.webhooksService.toggleWebhook(req.user.id, webhookId, dto.active);
   }
 }
+

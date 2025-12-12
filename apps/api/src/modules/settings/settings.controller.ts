@@ -18,3 +18,4 @@ export class SettingsController {
     return this.settingsService.updateSetting(body.key, body.value);
   }
 }
+

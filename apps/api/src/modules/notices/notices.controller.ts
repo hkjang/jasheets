@@ -36,3 +36,4 @@ export class NoticesController {
     return this.noticesService.remove(id);
   }
 }
+

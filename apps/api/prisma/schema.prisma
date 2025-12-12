@@ -804,3 +804,273 @@ enum SheetViewMode {
   ANALYSIS      // 데이터 분석 모드
   PRESENTATION  // 프레젠테이션 모드
 }
+
+// =====================================================
+// ADMIN FEATURES - SHEET ADVANCED MANAGEMENT
+// =====================================================
+
+// 시트 권한 정책 템플릿
+model PermissionPolicy {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  rules       Json     // 세부 권한 규칙 {canEdit, canComment, canShare, canExport, ...}
+  isDefault   Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("permission_policies")
+}
+
+// 시트 잠금 상태
+model SheetLock {
+  id          String    @id @default(uuid())
+  sheetId     String    @unique
+  lockedById  String
+  reason      String?
+  lockedAt    DateTime  @default(now())
+  expiresAt   DateTime?
+
+  @@map("sheet_locks")
+}
+
+// 조건부 서식 정책
+model ConditionalFormatPolicy {
+  id              String   @id @default(uuid())
+  name            String   @unique
+  description     String?
+  allowedColors   String[] // 허용된 색상 코드
+  allowedFormulas String[] // 허용된 수식 패턴
+  blockedFormulas String[] // 차단된 수식 패턴
+  maxRulesPerSheet Int     @default(50)
+  isActive        Boolean  @default(true)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("conditional_format_policies")
+}
+
+// UDF 승인 요청
+model UDFApproval {
+  id           String    @id @default(uuid())
+  spreadsheetId String
+  name         String
+  description  String?
+  code         String    @db.Text
+  parameters   Json?     // 파라미터 정의
+  requesterId  String
+  status       UDFApprovalStatus @default(PENDING)
+  reviewerId   String?
+  reviewNotes  String?
+  riskLevel    RiskLevel?
+  riskDetails  Json?     // 위험 코드 분석 결과
+  requestedAt  DateTime  @default(now())
+  reviewedAt   DateTime?
+
+  @@index([spreadsheetId])
+  @@index([status])
+  @@map("udf_approvals")
+}
+
+enum UDFApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
+enum RiskLevel {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+// AI 모델 레지스트리
+model AIModelConfig {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  modelType   AIModelType
+  provider    AIProvider
+  modelId     String   // 실제 모델 ID (gpt-4, gemini-pro 등)
+  version     String
+  isActive    Boolean  @default(true)
+  isDefault   Boolean  @default(false)
+  config      Json?    // 모델별 설정 (temperature, maxTokens 등)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("ai_model_configs")
+}
+
+enum AIModelType {
+  FORMULA_SUGGEST    // 수식 추천
+  SHEET_GENERATE     // 시트 생성
+  DATA_ANALYSIS      // 데이터 분석
+  CHAT_ASSISTANT     // 채팅 도우미
+}
+
+enum AIProvider {
+  OPENAI
+  GEMINI
+  ANTHROPIC
+  CUSTOM
+}
+
+// 프롬프트 템플릿
+model PromptTemplate {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  category    PromptCategory
+  content     String   @db.Text
+  variables   String[] // 템플릿 변수 목록
+  description String?
+  isDefault   Boolean  @default(false)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@map("prompt_templates")
+}
+
+enum PromptCategory {
+  SHEET_CREATION
+  FORMULA_GENERATION
+  DATA_ANALYSIS
+  CHART_SUGGESTION
+  AUTOMATION
+  CUSTOM
+}
+
+// 피벗뷰 정책
+model PivotPolicy {
+  id                String   @id @default(uuid())
+  name              String?
+  userId            String?  // null이면 전역 정책
+  maxPivotsPerSheet Int      @default(10)
+  maxPivotsPerUser  Int      @default(50)
+  allowedAggregates String[] // SUM, AVG, COUNT, MIN, MAX 등
+  maxRowsForPivot   Int      @default(100000)
+  isGlobal          Boolean  @default(false)
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  @@map("pivot_policies")
+}
+
+// 사용자/시트 할당량
+model Quota {
+  id          String    @id @default(uuid())
+  targetType  QuotaTargetType
+  targetId    String    // userId 또는 sheetId
+  maxRows     Int       @default(100000)
+  maxColumns  Int       @default(1000)
+  maxCells    Int       @default(10000000)
+  maxFileSize Int       @default(104857600) // 100MB
+  usedRows    Int       @default(0)
+  usedColumns Int       @default(0)
+  usedCells   Int       @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@unique([targetType, targetId])
+  @@map("quotas")
+}
+
+enum QuotaTargetType {
+  USER
+  SHEET
+  SPREADSHEET
+}
+
+// 매크로 승인
+model MacroApproval {
+  id           String    @id @default(uuid())
+  commandId    String?   // CustomCommand 참조
+  spreadsheetId String
+  name         String
+  script       String    @db.Text
+  description  String?
+  requesterId  String
+  status       MacroApprovalStatus @default(PENDING)
+  reviewerId   String?
+  reviewNotes  String?
+  lintResults  Json?     // 린트 결과 {errors: [], warnings: []}
+  riskLevel    RiskLevel?
+  requestedAt  DateTime  @default(now())
+  reviewedAt   DateTime?
+
+  @@index([spreadsheetId])
+  @@index([status])
+  @@map("macro_approvals")
+}
+
+enum MacroApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  REVOKED
+}
+
+// API 사용량 추적
+model APIUsage {
+  id              String   @id @default(uuid())
+  spreadsheetId   String?
+  userId          String?
+  endpoint        String
+  method          String
+  statusCode      Int
+  responseTimeMs  Int
+  requestSize     Int?
+  responseSize    Int?
+  userAgent       String?
+  ipAddress       String?
+  timestamp       DateTime @default(now())
+
+  @@index([spreadsheetId, timestamp])
+  @@index([userId, timestamp])
+  @@index([endpoint, timestamp])
+  @@map("api_usage")
+}
+
+// 시트 활동 세션
+model SheetSession {
+  id            String    @id @default(uuid())
+  spreadsheetId String
+  sheetId       String?
+  userId        String
+  sessionType   SessionType @default(EDIT)
+  startedAt     DateTime  @default(now())
+  lastActiveAt  DateTime  @default(now())
+  endedAt       DateTime?
+  editCount     Int       @default(0)
+  viewCount     Int       @default(0)
+  metadata      Json?     // 추가 세션 정보
+
+  @@index([spreadsheetId, lastActiveAt])
+  @@index([userId, lastActiveAt])
+  @@map("sheet_sessions")
+}
+
+enum SessionType {
+  VIEW
+  EDIT
+  COLLABORATION
+}
+
+// 스냅샷 보존 정책
+model SnapshotRetentionPolicy {
+  id                  String   @id @default(uuid())
+  name                String   @unique
+  description         String?
+  maxSnapshotsPerSheet Int     @default(50)
+  retentionDays       Int      @default(90)
+  autoDeleteEnabled   Boolean  @default(true)
+  isDefault           Boolean  @default(false)
+  isActive            Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  @@map("snapshot_retention_policies")
+}

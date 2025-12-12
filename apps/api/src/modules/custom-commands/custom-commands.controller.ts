@@ -112,3 +112,4 @@ export class CustomCommandsController {
         return this.customCommandsService.executeCommandById(req.user.id, commandId, context);
     }
 }
+

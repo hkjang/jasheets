@@ -92,3 +92,4 @@ export class SheetSnapshotsController {
         return this.sheetSnapshotsService.deleteSnapshot(req.user.id, snapshotId);
     }
 }
+

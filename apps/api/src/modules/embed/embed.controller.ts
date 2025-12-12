@@ -84,3 +84,4 @@ export class EmbedConfigController {
         return this.embedService.regenerateToken(req.user.id, id);
     }
 }
+

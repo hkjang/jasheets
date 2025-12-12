@@ -73,3 +73,4 @@ export class VersioningController {
     return this.versioningService.compareVersions(req.user.id, versionId1, versionId2);
   }
 }
+

@@ -1,0 +1,286 @@
+.container {
+    padding: 24px 32px;
+    max-width: 1200px;
+}
+
+/* Stats Row */
+.statsRow {
+    display: flex;
+    gap: 24px;
+    margin-bottom: 24px;
+}
+
+.statItem {
+    background: white;
+    padding: 20px 24px;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+.statValue {
+    font-size: 2rem;
+    font-weight: 700;
+    color: #1e293b;
+}
+
+.statLabel {
+    font-size: 0.85rem;
+    color: #64748b;
+}
+
+/* Filters */
+.filters {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 24px;
+}
+
+.filterBtn {
+    padding: 8px 16px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    transition: all 0.2s;
+}
+
+.filterBtn:hover {
+    background: #e2e8f0;
+}
+
+.filterBtn.active {
+    background: #3b82f6;
+    color: white;
+    border-color: #3b82f6;
+}
+
+/* Cards */
+.list {
+    display: grid;
+    gap: 16px;
+}
+
+.card {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    cursor: pointer;
+    transition: all 0.2s;
+    border: 1px solid #e2e8f0;
+}
+
+.card:hover {
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border-color: #cbd5e1;
+}
+
+.cardHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 8px;
+}
+
+.cardHeader h3 {
+    margin: 0;
+    font-size: 1rem;
+    color: #1e293b;
+}
+
+.badges {
+    display: flex;
+    gap: 8px;
+}
+
+.badge {
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+}
+
+.riskLow {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.riskMedium {
+    background: #fef9c3;
+    color: #854d0e;
+}
+
+.riskHigh {
+    background: #fed7aa;
+    color: #c2410c;
+}
+
+.riskCritical {
+    background: #fecaca;
+    color: #b91c1c;
+}
+
+.statusPending {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.statusApproved {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.statusRejected {
+    background: #fecaca;
+    color: #b91c1c;
+}
+
+.statusRevoked {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.cardDesc {
+    margin: 0 0 12px 0;
+    color: #64748b;
+    font-size: 0.875rem;
+}
+
+.cardMeta {
+    font-size: 0.8rem;
+    color: #94a3b8;
+}
+
+/* Modal */
+.modal {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 24px;
+}
+
+.modalContent {
+    background: white;
+    border-radius: 12px;
+    max-width: 700px;
+    width: 100%;
+    max-height: 80vh;
+    overflow: auto;
+}
+
+.modalHeader {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.modalHeader h2 {
+    margin: 0;
+    font-size: 1.25rem;
+}
+
+.modalHeader button {
+    background: none;
+    border: none;
+    font-size: 1.5rem;
+    cursor: pointer;
+    color: #64748b;
+}
+
+.modalBody {
+    padding: 20px;
+}
+
+.codeSection h4,
+.riskSection h4,
+.reviewSection h4 {
+    margin: 0 0 12px 0;
+    font-size: 0.9rem;
+    color: #374151;
+}
+
+.codeSection pre {
+    background: #1e293b;
+    color: #e2e8f0;
+    padding: 16px;
+    border-radius: 8px;
+    overflow-x: auto;
+    font-size: 0.85rem;
+    max-height: 200px;
+}
+
+.riskSection {
+    margin-top: 20px;
+}
+
+.riskSection ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+.riskSection li {
+    padding: 8px 12px;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    font-size: 0.85rem;
+}
+
+.reviewSection {
+    margin-top: 20px;
+}
+
+.reviewSection textarea {
+    width: 100%;
+    padding: 12px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    resize: vertical;
+    min-height: 80px;
+    margin-bottom: 16px;
+}
+
+.reviewActions {
+    display: flex;
+    gap: 12px;
+    justify-content: flex-end;
+}
+
+.rejectBtn,
+.approveBtn {
+    padding: 10px 24px;
+    border-radius: 6px;
+    font-weight: 500;
+    cursor: pointer;
+    border: none;
+}
+
+.rejectBtn {
+    background: #fecaca;
+    color: #b91c1c;
+}
+
+.approveBtn {
+    background: #22c55e;
+    color: white;
+}
+
+/* Loading & Empty */
+.loading,
+.empty {
+    padding: 48px;
+    text-align: center;
+    color: #64748b;
+    background: white;
+    border-radius: 12px;
+}

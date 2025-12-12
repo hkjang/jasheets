@@ -76,3 +76,4 @@ export class FilterProfilesController {
         return this.filterProfilesService.setDefaultProfile(req.user.id, profileId);
     }
 }
+

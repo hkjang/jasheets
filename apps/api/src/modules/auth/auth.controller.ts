@@ -31,3 +31,4 @@ export class AuthController {
     await this.authService.logout(dto.refreshToken);
   }
 }
+

@@ -76,3 +76,4 @@ export class CommentsController {
     return this.commentsService.resolveComment(req.user.id, commentId, dto.resolved);
   }
 }
+
