@@ -1,5 +1,7 @@
 # JaSheets Product Roadmap
 
+이 로드맵은 [JaSheets Goal](GOAL.md)에 정의된 제품 목표를 단계적으로 구현하기 위한 실행 계획이다.
+
 ## Product Goal
 
 JaSheets should provide a reliable, collaborative spreadsheet core before expanding into automation and AI. Google Sheets parity is a multi-release product goal, not a single feature: correctness, data durability, permissions, accessibility, and performance are release gates for every phase.

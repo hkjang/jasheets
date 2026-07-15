@@ -1,10 +1,11 @@
-'use client';
+"use client";
 
-import { useEffect, useState, useRef } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import Spreadsheet from '@/components/spreadsheet/Spreadsheet';
-import { api } from '@/lib/api';
-import { useAuth } from '@/hooks/useAuth';
+import { useEffect, useState, useRef } from "react";
+import { useParams, useRouter } from "next/navigation";
+import { clearAuthSession } from "@/lib/auth-session";
+import Spreadsheet from "@/components/spreadsheet/Spreadsheet";
+import { api } from "@/lib/api";
+import { useAuth } from "@/hooks/useAuth";
 
 export default function SpreadsheetPage() {
   const params = useParams();
@@ -15,7 +16,7 @@ export default function SpreadsheetPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
-  const [title, setTitle] = useState('');
+  const [title, setTitle] = useState("");
 
   // Prevent duplicate API calls
   const fetchedRef = useRef(false);
@@ -26,7 +27,7 @@ export default function SpreadsheetPage() {
   // Redirect to login if not authenticated
   useEffect(() => {
     if (!authLoading && !user) {
-      router.replace('/login');
+      router.replace("/login");
     }
   }, [authLoading, user, router]);
 
@@ -39,9 +40,10 @@ export default function SpreadsheetPage() {
     fetchedRef.current = true;
     setLoading(true);
 
-    api.spreadsheets.get(id)
-      .then(res => {
-        setTitle(res.name || 'Untitled Spreadsheet');
+    api.spreadsheets
+      .get(id)
+      .then((res) => {
+        setTitle(res.name || "Untitled Spreadsheet");
         const sheets = res.sheets || [];
         if (sheets.length > 0) {
           const firstSheet = sheets[0];
@@ -51,7 +53,11 @@ export default function SpreadsheetPage() {
           if (firstSheet.cells) {
             firstSheet.cells.forEach((c: any) => {
               if (!sheetData[c.row]) sheetData[c.row] = {};
-              sheetData[c.row][c.col] = { value: c.value, style: c.format, formula: c.formula };
+              sheetData[c.row][c.col] = {
+                value: c.value,
+                style: c.format,
+                formula: c.formula,
+              };
             });
           }
           setData(sheetData);
@@ -64,16 +70,18 @@ export default function SpreadsheetPage() {
           setData({});
         }
       })
-      .catch(err => {
-        console.error('Failed to load spreadsheet:', err);
+      .catch((err) => {
+        console.error("Failed to load spreadsheet:", err);
         // Check if it's an auth error
-        if (err.message?.includes('401') || err.message?.includes('Unauthorized')) {
+        if (
+          err.message?.includes("401") ||
+          err.message?.includes("Unauthorized")
+        ) {
           // Clear token and redirect to login
-          localStorage.removeItem('auth_token');
-          localStorage.removeItem('user');
-          router.replace('/login');
+          clearAuthSession();
+          router.replace("/login");
         } else {
-          setError('Failed to load spreadsheet');
+          setError("Failed to load spreadsheet");
         }
       })
       .finally(() => setLoading(false));
@@ -81,16 +89,43 @@ export default function SpreadsheetPage() {
 
   // Show loading while checking auth
   if (authLoading) {
-    return <div className="flex h-screen items-center justify-center">Checking authentication...</div>;
+    return (
+      <div className="flex h-screen items-center justify-center">
+        Checking authentication...
+      </div>
+    );
   }
 
   // Don't render anything if not authenticated (will redirect)
   if (!user) {
-    return <div className="flex h-screen items-center justify-center">Redirecting to login...</div>;
+    return (
+      <div className="flex h-screen items-center justify-center">
+        Redirecting to login...
+      </div>
+    );
   }
 
-  if (loading) return <div className="flex h-screen items-center justify-center">Loading...</div>;
-  if (error) return <div className="flex h-screen items-center justify-center text-red-500">{error}</div>;
+  if (loading)
+    return (
+      <div className="flex h-screen items-center justify-center">
+        Loading...
+      </div>
+    );
+  if (error)
+    return (
+      <div className="flex h-screen items-center justify-center text-red-500">
+        {error}
+      </div>
+    );
 
-  return <Spreadsheet key={activeSheetId} initialData={data} initialCharts={initialCharts} spreadsheetId={id} activeSheetId={activeSheetId} title={title} />;
+  return (
+    <Spreadsheet
+      key={activeSheetId}
+      initialData={data}
+      initialCharts={initialCharts}
+      spreadsheetId={id}
+      activeSheetId={activeSheetId}
+      title={title}
+    />
+  );
 }

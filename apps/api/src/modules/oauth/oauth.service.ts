@@ -1,8 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
-import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
+import {
+  generateRefreshToken,
+  hashRefreshToken,
+} from '../auth/refresh-token.util';
 
 export interface OAuthProfile {
   provider: 'google' | 'github';
@@ -38,14 +41,16 @@ export class OAuthService {
           avatar: profile.avatar,
         },
       });
-      
-      this.logger.log(`New OAuth user created: ${profile.email} via ${profile.provider}`);
+
+      this.logger.log(
+        `New OAuth user created: ${profile.email} via ${profile.provider}`,
+      );
     } else {
       // Update profile info if needed
       if (profile.avatar && !user.avatar) {
         user = await this.prisma.user.update({
           where: { id: user.id },
-          data: { 
+          data: {
             avatar: profile.avatar,
             name: user.name || profile.name,
           },
@@ -59,14 +64,14 @@ export class OAuthService {
       email: user.email,
     });
 
-    const refreshToken = this.generateRefreshToken();
+    const refreshToken = generateRefreshToken();
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30);
 
     await this.prisma.session.create({
       data: {
         userId: user.id,
-        refreshToken,
+        refreshToken: hashRefreshToken(refreshToken),
         expiresAt,
       },
     });
@@ -85,8 +90,11 @@ export class OAuthService {
 
   getGoogleAuthUrl(): string {
     const clientId = this.configService.get<string>('GOOGLE_CLIENT_ID');
-    const redirectUri = this.configService.get<string>('GOOGLE_REDIRECT_URI', 'http://localhost:4000/api/oauth/google/callback');
-    
+    const redirectUri = this.configService.get<string>(
+      'GOOGLE_REDIRECT_URI',
+      'http://localhost:4000/api/oauth/google/callback',
+    );
+
     const params = new URLSearchParams({
       client_id: clientId || '',
       redirect_uri: redirectUri,
@@ -100,8 +108,11 @@ export class OAuthService {
 
   getGithubAuthUrl(): string {
     const clientId = this.configService.get<string>('GITHUB_CLIENT_ID');
-    const redirectUri = this.configService.get<string>('GITHUB_REDIRECT_URI', 'http://localhost:4000/api/oauth/github/callback');
-    
+    const redirectUri = this.configService.get<string>(
+      'GITHUB_REDIRECT_URI',
+      'http://localhost:4000/api/oauth/github/callback',
+    );
+
     const params = new URLSearchParams({
       client_id: clientId || '',
       redirect_uri: redirectUri,
@@ -136,9 +147,12 @@ export class OAuthService {
     }
 
     // Get user info
-    const userResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-      headers: { Authorization: `Bearer ${tokens.access_token}` },
-    });
+    const userResponse = await fetch(
+      'https://www.googleapis.com/oauth2/v2/userinfo',
+      {
+        headers: { Authorization: `Bearer ${tokens.access_token}` },
+      },
+    );
 
     const userInfo = await userResponse.json();
 
@@ -156,18 +170,21 @@ export class OAuthService {
     const clientSecret = this.configService.get<string>('GITHUB_CLIENT_SECRET');
 
     // Exchange code for tokens
-    const tokenResponse = await fetch('https://github.com/login/oauth/access_token', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'application/json',
+    const tokenResponse = await fetch(
+      'https://github.com/login/oauth/access_token',
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify({
+          client_id: clientId,
+          client_secret: clientSecret,
+          code,
+        }),
       },
-      body: JSON.stringify({
-        client_id: clientId,
-        client_secret: clientSecret,
-        code,
-      }),
-    });
+    );
 
     const tokens = await tokenResponse.json();
 
@@ -200,9 +217,5 @@ export class OAuthService {
       name: userInfo.name || userInfo.login,
       avatar: userInfo.avatar_url,
     };
-  }
-
-  private generateRefreshToken(): string {
-    return randomBytes(48).toString('base64url');
   }
 }

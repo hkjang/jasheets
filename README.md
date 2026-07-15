@@ -2,6 +2,8 @@
 
 Google Sheets와 유사한 웹 기반 스프레드시트 서비스입니다. Next.js 15 프론트엔드와 NestJS 백엔드로 구축되었으며, 실시간 협업, 수식 엔진, AI 기능을 지원합니다.
 
+프로젝트의 장기 제품 원칙과 목표는 [JaSheets Goal](docs/GOAL.md), 단계별 실행 계획은 [Product Roadmap](docs/PRODUCT_ROADMAP.md)을 참고하세요.
+
 ## 기술 스택
 
 ### 프론트엔드

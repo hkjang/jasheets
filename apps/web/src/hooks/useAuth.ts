@@ -1,5 +1,6 @@
-import { useState, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { clearAuthSession } from "@/lib/auth-session";
 
 export interface User {
   id: string;
@@ -15,28 +16,26 @@ export function useAuth() {
 
   useEffect(() => {
     // Check local storage on mount
-    const token = localStorage.getItem('auth_token');
-    const userStr = localStorage.getItem('user');
+    const token = localStorage.getItem("auth_token");
+    const userStr = localStorage.getItem("user");
 
     if (token && userStr) {
       try {
         const parsedUser = JSON.parse(userStr);
         setUser(parsedUser);
       } catch (e) {
-        console.error('Failed to parse user', e);
+        console.error("Failed to parse user", e);
         // Clear invalid data
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('user');
+        clearAuthSession();
       }
     }
     setLoading(false);
   }, []);
 
   const logout = () => {
-    localStorage.removeItem('auth_token');
-    localStorage.removeItem('user');
+    clearAuthSession();
     setUser(null);
-    router.push('/login');
+    router.push("/login");
   };
 
   return { user, loading, logout };

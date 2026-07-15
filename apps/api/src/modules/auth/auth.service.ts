@@ -1,11 +1,15 @@
-import { Injectable, UnauthorizedException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  ConflictException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
-import { randomBytes } from 'node:crypto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { RegisterDto } from './dto/register.dto';
 import { LoginDto } from './dto/login.dto';
+import { generateRefreshToken, hashRefreshToken } from './refresh-token.util';
 
 export interface JwtPayload {
   sub: string;
@@ -76,26 +80,32 @@ export class AuthService {
   }
 
   async refreshTokens(refreshToken: string): Promise<TokenResponse> {
-    const session = await this.prisma.session.findUnique({
-      where: { refreshToken },
+    const tokenHash = hashRefreshToken(refreshToken);
+    const session = await this.prisma.session.findFirst({
+      where: {
+        OR: [{ refreshToken: tokenHash }, { refreshToken }],
+      },
       include: { user: true },
     });
 
     if (!session || session.expiresAt < new Date()) {
+      if (session) {
+        await this.prisma.session.delete({ where: { id: session.id } });
+      }
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
 
-    // Delete old session
-    await this.prisma.session.delete({
-      where: { id: session.id },
-    });
-
-    return this.generateTokens(session.user);
+    return this.generateTokens(session.user, session.id);
   }
 
   async logout(refreshToken: string): Promise<void> {
     await this.prisma.session.deleteMany({
-      where: { refreshToken },
+      where: {
+        OR: [
+          { refreshToken: hashRefreshToken(refreshToken) },
+          { refreshToken },
+        ],
+      },
     });
   }
 
@@ -111,26 +121,46 @@ export class AuthService {
     return user;
   }
 
-  private async generateTokens(user: { id: string; email: string; name: string | null; avatar: string | null; isAdmin: boolean }): Promise<TokenResponse> {
+  private async generateTokens(
+    user: {
+      id: string;
+      email: string;
+      name: string | null;
+      avatar: string | null;
+      isAdmin: boolean;
+    },
+    sessionId?: string,
+  ): Promise<TokenResponse> {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
     };
 
     const accessToken = this.jwtService.sign(payload);
-    const refreshToken = this.generateRefreshToken();
+    const refreshToken = generateRefreshToken();
 
     // Save refresh token
     const expiresAt = new Date();
     expiresAt.setDate(expiresAt.getDate() + 30); // 30 days
 
-    await this.prisma.session.create({
-      data: {
-        userId: user.id,
-        refreshToken,
-        expiresAt,
-      },
-    });
+    const sessionData = {
+      refreshToken: hashRefreshToken(refreshToken),
+      expiresAt,
+    };
+
+    if (sessionId) {
+      await this.prisma.session.update({
+        where: { id: sessionId },
+        data: sessionData,
+      });
+    } else {
+      await this.prisma.session.create({
+        data: {
+          userId: user.id,
+          ...sessionData,
+        },
+      });
+    }
 
     return {
       accessToken,
@@ -143,9 +173,5 @@ export class AuthService {
         isAdmin: user.isAdmin,
       },
     };
-  }
-
-  private generateRefreshToken(): string {
-    return randomBytes(48).toString('base64url');
   }
 }
