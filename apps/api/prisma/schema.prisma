@@ -12,98 +12,97 @@ datasource db {
 
 // User model
 model User {
-  id            String    @id @default(uuid())
-  email         String    @unique
-  password      String
-  name          String?
-  avatar        String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  isAdmin       Boolean   @default(false)
-  
-  // Profile
-  language      String    @default("ko")
-  theme         String    @default("light")
-  contact       String?
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String?
+  avatar    String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  isAdmin   Boolean  @default(false)
 
+  // Profile
+  language String  @default("ko")
+  theme    String  @default("light")
+  contact  String?
 
   // Relations
-  ownedSpreadsheets   Spreadsheet[]   @relation("SpreadsheetOwner")
-  permissions         Permission[]
-  comments            Comment[]
-  versions            Version[]
-  sessions            Session[]
-  auditLogs           AuditLog[]
-  favorites           Favorite[]
-  
-  roleId              String?
-  role                Role?           @relation(fields: [roleId], references: [id])
-  flowPermissions     FlowPermission[]
-  
+  ownedSpreadsheets Spreadsheet[] @relation("SpreadsheetOwner")
+  permissions       Permission[]
+  comments          Comment[]
+  versions          Version[]
+  sessions          Session[]
+  auditLogs         AuditLog[]
+  favorites         Favorite[]
+
+  roleId          String?
+  role            Role?            @relation(fields: [roleId], references: [id])
+  flowPermissions FlowPermission[]
+
   // Phase 1: Advanced Features
-  sheetPermissions    SheetPermission[]
-  revisionLogs        RevisionLog[]
-  sheetSnapshots      SheetSnapshot[]
+  sheetPermissions SheetPermission[]
+  revisionLogs     RevisionLog[]
+  sheetSnapshots   SheetSnapshot[]
 }
 
 model Session {
-  id            String    @id @default(uuid())
-  userId        String
-  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  refreshToken  String    @unique
-  expiresAt     DateTime
-  createdAt     DateTime  @default(now())
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  refreshToken String   @unique
+  expiresAt    DateTime
+  createdAt    DateTime @default(now())
 
   @@map("sessions")
 }
 
 // Spreadsheet model
 model Spreadsheet {
-  id            String    @id @default(uuid())
-  name          String
-  ownerId       String
-  owner         User      @relation("SpreadsheetOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  isPublic      Boolean   @default(false)
-  publicToken   String?   @unique
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime? // For soft delete
+  id          String    @id @default(uuid())
+  name        String
+  ownerId     String
+  owner       User      @relation("SpreadsheetOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  isPublic    Boolean   @default(false)
+  publicToken String?   @unique
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  deletedAt   DateTime? // For soft delete
 
   // Relations
-  sheets        Sheet[]
-  permissions   Permission[]
-  versions      Version[]
-  favorites     Favorite[]
-  webhooks      Webhook[]
-  eventRules    EventRule[]
-  flows         Flow[]
-  embedConfig   EmbedConfig?
-  
+  sheets      Sheet[]
+  permissions Permission[]
+  versions    Version[]
+  favorites   Favorite[]
+  webhooks    Webhook[]
+  eventRules  EventRule[]
+  flows       Flow[]
+  embedConfig EmbedConfig?
+
   // Phase 3: Advanced Features
-  customCommands  CustomCommand[]
-  masterViews     MasterView[]
+  customCommands CustomCommand[]
+  masterViews    MasterView[]
 
   @@map("spreadsheets")
 }
 
 // Embed Configuration - 시트 임베딩 설정
 model EmbedConfig {
-  id              String      @id @default(uuid())
-  spreadsheetId   String      @unique
-  spreadsheet     Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
-  embedToken      String      @unique @default(uuid())
-  enabled         Boolean     @default(true)
-  
+  id            String      @id @default(uuid())
+  spreadsheetId String      @unique
+  spreadsheet   Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  embedToken    String      @unique @default(uuid())
+  enabled       Boolean     @default(true)
+
   // 표시 옵션
-  showToolbar     Boolean     @default(false)
-  showTabs        Boolean     @default(true)
-  showGridlines   Boolean     @default(true)
-  
+  showToolbar   Boolean @default(false)
+  showTabs      Boolean @default(true)
+  showGridlines Boolean @default(true)
+
   // 제한 옵션
-  allowedDomains  String[]    @default([])  // 빈 배열 = 모든 도메인 허용
-  
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  allowedDomains String[] @default([]) // 빈 배열 = 모든 도메인 허용
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@map("embed_configs")
 }
@@ -122,55 +121,72 @@ model Favorite {
 
 // Sheet model (tabs within a spreadsheet)
 model Sheet {
-  id              String    @id @default(uuid())
-  spreadsheetId   String
-  spreadsheet     Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
-  name            String
-  index           Int       @default(0)
-  rowCount        Int       @default(1000)
-  colCount        Int       @default(26)
-  frozenRows      Int       @default(0)
-  frozenCols      Int       @default(0)
-  defaultRowHeight Int      @default(25)
-  defaultColWidth  Int      @default(100)
-  version          Int      @default(0)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id               String      @id @default(uuid())
+  spreadsheetId    String
+  spreadsheet      Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  name             String
+  index            Int         @default(0)
+  rowCount         Int         @default(1000)
+  colCount         Int         @default(26)
+  frozenRows       Int         @default(0)
+  frozenCols       Int         @default(0)
+  defaultRowHeight Int         @default(25)
+  defaultColWidth  Int         @default(100)
+  version          Int         @default(0)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
 
   // Relations
-  cells           Cell[]
-  comments        Comment[]
-  rowMeta         RowMeta[]
-  colMeta         ColMeta[]
-  charts          Chart[]
-  pivotTables     PivotTable[]
-  
+  cells         Cell[]
+  comments      Comment[]
+  rowMeta       RowMeta[]
+  colMeta       ColMeta[]
+  charts        Chart[]
+  pivotTables   PivotTable[]
+  cellMutations CellMutation[]
+
   // Phase 1: Advanced Features
-  sheetPermissions      SheetPermission[]
-  revisionLogs          RevisionLog[]
-  conditionalRules      ConditionalRule[]
-  sourceReferences      CrossSheetReference[] @relation("SourceReferences")
-  targetReferences      CrossSheetReference[] @relation("TargetReferences")
-  sheetSnapshots        SheetSnapshot[]
-  filterProfiles        FilterProfile[]
-  sheetAutomations      SheetAutomation[]
+  sheetPermissions SheetPermission[]
+  revisionLogs     RevisionLog[]
+  conditionalRules ConditionalRule[]
+  sourceReferences CrossSheetReference[] @relation("SourceReferences")
+  targetReferences CrossSheetReference[] @relation("TargetReferences")
+  sheetSnapshots   SheetSnapshot[]
+  filterProfiles   FilterProfile[]
+  sheetAutomations SheetAutomation[]
 
   @@unique([spreadsheetId, index])
   @@map("sheets")
 }
 
+// Durable record used to make retried cell batches safe and auditable.
+model CellMutation {
+  id             String   @id @default(uuid())
+  sheetId        String
+  sheet          Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  userId         String
+  idempotencyKey String
+  requestHash    String
+  version        Int
+  createdAt      DateTime @default(now())
+
+  @@unique([sheetId, userId, idempotencyKey])
+  @@index([sheetId, createdAt])
+  @@map("cell_mutations")
+}
+
 // Cell model
 model Cell {
-  id            String    @id @default(uuid())
-  sheetId       String
-  sheet         Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
-  row           Int
-  col           Int
-  value         Json?
-  formula       String?
-  format        Json?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id        String   @id @default(uuid())
+  sheetId   String
+  sheet     Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  row       Int
+  col       Int
+  value     Json?
+  formula   String?
+  format    Json?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([sheetId, row, col])
   @@index([sheetId])
@@ -179,18 +195,18 @@ model Cell {
 
 // Chart model - 시트에 포함된 차트
 model Chart {
-  id              String    @id @default(uuid())
-  sheetId         String
-  sheet           Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
-  type            String    // bar, line, pie, doughnut
-  x               Int       @default(100)
-  y               Int       @default(100)
-  width           Int       @default(400)
-  height          Int       @default(300)
-  data            Json      // 차트 데이터 (labels, datasets)
-  options         Json?     // 차트 옵션
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id        String   @id @default(uuid())
+  sheetId   String
+  sheet     Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  type      String // bar, line, pie, doughnut
+  x         Int      @default(100)
+  y         Int      @default(100)
+  width     Int      @default(400)
+  height    Int      @default(300)
+  data      Json // 차트 데이터 (labels, datasets)
+  options   Json? // 차트 옵션
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@index([sheetId])
   @@map("charts")
@@ -198,15 +214,15 @@ model Chart {
 
 // PivotTable model - 피벗테이블 설정
 model PivotTable {
-  id              String    @id @default(uuid())
-  sheetId         String
-  sheet           Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
-  name            String?
-  config          Json      // PivotConfig (rows, columns, values, aggregation)
-  sourceRange     String?   // 원본 데이터 범위 (예: "A1:D10")
-  targetCell      String?   // 결과가 배치될 시작 셀 (예: "F1")
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id          String   @id @default(uuid())
+  sheetId     String
+  sheet       Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  name        String?
+  config      Json // PivotConfig (rows, columns, values, aggregation)
+  sourceRange String? // 원본 데이터 범위 (예: "A1:D10")
+  targetCell  String? // 결과가 배치될 시작 셀 (예: "F1")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([sheetId])
   @@map("pivot_tables")
@@ -214,12 +230,12 @@ model PivotTable {
 
 // Row metadata (height, hidden)
 model RowMeta {
-  id            String    @id @default(uuid())
-  sheetId       String
-  sheet         Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
-  row           Int
-  height        Int?
-  hidden        Boolean   @default(false)
+  id      String  @id @default(uuid())
+  sheetId String
+  sheet   Sheet   @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  row     Int
+  height  Int?
+  hidden  Boolean @default(false)
 
   @@unique([sheetId, row])
   @@map("row_meta")
@@ -227,12 +243,12 @@ model RowMeta {
 
 // Column metadata (width, hidden)
 model ColMeta {
-  id            String    @id @default(uuid())
-  sheetId       String
-  sheet         Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
-  col           Int
-  width         Int?
-  hidden        Boolean   @default(false)
+  id      String  @id @default(uuid())
+  sheetId String
+  sheet   Sheet   @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  col     Int
+  width   Int?
+  hidden  Boolean @default(false)
 
   @@unique([sheetId, col])
   @@map("col_meta")
@@ -240,16 +256,16 @@ model ColMeta {
 
 // Permission model
 model Permission {
-  id              String    @id @default(uuid())
-  spreadsheetId   String
-  spreadsheet     Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
-  userId          String?
-  user            User?     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  email           String?   // For sharing with non-registered users
-  role            PermissionRole
-  inviteToken     String?   @unique
-  expiresAt       DateTime?
-  createdAt       DateTime  @default(now())
+  id            String         @id @default(uuid())
+  spreadsheetId String
+  spreadsheet   Spreadsheet    @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  userId        String?
+  user          User?          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  email         String? // For sharing with non-registered users
+  role          PermissionRole
+  inviteToken   String?        @unique
+  expiresAt     DateTime?
+  createdAt     DateTime       @default(now())
 
   @@unique([spreadsheetId, userId])
   @@unique([spreadsheetId, email])
@@ -265,14 +281,14 @@ enum PermissionRole {
 
 // Version/History model
 model Version {
-  id              String    @id @default(uuid())
-  spreadsheetId   String
-  spreadsheet     Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
-  name            String?
-  snapshot        Json      // CRDT state or cell data snapshot
-  createdById     String
-  createdBy       User      @relation(fields: [createdById], references: [id])
-  createdAt       DateTime  @default(now())
+  id            String      @id @default(uuid())
+  spreadsheetId String
+  spreadsheet   Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  name          String?
+  snapshot      Json // CRDT state or cell data snapshot
+  createdById   String
+  createdBy     User        @relation(fields: [createdById], references: [id])
+  createdAt     DateTime    @default(now())
 
   @@index([spreadsheetId, createdAt(sort: Desc)])
   @@map("versions")
@@ -280,20 +296,20 @@ model Version {
 
 // Comment model
 model Comment {
-  id              String    @id @default(uuid())
-  sheetId         String
-  sheet           Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
-  row             Int
-  col             Int
-  content         String
-  authorId        String
-  author          User      @relation(fields: [authorId], references: [id])
-  parentId        String?
-  parent          Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies         Comment[] @relation("CommentReplies")
-  resolved        Boolean   @default(false)
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  id        String    @id @default(uuid())
+  sheetId   String
+  sheet     Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  row       Int
+  col       Int
+  content   String
+  authorId  String
+  author    User      @relation(fields: [authorId], references: [id])
+  parentId  String?
+  parent    Comment?  @relation("CommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies   Comment[] @relation("CommentReplies")
+  resolved  Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   @@index([sheetId, row, col])
   @@map("comments")
@@ -301,25 +317,25 @@ model Comment {
 
 // System Configuration (Global Settings)
 model SystemConfig {
-  key           String    @id
-  value         String // JSON string or simple value
-  description   String?
-  updatedAt     DateTime  @updatedAt
+  key         String   @id
+  value       String // JSON string or simple value
+  description String?
+  updatedAt   DateTime @updatedAt
 
   @@map("system_config")
 }
 
 // Audit Logs
 model AuditLog {
-  id            String    @id @default(uuid())
-  userId        String?
-  user          User?     @relation(fields: [userId], references: [id])
-  action        String    // e.g., "USER_CREATED", "SHEET_DELETED"
-  resource      String?   // e.g., "User: 123", "Sheet: ABC"
-  details       Json?     // Metadata
-  ipAddress     String?
-  userAgent     String?
-  createdAt     DateTime  @default(now())
+  id        String   @id @default(uuid())
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id])
+  action    String // e.g., "USER_CREATED", "SHEET_DELETED"
+  resource  String? // e.g., "User: 123", "Sheet: ABC"
+  details   Json? // Metadata
+  ipAddress String?
+  userAgent String?
+  createdAt DateTime @default(now())
 
   @@index([createdAt(sort: Desc)])
   @@index([userId])
@@ -329,32 +345,32 @@ model AuditLog {
 
 // Role Based Access Control
 model Role {
-  id            String    @id @default(uuid())
-  name          String    @unique // e.g., "ADMIN", "MANAGER", "USER"
-  description   String?
-  permissions   Json      // List of allowed actions or permission matrix
-  isSystem      Boolean   @default(false) // System roles cannot be deleted
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id          String   @id @default(uuid())
+  name        String   @unique // e.g., "ADMIN", "MANAGER", "USER"
+  description String?
+  permissions Json // List of allowed actions or permission matrix
+  isSystem    Boolean  @default(false) // System roles cannot be deleted
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
-  users         User[]
+  users User[]
 
   @@map("roles")
 }
 
 // System Notices / Announcements
 model Notice {
-  id            String    @id @default(uuid())
-  title         String
-  content       String    @db.Text
-  type          NoticeType @default(INFO)
-  active        Boolean   @default(true)
-  startDate     DateTime?
-  endDate       DateTime?
-  authorId      String
+  id        String     @id @default(uuid())
+  title     String
+  content   String     @db.Text
+  type      NoticeType @default(INFO)
+  active    Boolean    @default(true)
+  startDate DateTime?
+  endDate   DateTime?
+  authorId  String
   // author        User      @relation(fields: [authorId], references: [id]) // Optional: link to creator
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
 
   @@map("notices")
 }
@@ -368,16 +384,16 @@ enum NoticeType {
 
 // Spreadsheet Templates
 model Template {
-  id            String    @id @default(uuid())
-  name          String
-  description   String?
-  category      String    @default("General")
-  data          Json      // The spreadsheet data structure
-  thumbnail     String?   // URL or base64
-  isPublic      Boolean   @default(true)
-  order         Int       @default(0)
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id          String   @id @default(uuid())
+  name        String
+  description String?
+  category    String   @default("General")
+  data        Json // The spreadsheet data structure
+  thumbnail   String? // URL or base64
+  isPublic    Boolean  @default(true)
+  order       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@map("templates")
 }
@@ -388,21 +404,21 @@ model Template {
 
 // 웹훅 설정
 model Webhook {
-  id              String          @id @default(uuid())
-  spreadsheetId   String
-  spreadsheet     Spreadsheet     @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
-  name            String
-  url             String
-  secret          String
-  events          String[]        // 이벤트 타입 배열
-  
+  id            String      @id @default(uuid())
+  spreadsheetId String
+  spreadsheet   Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  name          String
+  url           String
+  secret        String
+  events        String[] // 이벤트 타입 배열
+
   // 재시도 정책
-  maxRetries      Int             @default(3)
-  retryBackoff    String          @default("exponential") // linear, exponential
-  
-  active          Boolean         @default(true)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  maxRetries   Int    @default(3)
+  retryBackoff String @default("exponential") // linear, exponential
+
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   eventRules      EventRule[]
@@ -414,16 +430,16 @@ model Webhook {
 
 // 웹훅 실행 로그
 model WebhookExecution {
-  id              String          @id @default(uuid())
-  webhookId       String
-  webhook         Webhook         @relation(fields: [webhookId], references: [id], onDelete: Cascade)
-  transactionId   String
-  payload         Json
-  response        Json?
-  statusCode      Int?
-  success         Boolean         @default(false)
-  retryCount      Int             @default(0)
-  executedAt      DateTime        @default(now())
+  id            String   @id @default(uuid())
+  webhookId     String
+  webhook       Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  transactionId String
+  payload       Json
+  response      Json?
+  statusCode    Int?
+  success       Boolean  @default(false)
+  retryCount    Int      @default(0)
+  executedAt    DateTime @default(now())
 
   @@index([webhookId, executedAt(sort: Desc)])
   @@map("webhook_executions")
@@ -431,53 +447,53 @@ model WebhookExecution {
 
 // Dead-letter 큐
 model DeadLetterItem {
-  id              String          @id @default(uuid())
-  webhookId       String
-  webhook         Webhook         @relation(fields: [webhookId], references: [id], onDelete: Cascade)
-  payload         Json
-  error           String
-  createdAt       DateTime        @default(now())
+  id        String   @id @default(uuid())
+  webhookId String
+  webhook   Webhook  @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+  payload   Json
+  error     String
+  createdAt DateTime @default(now())
 
   @@map("dead_letter_queue")
 }
 
 // 이벤트 감지 규칙
 model EventRule {
-  id              String          @id @default(uuid())
-  spreadsheetId   String
-  spreadsheet     Spreadsheet     @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
-  name            String
-  description     String?
-  
+  id            String      @id @default(uuid())
+  spreadsheetId String
+  spreadsheet   Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+
   // 감지 대상
-  targetType      TargetType      @default(SHEET)
+  targetType      TargetType @default(SHEET)
   sheetId         String?
-  cellRange       String?         // e.g., "A1:B10"
-  cellCoordinates Json?           // 특정 셀 좌표 배열
-  
+  cellRange       String? // e.g., "A1:B10"
+  cellCoordinates Json? // 특정 셀 좌표 배열
+
   // 이벤트 타입
-  eventTypes      EventType[]
-  
+  eventTypes EventType[]
+
   // 필터 조건
-  filterConditions Json?          // 값 비교, 변화 유형 등
-  batchMode       Boolean         @default(false)
-  batchWindow     Int?            // 밀리초 단위 배치 윈도우
-  
+  filterConditions Json? // 값 비교, 변화 유형 등
+  batchMode        Boolean @default(false)
+  batchWindow      Int? // 밀리초 단위 배치 윈도우
+
   // 웹훅 연결
-  webhookId       String?
-  webhook         Webhook?        @relation(fields: [webhookId], references: [id])
-  
+  webhookId String?
+  webhook   Webhook? @relation(fields: [webhookId], references: [id])
+
   // 플로우 연결
-  flowId          String?
-  flow            Flow?           @relation(fields: [flowId], references: [id])
-  
-  active          Boolean         @default(true)
-  version         Int             @default(1)
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  flowId String?
+  flow   Flow?   @relation(fields: [flowId], references: [id])
+
+  active    Boolean  @default(true)
+  version   Int      @default(1)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  eventLogs       EventLog[]
+  eventLogs EventLog[]
 
   @@map("event_rules")
 }
@@ -502,19 +518,19 @@ enum EventType {
 
 // 이벤트 로그
 model EventLog {
-  id              String          @id @default(uuid())
-  eventRuleId     String?
-  eventRule       EventRule?      @relation(fields: [eventRuleId], references: [id])
-  spreadsheetId   String
-  sheetId         String
-  eventType       EventType
-  cellCoordinate  String          // e.g., "A1"
-  previousValue   Json?
-  newValue        Json?
-  changedBy       String?
-  changeMethod    String?         // "manual", "formula", "api", "import"
-  transactionId   String
-  createdAt       DateTime        @default(now())
+  id             String     @id @default(uuid())
+  eventRuleId    String?
+  eventRule      EventRule? @relation(fields: [eventRuleId], references: [id])
+  spreadsheetId  String
+  sheetId        String
+  eventType      EventType
+  cellCoordinate String // e.g., "A1"
+  previousValue  Json?
+  newValue       Json?
+  changedBy      String?
+  changeMethod   String? // "manual", "formula", "api", "import"
+  transactionId  String
+  createdAt      DateTime   @default(now())
 
   @@index([spreadsheetId, createdAt(sort: Desc)])
   @@index([transactionId])
@@ -523,42 +539,42 @@ model EventLog {
 
 // 플로우 정의
 model Flow {
-  id              String          @id @default(uuid())
-  spreadsheetId   String
-  spreadsheet     Spreadsheet     @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
-  name            String
-  description     String?
-  
+  id            String      @id @default(uuid())
+  spreadsheetId String
+  spreadsheet   Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+
   // 노드 및 연결 정의 (JSON)
-  nodes           Json            @default("[]") // FlowNode[]
-  edges           Json            @default("[]") // FlowEdge[]
-  
-  active          Boolean         @default(true)
-  version         Int             @default(1)
-  createdById     String
-  createdAt       DateTime        @default(now())
-  updatedAt       DateTime        @updatedAt
+  nodes Json @default("[]") // FlowNode[]
+  edges Json @default("[]") // FlowEdge[]
+
+  active      Boolean  @default(true)
+  version     Int      @default(1)
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   // Relations
-  eventRules      EventRule[]
-  executions      FlowExecution[]
-  versions        FlowVersion[]
-  permissions     FlowPermission[]
+  eventRules  EventRule[]
+  executions  FlowExecution[]
+  versions    FlowVersion[]
+  permissions FlowPermission[]
 
   @@map("flows")
 }
 
 // 플로우 버전 히스토리
 model FlowVersion {
-  id              String          @id @default(uuid())
-  flowId          String
-  flow            Flow            @relation(fields: [flowId], references: [id], onDelete: Cascade)
-  version         Int
-  nodes           Json
-  edges           Json
-  snapshot        Json?           // 전체 플로우 스냅샷
-  createdById     String
-  createdAt       DateTime        @default(now())
+  id          String   @id @default(uuid())
+  flowId      String
+  flow        Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  version     Int
+  nodes       Json
+  edges       Json
+  snapshot    Json? // 전체 플로우 스냅샷
+  createdById String
+  createdAt   DateTime @default(now())
 
   @@unique([flowId, version])
   @@map("flow_versions")
@@ -566,18 +582,18 @@ model FlowVersion {
 
 // 플로우 실행 로그
 model FlowExecution {
-  id              String          @id @default(uuid())
-  flowId          String
-  flow            Flow            @relation(fields: [flowId], references: [id], onDelete: Cascade)
-  transactionId   String          @unique
-  status          ExecutionStatus @default(RUNNING)
-  triggerData     Json?
-  startedAt       DateTime        @default(now())
-  completedAt     DateTime?
-  error           String?
+  id            String          @id @default(uuid())
+  flowId        String
+  flow          Flow            @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  transactionId String          @unique
+  status        ExecutionStatus @default(RUNNING)
+  triggerData   Json?
+  startedAt     DateTime        @default(now())
+  completedAt   DateTime?
+  error         String?
 
   // Relations
-  nodeExecutions  NodeExecution[]
+  nodeExecutions NodeExecution[]
 
   @@index([flowId, startedAt(sort: Desc)])
   @@map("flow_executions")
@@ -610,12 +626,12 @@ model NodeExecution {
 
 // 플로우 권한
 model FlowPermission {
-  id              String          @id @default(uuid())
-  flowId          String
-  flow            Flow            @relation(fields: [flowId], references: [id], onDelete: Cascade)
-  userId          String
-  user            User            @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role            FlowRole
+  id     String   @id @default(uuid())
+  flowId String
+  flow   Flow     @relation(fields: [flowId], references: [id], onDelete: Cascade)
+  userId String
+  user   User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role   FlowRole
 
   @@unique([flowId, userId])
   @@map("flow_permissions")
@@ -638,7 +654,7 @@ model SheetPermission {
   sheet     Sheet               @relation(fields: [sheetId], references: [id], onDelete: Cascade)
   userId    String?
   user      User?               @relation(fields: [userId], references: [id], onDelete: Cascade)
-  email     String?             // 비등록 사용자 초대용
+  email     String? // 비등록 사용자 초대용
   role      SheetPermissionRole
   createdAt DateTime            @default(now())
 
@@ -648,24 +664,24 @@ model SheetPermission {
 }
 
 enum SheetPermissionRole {
-  VIEWER      // 읽기 전용
-  COMMENTER   // 댓글 전용
-  EDITOR      // 편집 가능
+  VIEWER // 읽기 전용
+  COMMENTER // 댓글 전용
+  EDITOR // 편집 가능
 }
 
 // 시트 변경 내역 로그
 model RevisionLog {
-  id            String    @id @default(uuid())
-  sheetId       String
-  sheet         Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
-  action        String    // CELL_UPDATE, ROW_INSERT, COL_DELETE, BULK_UPDATE 등
-  targetRange   String?   // 영향받은 범위 (예: "A1:B10")
-  previousData  Json?     // 이전 상태
-  newData       Json?     // 새 상태
-  userId        String
-  user          User      @relation(fields: [userId], references: [id])
-  description   String?   // 변경 설명
-  createdAt     DateTime  @default(now())
+  id           String   @id @default(uuid())
+  sheetId      String
+  sheet        Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  action       String // CELL_UPDATE, ROW_INSERT, COL_DELETE, BULK_UPDATE 등
+  targetRange  String? // 영향받은 범위 (예: "A1:B10")
+  previousData Json? // 이전 상태
+  newData      Json? // 새 상태
+  userId       String
+  user         User     @relation(fields: [userId], references: [id])
+  description  String? // 변경 설명
+  createdAt    DateTime @default(now())
 
   @@index([sheetId, createdAt(sort: Desc)])
   @@map("revision_logs")
@@ -673,17 +689,17 @@ model RevisionLog {
 
 // 조건부 서식 규칙
 model ConditionalRule {
-  id          String    @id @default(uuid())
-  sheetId     String
-  sheet       Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
-  name        String
-  priority    Int       @default(0)   // 낮을수록 우선순위 높음
-  ranges      String[]  // 적용 범위 (예: ["A1:Z100", "AA1:AZ50"])
-  conditions  Json      // 조건 배열 [{type, operator, value}]
-  format      Json      // 적용할 서식 {backgroundColor, textColor, bold, italic, ...}
-  active      Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  id         String   @id @default(uuid())
+  sheetId    String
+  sheet      Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  name       String
+  priority   Int      @default(0) // 낮을수록 우선순위 높음
+  ranges     String[] // 적용 범위 (예: ["A1:Z100", "AA1:AZ50"])
+  conditions Json // 조건 배열 [{type, operator, value}]
+  format     Json // 적용할 서식 {backgroundColor, textColor, bold, italic, ...}
+  active     Boolean  @default(true)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([sheetId])
   @@map("conditional_rules")
@@ -691,15 +707,15 @@ model ConditionalRule {
 
 // 시트 간 참조
 model CrossSheetReference {
-  id            String    @id @default(uuid())
+  id            String   @id @default(uuid())
   sourceSheetId String
-  sourceSheet   Sheet     @relation("SourceReferences", fields: [sourceSheetId], references: [id], onDelete: Cascade)
-  sourceCell    String    // 참조하는 셀 (예: "A1")
+  sourceSheet   Sheet    @relation("SourceReferences", fields: [sourceSheetId], references: [id], onDelete: Cascade)
+  sourceCell    String // 참조하는 셀 (예: "A1")
   targetSheetId String
-  targetSheet   Sheet     @relation("TargetReferences", fields: [targetSheetId], references: [id], onDelete: Cascade)
-  targetCell    String    // 참조되는 셀 (예: "B5")
-  formula       String?   // 원본 수식 (예: "='Sheet2'!B5")
-  createdAt     DateTime  @default(now())
+  targetSheet   Sheet    @relation("TargetReferences", fields: [targetSheetId], references: [id], onDelete: Cascade)
+  targetCell    String // 참조되는 셀 (예: "B5")
+  formula       String? // 원본 수식 (예: "='Sheet2'!B5")
+  createdAt     DateTime @default(now())
 
   @@index([sourceSheetId])
   @@index([targetSheetId])
@@ -713,8 +729,8 @@ model SheetAutomation {
   sheet       Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
   name        String
   description String?
-  trigger     Json      // 트리거 정의 {eventType, conditions}
-  actions     Json      // 액션 배열 [{type, config}]
+  trigger     Json // 트리거 정의 {eventType, conditions}
+  actions     Json // 액션 배열 [{type, config}]
   active      Boolean   @default(true)
   runCount    Int       @default(0)
   lastRunAt   DateTime?
@@ -728,17 +744,17 @@ model SheetAutomation {
 
 // 필터 프로필
 model FilterProfile {
-  id        String    @id @default(uuid())
-  sheetId   String
-  sheet     Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
-  name      String
-  filters   Json      // 필터 조건 배열 [{column, operator, value}]
-  sortings  Json?     // 정렬 설정 [{column, direction}]
-  hiddenCols Int[]    // 숨긴 열 인덱스
-  hiddenRows Int[]    // 숨긴 행 인덱스
-  isDefault Boolean   @default(false)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
+  id         String   @id @default(uuid())
+  sheetId    String
+  sheet      Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  name       String
+  filters    Json // 필터 조건 배열 [{column, operator, value}]
+  sortings   Json? // 정렬 설정 [{column, direction}]
+  hiddenCols Int[] // 숨긴 열 인덱스
+  hiddenRows Int[] // 숨긴 행 인덱스
+  isDefault  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
   @@index([sheetId])
   @@map("filter_profiles")
@@ -746,17 +762,17 @@ model FilterProfile {
 
 // 시트 스냅샷
 model SheetSnapshot {
-  id          String    @id @default(uuid())
+  id          String   @id @default(uuid())
   sheetId     String
-  sheet       Sheet     @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  sheet       Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
   name        String
   description String?
-  data        Json      // 전체 시트 데이터 스냅샷
-  parentId    String?   // 브랜치 부모 스냅샷
-  isBranch    Boolean   @default(false)
+  data        Json // 전체 시트 데이터 스냅샷
+  parentId    String? // 브랜치 부모 스냅샷
+  isBranch    Boolean  @default(false)
   createdById String
-  createdBy   User      @relation(fields: [createdById], references: [id])
-  createdAt   DateTime  @default(now())
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
 
   @@index([sheetId])
   @@map("sheet_snapshots")
@@ -767,11 +783,11 @@ model CustomCommand {
   id            String      @id @default(uuid())
   spreadsheetId String
   spreadsheet   Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
-  name          String      // 명령어 이름 (예: "fill-dates")
+  name          String // 명령어 이름 (예: "fill-dates")
   description   String?
-  script        String      @db.Text  // JavaScript 코드
-  shortcuts     String[]    // 단축키 배열 (예: ["Ctrl+Shift+D"])
-  isGlobal      Boolean     @default(false)  // 전역 명령어 여부
+  script        String      @db.Text // JavaScript 코드
+  shortcuts     String[] // 단축키 배열 (예: ["Ctrl+Shift+D"])
+  isGlobal      Boolean     @default(false) // 전역 명령어 여부
   createdById   String
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
@@ -782,17 +798,17 @@ model CustomCommand {
 
 // 마스터 뷰
 model MasterView {
-  id              String      @id @default(uuid())
-  spreadsheetId   String
-  spreadsheet     Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
-  name            String
-  description     String?
-  sourceSheets    Json        // [{sheetId, columnMappings, rowFilter}]
-  syncEnabled     Boolean     @default(true)
-  lastSyncAt      DateTime?
-  createdById     String
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id            String      @id @default(uuid())
+  spreadsheetId String
+  spreadsheet   Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  name          String
+  description   String?
+  sourceSheets  Json // [{sheetId, columnMappings, rowFilter}]
+  syncEnabled   Boolean     @default(true)
+  lastSyncAt    DateTime?
+  createdById   String
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
   @@index([spreadsheetId])
   @@map("master_views")
@@ -800,10 +816,10 @@ model MasterView {
 
 // 시트 뷰 모드
 enum SheetViewMode {
-  EDIT          // 편집 모드
-  VIEW          // 읽기 전용 모드
-  ANALYSIS      // 데이터 분석 모드
-  PRESENTATION  // 프레젠테이션 모드
+  EDIT // 편집 모드
+  VIEW // 읽기 전용 모드
+  ANALYSIS // 데이터 분석 모드
+  PRESENTATION // 프레젠테이션 모드
 }
 
 // =====================================================
@@ -815,7 +831,7 @@ model PermissionPolicy {
   id          String   @id @default(uuid())
   name        String   @unique
   description String?
-  rules       Json     // 세부 권한 규칙 {canEdit, canComment, canShare, canExport, ...}
+  rules       Json // 세부 권한 규칙 {canEdit, canComment, canShare, canExport, ...}
   isDefault   Boolean  @default(false)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
@@ -825,48 +841,48 @@ model PermissionPolicy {
 
 // 시트 잠금 상태
 model SheetLock {
-  id          String    @id @default(uuid())
-  sheetId     String    @unique
-  lockedById  String
-  reason      String?
-  lockedAt    DateTime  @default(now())
-  expiresAt   DateTime?
+  id         String    @id @default(uuid())
+  sheetId    String    @unique
+  lockedById String
+  reason     String?
+  lockedAt   DateTime  @default(now())
+  expiresAt  DateTime?
 
   @@map("sheet_locks")
 }
 
 // 조건부 서식 정책
 model ConditionalFormatPolicy {
-  id              String   @id @default(uuid())
-  name            String   @unique
-  description     String?
-  allowedColors   String[] // 허용된 색상 코드
-  allowedFormulas String[] // 허용된 수식 패턴
-  blockedFormulas String[] // 차단된 수식 패턴
-  maxRulesPerSheet Int     @default(50)
-  isActive        Boolean  @default(true)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(uuid())
+  name             String   @unique
+  description      String?
+  allowedColors    String[] // 허용된 색상 코드
+  allowedFormulas  String[] // 허용된 수식 패턴
+  blockedFormulas  String[] // 차단된 수식 패턴
+  maxRulesPerSheet Int      @default(50)
+  isActive         Boolean  @default(true)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   @@map("conditional_format_policies")
 }
 
 // UDF 승인 요청
 model UDFApproval {
-  id           String    @id @default(uuid())
+  id            String            @id @default(uuid())
   spreadsheetId String
-  name         String
-  description  String?
-  code         String    @db.Text
-  parameters   Json?     // 파라미터 정의
-  requesterId  String
-  status       UDFApprovalStatus @default(PENDING)
-  reviewerId   String?
-  reviewNotes  String?
-  riskLevel    RiskLevel?
-  riskDetails  Json?     // 위험 코드 분석 결과
-  requestedAt  DateTime  @default(now())
-  reviewedAt   DateTime?
+  name          String
+  description   String?
+  code          String            @db.Text
+  parameters    Json? // 파라미터 정의
+  requesterId   String
+  status        UDFApprovalStatus @default(PENDING)
+  reviewerId    String?
+  reviewNotes   String?
+  riskLevel     RiskLevel?
+  riskDetails   Json? // 위험 코드 분석 결과
+  requestedAt   DateTime          @default(now())
+  reviewedAt    DateTime?
 
   @@index([spreadsheetId])
   @@index([status])
@@ -889,29 +905,28 @@ enum RiskLevel {
 
 // AI 모델 레지스트리
 model AIModelConfig {
-  id          String   @id @default(uuid())
-  name        String   @unique
-  modelType   AIModelType
-  provider    AIProvider
-  modelId     String   // 실제 모델 ID (gpt-4, gemini-pro 등)
-  version     String
-  baseUrl     String?  // CUSTOM 프로바이더용 OpenAI 호환 API URL (vLLM, Ollama 등)
-  apiKey      String?  // CUSTOM 프로바이더용 API 키 (선택사항)
-  isActive    Boolean  @default(true)
-  isDefault   Boolean  @default(false)
-  config      Json?    // 모델별 설정 (temperature, maxTokens 등)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String      @id @default(uuid())
+  name      String      @unique
+  modelType AIModelType
+  provider  AIProvider
+  modelId   String // 실제 모델 ID (gpt-4, gemini-pro 등)
+  version   String
+  baseUrl   String? // CUSTOM 프로바이더용 OpenAI 호환 API URL (vLLM, Ollama 등)
+  apiKey    String? // CUSTOM 프로바이더용 API 키 (선택사항)
+  isActive  Boolean     @default(true)
+  isDefault Boolean     @default(false)
+  config    Json? // 모델별 설정 (temperature, maxTokens 등)
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
 
   @@map("ai_model_configs")
 }
 
-
 enum AIModelType {
-  FORMULA_SUGGEST    // 수식 추천
-  SHEET_GENERATE     // 시트 생성
-  DATA_ANALYSIS      // 데이터 분석
-  CHAT_ASSISTANT     // 채팅 도우미
+  FORMULA_SUGGEST // 수식 추천
+  SHEET_GENERATE // 시트 생성
+  DATA_ANALYSIS // 데이터 분석
+  CHAT_ASSISTANT // 채팅 도우미
 }
 
 enum AIProvider {
@@ -923,16 +938,16 @@ enum AIProvider {
 
 // 프롬프트 템플릿
 model PromptTemplate {
-  id          String   @id @default(uuid())
-  name        String   @unique
+  id          String         @id @default(uuid())
+  name        String         @unique
   category    PromptCategory
-  content     String   @db.Text
+  content     String         @db.Text
   variables   String[] // 템플릿 변수 목록
   description String?
-  isDefault   Boolean  @default(false)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  isDefault   Boolean        @default(false)
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
 
   @@map("prompt_templates")
 }
@@ -950,7 +965,7 @@ enum PromptCategory {
 model PivotPolicy {
   id                String   @id @default(uuid())
   name              String?
-  userId            String?  // null이면 전역 정책
+  userId            String? // null이면 전역 정책
   maxPivotsPerSheet Int      @default(10)
   maxPivotsPerUser  Int      @default(50)
   allowedAggregates String[] // SUM, AVG, COUNT, MIN, MAX 등
@@ -965,18 +980,18 @@ model PivotPolicy {
 
 // 사용자/시트 할당량
 model Quota {
-  id          String    @id @default(uuid())
+  id          String          @id @default(uuid())
   targetType  QuotaTargetType
-  targetId    String    // userId 또는 sheetId
-  maxRows     Int       @default(100000)
-  maxColumns  Int       @default(1000)
-  maxCells    Int       @default(10000000)
-  maxFileSize Int       @default(104857600) // 100MB
-  usedRows    Int       @default(0)
-  usedColumns Int       @default(0)
-  usedCells   Int       @default(0)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  targetId    String // userId 또는 sheetId
+  maxRows     Int             @default(100000)
+  maxColumns  Int             @default(1000)
+  maxCells    Int             @default(10000000)
+  maxFileSize Int             @default(104857600) // 100MB
+  usedRows    Int             @default(0)
+  usedColumns Int             @default(0)
+  usedCells   Int             @default(0)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
 
   @@unique([targetType, targetId])
   @@map("quotas")
@@ -990,20 +1005,20 @@ enum QuotaTargetType {
 
 // 매크로 승인
 model MacroApproval {
-  id           String    @id @default(uuid())
-  commandId    String?   // CustomCommand 참조
+  id            String              @id @default(uuid())
+  commandId     String? // CustomCommand 참조
   spreadsheetId String
-  name         String
-  script       String    @db.Text
-  description  String?
-  requesterId  String
-  status       MacroApprovalStatus @default(PENDING)
-  reviewerId   String?
-  reviewNotes  String?
-  lintResults  Json?     // 린트 결과 {errors: [], warnings: []}
-  riskLevel    RiskLevel?
-  requestedAt  DateTime  @default(now())
-  reviewedAt   DateTime?
+  name          String
+  script        String              @db.Text
+  description   String?
+  requesterId   String
+  status        MacroApprovalStatus @default(PENDING)
+  reviewerId    String?
+  reviewNotes   String?
+  lintResults   Json? // 린트 결과 {errors: [], warnings: []}
+  riskLevel     RiskLevel?
+  requestedAt   DateTime            @default(now())
+  reviewedAt    DateTime?
 
   @@index([spreadsheetId])
   @@index([status])
@@ -1019,18 +1034,18 @@ enum MacroApprovalStatus {
 
 // API 사용량 추적
 model APIUsage {
-  id              String   @id @default(uuid())
-  spreadsheetId   String?
-  userId          String?
-  endpoint        String
-  method          String
-  statusCode      Int
-  responseTimeMs  Int
-  requestSize     Int?
-  responseSize    Int?
-  userAgent       String?
-  ipAddress       String?
-  timestamp       DateTime @default(now())
+  id             String   @id @default(uuid())
+  spreadsheetId  String?
+  userId         String?
+  endpoint       String
+  method         String
+  statusCode     Int
+  responseTimeMs Int
+  requestSize    Int?
+  responseSize   Int?
+  userAgent      String?
+  ipAddress      String?
+  timestamp      DateTime @default(now())
 
   @@index([spreadsheetId, timestamp])
   @@index([userId, timestamp])
@@ -1040,17 +1055,17 @@ model APIUsage {
 
 // 시트 활동 세션
 model SheetSession {
-  id            String    @id @default(uuid())
+  id            String      @id @default(uuid())
   spreadsheetId String
   sheetId       String?
   userId        String
   sessionType   SessionType @default(EDIT)
-  startedAt     DateTime  @default(now())
-  lastActiveAt  DateTime  @default(now())
+  startedAt     DateTime    @default(now())
+  lastActiveAt  DateTime    @default(now())
   endedAt       DateTime?
-  editCount     Int       @default(0)
-  viewCount     Int       @default(0)
-  metadata      Json?     // 추가 세션 정보
+  editCount     Int         @default(0)
+  viewCount     Int         @default(0)
+  metadata      Json? // 추가 세션 정보
 
   @@index([spreadsheetId, lastActiveAt])
   @@index([userId, lastActiveAt])
@@ -1065,16 +1080,16 @@ enum SessionType {
 
 // 스냅샷 보존 정책
 model SnapshotRetentionPolicy {
-  id                  String   @id @default(uuid())
-  name                String   @unique
-  description         String?
-  maxSnapshotsPerSheet Int     @default(50)
-  retentionDays       Int      @default(90)
-  autoDeleteEnabled   Boolean  @default(true)
-  isDefault           Boolean  @default(false)
-  isActive            Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                   String   @id @default(uuid())
+  name                 String   @unique
+  description          String?
+  maxSnapshotsPerSheet Int      @default(50)
+  retentionDays        Int      @default(90)
+  autoDeleteEnabled    Boolean  @default(true)
+  isDefault            Boolean  @default(false)
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   @@map("snapshot_retention_policies")
 }

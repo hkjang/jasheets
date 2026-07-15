@@ -11,6 +11,7 @@ import { CreateSpreadsheetDto } from './dto/create-spreadsheet.dto';
 import { UpdateSpreadsheetDto } from './dto/update-spreadsheet.dto';
 import { PermissionRole } from '@prisma/client';
 import { EventsService, CellChangeEvent } from '../events/events.service';
+import { createHash } from 'crypto';
 
 @Injectable()
 export class SheetsService {
@@ -411,6 +412,7 @@ export class SheetsService {
       format?: any;
     }>,
     expectedVersion?: number,
+    idempotencyKey?: string,
   ) {
     if (updates.length < 1 || updates.length > 1000) {
       throw new BadRequestException(
@@ -458,50 +460,133 @@ export class SheetsService {
     });
 
     const versionToMatch = expectedVersion ?? sheet.version;
-    const transactionResult = await this.prisma.$transaction(async (tx) => {
-      const versionUpdate = await tx.sheet.updateMany({
-        where: { id: sheetId, version: versionToMatch },
-        data: { version: { increment: 1 } },
-      });
-      if (versionUpdate.count !== 1) {
-        throw new ConflictException(
-          'Sheet was modified by another user. Reload before saving again.',
-        );
-      }
+    const requestHash = createHash('sha256')
+      .update(
+        JSON.stringify({
+          expectedVersion: versionToMatch,
+          updates: normalizedUpdates.map(
+            ({ row, col, value, formula, format }) => ({
+              row,
+              col,
+              value,
+              formula,
+              format,
+            }),
+          ),
+        }),
+      )
+      .digest('hex');
 
-      const existingCells = await tx.cell.findMany({
+    if (idempotencyKey) {
+      const existingMutation = await this.prisma.cellMutation.findUnique({
         where: {
-          sheetId,
-          OR: normalizedUpdates.map((update) => ({
-            row: update.row,
-            col: update.col,
-          })),
+          sheetId_userId_idempotencyKey: {
+            sheetId,
+            userId,
+            idempotencyKey,
+          },
         },
       });
-      const cells = await Promise.all(
-        normalizedUpdates.map((update) =>
-          tx.cell.upsert({
-            where: {
-              sheetId_row_col: { sheetId, row: update.row, col: update.col },
-            },
-            update: {
-              value: update.value,
-              formula: update.formula,
-              format: update.format,
-            },
-            create: {
+      if (existingMutation) {
+        if (existingMutation.requestHash !== requestHash) {
+          throw new ConflictException(
+            'Idempotency key was already used for a different request.',
+          );
+        }
+        return { cells: [], version: existingMutation.version, replayed: true };
+      }
+    }
+
+    const transactionResult = await this.prisma
+      .$transaction(async (tx) => {
+        if (idempotencyKey) {
+          await tx.cellMutation.create({
+            data: {
               sheetId,
+              userId,
+              idempotencyKey,
+              requestHash,
+              version: versionToMatch + 1,
+            },
+          });
+        }
+        const versionUpdate = await tx.sheet.updateMany({
+          where: { id: sheetId, version: versionToMatch },
+          data: { version: { increment: 1 } },
+        });
+        if (versionUpdate.count !== 1) {
+          throw new ConflictException(
+            'Sheet was modified by another user. Reload before saving again.',
+          );
+        }
+
+        const existingCells = await tx.cell.findMany({
+          where: {
+            sheetId,
+            OR: normalizedUpdates.map((update) => ({
               row: update.row,
               col: update.col,
-              value: update.value,
-              formula: update.formula,
-              format: update.format,
+            })),
+          },
+        });
+        const cells = await Promise.all(
+          normalizedUpdates.map((update) =>
+            tx.cell.upsert({
+              where: {
+                sheetId_row_col: { sheetId, row: update.row, col: update.col },
+              },
+              update: {
+                value: update.value,
+                formula: update.formula,
+                format: update.format,
+              },
+              create: {
+                sheetId,
+                row: update.row,
+                col: update.col,
+                value: update.value,
+                formula: update.formula,
+                format: update.format,
+              },
+            }),
+          ),
+        );
+        return { cells, existingCells };
+      })
+      .catch(async (error: unknown) => {
+        if (!idempotencyKey || !this.isUniqueConstraintError(error)) {
+          throw error;
+        }
+        const concurrentMutation = await this.prisma.cellMutation.findUnique({
+          where: {
+            sheetId_userId_idempotencyKey: {
+              sheetId,
+              userId,
+              idempotencyKey,
             },
-          }),
-        ),
-      );
-      return { cells, existingCells };
-    });
+          },
+        });
+        if (!concurrentMutation) {
+          throw error;
+        }
+        if (concurrentMutation.requestHash !== requestHash) {
+          throw new ConflictException(
+            'Idempotency key was already used for a different request.',
+          );
+        }
+        return {
+          cells: [],
+          existingCells: [],
+          replayedVersion: concurrentMutation.version,
+        };
+      });
+    if ('replayedVersion' in transactionResult) {
+      return {
+        cells: transactionResult.cells,
+        version: transactionResult.replayedVersion,
+        replayed: true,
+      };
+    }
     const existingMap = new Map(
       transactionResult.existingCells.map((cell) => [
         `${cell.row}:${cell.col}`,
@@ -574,6 +659,15 @@ export class SheetsService {
         `Cell coordinate (${row}, ${col}) is outside sheet bounds (${rowCount}, ${colCount})`,
       );
     }
+  }
+
+  private isUniqueConstraintError(error: unknown): error is { code: 'P2002' } {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'P2002'
+    );
   }
 
   private normalizeCellUpdate(data: {

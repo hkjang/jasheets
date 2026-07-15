@@ -10,6 +10,7 @@ interface UpsertInput {
 
 interface PrismaMock {
   sheet: { findUnique: jest.Mock; updateMany: jest.Mock };
+  cellMutation: { findUnique: jest.Mock; create: jest.Mock };
   cell: {
     findMany: jest.Mock;
     upsert: jest.Mock<Promise<unknown>, [UpsertInput]>;
@@ -47,6 +48,10 @@ describe('SheetsService cell updates', () => {
           .mockImplementation(({ create }: UpsertInput) =>
             Promise.resolve({ id: `${create.row}:${create.col}`, ...create }),
           ),
+      },
+      cellMutation: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue({ id: 'mutation-1' }),
       },
       $transaction: jest
         .fn()
@@ -131,6 +136,67 @@ describe('SheetsService cell updates', () => {
     ).rejects.toThrow('modified by another user');
 
     expect(prisma.cell.upsert).not.toHaveBeenCalled();
+    expect(eventsService.detectCellChange).not.toHaveBeenCalled();
+  });
+
+  it('returns the recorded result when the same request is retried', async () => {
+    prisma.cellMutation.findUnique.mockResolvedValueOnce({
+      requestHash:
+        '5e659ce3fe775e3f8eeca78e86cf1ac88c97ef3b517fa12efa63a9e4efdf2b57',
+      version: 4,
+    });
+
+    const result = await service.updateCells(
+      'user-1',
+      sheet.id,
+      [{ row: 1, col: 1, value: 'same' }],
+      3,
+      'retry-key',
+    );
+
+    expect(result).toEqual({ cells: [], version: 4, replayed: true });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(eventsService.detectCellChange).not.toHaveBeenCalled();
+  });
+
+  it('rejects an idempotency key reused for different content', async () => {
+    prisma.cellMutation.findUnique.mockResolvedValueOnce({
+      requestHash: 'different-hash',
+      version: 4,
+    });
+
+    await expect(
+      service.updateCells(
+        'user-1',
+        sheet.id,
+        [{ row: 1, col: 1, value: 'new content' }],
+        3,
+        'reused-key',
+      ),
+    ).rejects.toThrow('already used for a different request');
+
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('replays the winner when duplicate requests race', async () => {
+    prisma.cellMutation.findUnique
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        requestHash:
+          '5e659ce3fe775e3f8eeca78e86cf1ac88c97ef3b517fa12efa63a9e4efdf2b57',
+        version: 4,
+      });
+    prisma.$transaction.mockRejectedValueOnce({ code: 'P2002' });
+
+    const result = await service.updateCells(
+      'user-1',
+      sheet.id,
+      [{ row: 1, col: 1, value: 'same' }],
+      3,
+      'racing-key',
+    );
+
+    expect(result).toEqual({ cells: [], version: 4, replayed: true });
     expect(eventsService.detectCellChange).not.toHaveBeenCalled();
   });
 

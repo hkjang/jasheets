@@ -189,6 +189,7 @@ export class SheetsController {
       sheetId,
       dto.updates,
       dto.expectedVersion,
+      dto.idempotencyKey,
     );
   }
 

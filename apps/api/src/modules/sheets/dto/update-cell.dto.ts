@@ -6,6 +6,8 @@ import {
   IsObject,
   IsOptional,
   IsString,
+  Matches,
+  MaxLength,
   Min,
   ValidateIf,
   ValidateNested,
@@ -60,4 +62,10 @@ export class UpdateCellsDto {
   @IsInt()
   @Min(0)
   expectedVersion?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(128)
+  @Matches(/^[A-Za-z0-9_-]+$/)
+  idempotencyKey?: string;
 }

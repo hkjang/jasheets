@@ -348,6 +348,9 @@ export default function Spreadsheet({
   }, [initialCharts, setCharts]);
 
   // Save handler - defined after charts to access chart state
+  const pendingSaveRef = useRef<{ key: string; fingerprint: string } | null>(
+    null,
+  );
   const handleSave = useCallback(async () => {
     if (!activeSheetId) {
       alert("저장할 시트가 없습니다.");
@@ -374,12 +377,21 @@ export default function Spreadsheet({
 
       // Save cells
       if (updates.length > 0) {
+        const fingerprint = JSON.stringify({ updates, sheetVersion });
+        if (pendingSaveRef.current?.fingerprint !== fingerprint) {
+          pendingSaveRef.current = {
+            key: crypto.randomUUID(),
+            fingerprint,
+          };
+        }
         const result = await api.spreadsheets.updateCells(
           activeSheetId,
           updates,
           sheetVersion,
+          pendingSaveRef.current.key,
         );
         setSheetVersion(result.version);
+        pendingSaveRef.current = null;
       }
 
       // Save charts

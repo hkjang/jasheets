@@ -243,6 +243,7 @@ export const api = {
         format?: any;
       }[],
       expectedVersion?: number,
+      idempotencyKey?: string,
     ) => {
       const token = localStorage.getItem("auth_token");
       const res = await fetch(`${API_URL}/sheets/sheet/${sheetId}/cells`, {
@@ -251,7 +252,7 @@ export const api = {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ updates, expectedVersion }),
+        body: JSON.stringify({ updates, expectedVersion, idempotencyKey }),
       });
       if (res.status === 409) {
         throw new Error(
