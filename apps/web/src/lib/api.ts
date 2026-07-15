@@ -1,8 +1,6 @@
-import { authenticatedFetch } from "./auth-fetch";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000/api";
+import { API_URL, apiClient } from './api-client';
 const fetch = (input: RequestInfo | URL, init?: RequestInit) =>
-  authenticatedFetch(API_URL, input, init);
+  apiClient.fetch(String(input), init);
 
 export const api = {
   auth: {
