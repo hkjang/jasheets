@@ -43,10 +43,10 @@ export default function ActivityPage() {
         try {
             const [sessionsRes, summariesRes] = await Promise.all([
                 fetch('/api/admin/activity/sessions/active', {
-                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
                 }),
                 fetch('/api/admin/activity/all', {
-                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
                 }),
             ]);
 

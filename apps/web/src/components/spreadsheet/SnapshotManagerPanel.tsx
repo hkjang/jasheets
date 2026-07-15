@@ -47,7 +47,7 @@ export default function SnapshotManagerPanel({
     const fetchSnapshots = async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const res = await fetch(`/api/sheets/${sheetId}/snapshots`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -66,7 +66,7 @@ export default function SnapshotManagerPanel({
         if (!newName.trim()) return;
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const res = await fetch(`/api/sheets/${sheetId}/snapshots`, {
                 method: 'POST',
                 headers: {
@@ -90,7 +90,7 @@ export default function SnapshotManagerPanel({
         if (!confirm('이 스냅샷으로 복원하시겠습니까? 현재 데이터가 백업된 후 복원됩니다.')) return;
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const res = await fetch(`/api/sheets/${sheetId}/snapshots/${snapshotId}/restore`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
@@ -109,7 +109,7 @@ export default function SnapshotManagerPanel({
         if (!confirm('이 스냅샷을 삭제하시겠습니까?')) return;
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             await fetch(`/api/sheets/${sheetId}/snapshots/${snapshotId}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` },
@@ -132,7 +132,7 @@ export default function SnapshotManagerPanel({
         if (selectedForCompare.length !== 2) return;
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const res = await fetch(
                 `/api/sheets/${sheetId}/snapshots/${selectedForCompare[0]}/compare/${selectedForCompare[1]}`,
                 { headers: { Authorization: `Bearer ${token}` } }

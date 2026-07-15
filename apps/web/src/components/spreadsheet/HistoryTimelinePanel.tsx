@@ -55,7 +55,7 @@ export default function HistoryTimelinePanel({
     const fetchRevisions = async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const url = filter
                 ? `/api/sheets/${sheetId}/revisions?action=${filter}`
                 : `/api/sheets/${sheetId}/revisions`;
@@ -75,7 +75,7 @@ export default function HistoryTimelinePanel({
 
     const fetchStats = async () => {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const res = await fetch(`/api/sheets/${sheetId}/revisions/stats`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -93,7 +93,7 @@ export default function HistoryTimelinePanel({
 
         setRolling(true);
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const res = await fetch(`/api/sheets/${sheetId}/revisions/${revisionId}/rollback`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },

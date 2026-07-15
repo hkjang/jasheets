@@ -78,7 +78,7 @@ export default function ProfilerPanel({
         setError(null);
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const response = await fetch(`${apiUrl}/profiler/sheet`, {
                 method: 'POST',
                 headers: {

@@ -44,7 +44,7 @@ export default function CommandPalette({
 
     const fetchCommands = async () => {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const res = await fetch(`/api/spreadsheets/${spreadsheetId}/commands`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -59,7 +59,7 @@ export default function CommandPalette({
 
     const fetchBuiltInCommands = async () => {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const res = await fetch(`/api/spreadsheets/${spreadsheetId}/commands/built-in`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -102,7 +102,7 @@ export default function CommandPalette({
 
     const executeCommand = async (command: Command) => {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
 
             if (command.isBuiltIn) {
                 // Built-in commands are handled locally

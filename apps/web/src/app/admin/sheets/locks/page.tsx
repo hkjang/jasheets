@@ -26,7 +26,7 @@ export default function LocksPage() {
     const fetchLocks = async () => {
         try {
             const res = await fetch('/api/admin/sheet-locks', {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });
             if (res.ok) {
                 const data = await res.json();
@@ -45,7 +45,7 @@ export default function LocksPage() {
         try {
             const res = await fetch(`/api/admin/sheet-locks/${sheetId}/force`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });
 
             if (res.ok) {
@@ -60,7 +60,7 @@ export default function LocksPage() {
         try {
             const res = await fetch('/api/admin/sheet-locks/cleanup', {
                 method: 'POST',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });
 
             if (res.ok) {

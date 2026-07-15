@@ -101,7 +101,7 @@ export default function UDFEditorDialog({
     const handleTest = async () => {
         try {
             const args = JSON.parse(`[${testArgs}]`);
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
 
             const response = await fetch(`${apiUrl}/udf/test`, {
                 method: 'POST',
@@ -141,7 +141,7 @@ export default function UDFEditorDialog({
         setError(null);
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const response = await fetch(`${apiUrl}/udf/spreadsheet/${spreadsheetId}`, {
                 method: 'POST',
                 headers: {

@@ -54,7 +54,7 @@ export default function DocumentationDialog({
         setError(null);
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const response = await fetch(`${apiUrl}/documentation/sheet/markdown`, {
                 method: 'POST',
                 headers: {
@@ -107,6 +107,11 @@ export default function DocumentationDialog({
     const renderMarkdownPreview = (markdown: string) => {
         // Simple markdown to HTML converter for basic elements
         let html = markdown
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;')
             .replace(/^# (.+)$/gm, '<h1>$1</h1>')
             .replace(/^## (.+)$/gm, '<h2>$1</h2>')
             .replace(/^### (.+)$/gm, '<h3>$1</h3>')

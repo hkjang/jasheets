@@ -39,7 +39,7 @@ export default function UDFApprovalPage() {
                 ? '/api/admin/udf-approvals'
                 : `/api/admin/udf-approvals?status=${filter}`;
             const res = await fetch(url, {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });
             if (res.ok) {
                 const data = await res.json();
@@ -55,7 +55,7 @@ export default function UDFApprovalPage() {
     const fetchStats = async () => {
         try {
             const res = await fetch('/api/admin/udf-approvals/stats', {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });
             if (res.ok) {
                 const data = await res.json();
@@ -74,7 +74,7 @@ export default function UDFApprovalPage() {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
                 },
                 body: JSON.stringify({ status, reviewNotes }),
             });

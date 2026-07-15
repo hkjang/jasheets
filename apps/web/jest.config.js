@@ -5,7 +5,7 @@ const config = {
   setupFilesAfterEnv: ['<rootDir>/jest.setup.ts'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',
-    '\\.module\\.css$': 'identity-obj-proxy',
+    '\\.module\\.css$': '<rootDir>/__mocks__/styleMock.js',
     '\\.css$': '<rootDir>/__mocks__/styleMock.js',
   },
   testPathIgnorePatterns: ['<rootDir>/node_modules/', '<rootDir>/.next/'],

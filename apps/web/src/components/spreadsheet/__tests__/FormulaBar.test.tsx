@@ -39,10 +39,12 @@ describe('FormulaBar', () => {
     expect(defaultProps.onEdit).toHaveBeenCalled();
   });
 
-  it('calls onValueChange when typing', () => {
+  it('keeps edits local until they are submitted', () => {
     render(<FormulaBar {...defaultProps} isEditing={true} />);
     const input = screen.getByDisplayValue('Hello');
     fireEvent.change(input, { target: { value: 'World' } });
+    expect(defaultProps.onValueChange).not.toHaveBeenCalled();
+    fireEvent.keyDown(input, { key: 'Enter' });
     expect(defaultProps.onValueChange).toHaveBeenCalledWith('World');
   });
 

@@ -33,10 +33,10 @@ export default function APIUsagePage() {
         try {
             const [statsRes, timeSeriesRes] = await Promise.all([
                 fetch('/api/admin/api-usage/stats', {
-                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
                 }),
                 fetch(`/api/admin/api-usage/timeseries?hours=${hours}`, {
-                    headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                    headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
                 }),
             ]);
 

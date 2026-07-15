@@ -45,7 +45,7 @@ export default function SheetPermissionsDialog({
     const fetchPermissions = async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const res = await fetch(`/api/sheets/${sheetId}/permissions`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -68,7 +68,7 @@ export default function SheetPermissionsDialog({
 
         setError('');
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const res = await fetch(`/api/sheets/${sheetId}/permissions`, {
                 method: 'POST',
                 headers: {
@@ -92,7 +92,7 @@ export default function SheetPermissionsDialog({
 
     const handleUpdateRole = async (permissionId: string, role: string) => {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             await fetch(`/api/sheets/${sheetId}/permissions/${permissionId}`, {
                 method: 'PUT',
                 headers: {
@@ -111,7 +111,7 @@ export default function SheetPermissionsDialog({
         if (!confirm('이 권한을 삭제하시겠습니까?')) return;
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             await fetch(`/api/sheets/${sheetId}/permissions/${permissionId}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` },

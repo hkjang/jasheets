@@ -37,7 +37,7 @@ export default function FilterProfilesDropdown({
 
     const fetchProfiles = async () => {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const res = await fetch(`/api/sheets/${sheetId}/filter-profiles`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -70,7 +70,7 @@ export default function FilterProfilesDropdown({
         if (!newName.trim()) return;
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             await fetch(`/api/sheets/${sheetId}/filter-profiles`, {
                 method: 'POST',
                 headers: {
@@ -93,7 +93,7 @@ export default function FilterProfilesDropdown({
 
     const handleSetDefault = async (profileId: string) => {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             await fetch(`/api/sheets/${sheetId}/filter-profiles/${profileId}/set-default`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
@@ -108,7 +108,7 @@ export default function FilterProfilesDropdown({
         if (!confirm('이 필터 프로필을 삭제하시겠습니까?')) return;
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             await fetch(`/api/sheets/${sheetId}/filter-profiles/${profileId}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` },

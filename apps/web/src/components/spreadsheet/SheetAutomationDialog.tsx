@@ -49,7 +49,7 @@ export default function SheetAutomationDialog({
     const fetchAutomations = async () => {
         setLoading(true);
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const res = await fetch(`/api/sheets/${sheetId}/automations`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -66,7 +66,7 @@ export default function SheetAutomationDialog({
 
     const handleToggle = async (automation: Automation) => {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             await fetch(`/api/sheets/${sheetId}/automations/${automation.id}/toggle`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
@@ -81,7 +81,7 @@ export default function SheetAutomationDialog({
         if (!confirm('이 자동화를 삭제하시겠습니까?')) return;
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             await fetch(`/api/sheets/${sheetId}/automations/${id}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` },
@@ -106,7 +106,7 @@ export default function SheetAutomationDialog({
         };
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const url = editingAutomation
                 ? `/api/sheets/${sheetId}/automations/${editingAutomation.id}`
                 : `/api/sheets/${sheetId}/automations`;

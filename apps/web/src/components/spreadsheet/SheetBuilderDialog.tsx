@@ -57,7 +57,7 @@ export default function SheetBuilderDialog({
 
     const loadTemplates = async () => {
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const response = await fetch(`${apiUrl}/ai/sheet/templates`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -78,7 +78,7 @@ export default function SheetBuilderDialog({
         setError(null);
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const response = await fetch(`${apiUrl}/ai/sheet/templates/${key}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
@@ -106,7 +106,7 @@ export default function SheetBuilderDialog({
         setSelectedTemplate(null);
 
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             const response = await fetch(`${apiUrl}/ai/sheet/generate`, {
                 method: 'POST',
                 headers: {

@@ -55,7 +55,7 @@ export default function NormalizerDialog({
     const previewNormalization = async () => {
         setIsLoading(true);
         try {
-            const token = localStorage.getItem('token');
+            const token = localStorage.getItem('auth_token');
             // Create a deep copy to avoid mutating original data
             const dataCopy = JSON.parse(JSON.stringify(data));
 

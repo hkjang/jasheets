@@ -50,7 +50,7 @@ export default function PermissionsPage() {
     const fetchPolicies = async () => {
         try {
             const res = await fetch('/api/admin/permission-policies', {
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });
             if (res.ok) {
                 const data = await res.json();
@@ -75,7 +75,7 @@ export default function PermissionsPage() {
                 method,
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${localStorage.getItem('token')}`,
+                    'Authorization': `Bearer ${localStorage.getItem('auth_token')}`,
                 },
                 body: JSON.stringify(formData),
             });
@@ -97,7 +97,7 @@ export default function PermissionsPage() {
         try {
             const res = await fetch(`/api/admin/permission-policies/${id}`, {
                 method: 'DELETE',
-                headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+                headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });
 
             if (res.ok) {
