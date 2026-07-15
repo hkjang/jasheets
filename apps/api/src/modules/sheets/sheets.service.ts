@@ -1,4 +1,10 @@
-import { Injectable, NotFoundException, ForbiddenException, Inject, forwardRef, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSpreadsheetDto } from './dto/create-spreadsheet.dto';
 import { UpdateSpreadsheetDto } from './dto/update-spreadsheet.dto';
@@ -12,26 +18,32 @@ export class SheetsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly eventsService: EventsService,
-  ) { }
+  ) {}
 
   async create(userId: string, dto: CreateSpreadsheetDto) {
-    const sheetsCreateInput = dto.data?.sheets ? {
-      create: dto.data.sheets.map((sheet: any, index: number) => ({
-        name: sheet.name,
-        index: index,
-        cells: sheet.cells ? {
-          create: Object.entries(sheet.cells).map(([key, cell]: [string, any]) => {
-            const [row, col] = key.split(':').map(Number);
-            return { row, col, ...cell };
-          })
-        } : undefined
-      }))
-    } : {
-      create: {
-        name: 'Sheet1',
-        index: 0,
-      },
-    };
+    const sheetsCreateInput = dto.data?.sheets
+      ? {
+          create: dto.data.sheets.map((sheet: any, index: number) => ({
+            name: sheet.name,
+            index: index,
+            cells: sheet.cells
+              ? {
+                  create: Object.entries(sheet.cells).map(
+                    ([key, cell]: [string, any]) => {
+                      const [row, col] = key.split(':').map(Number);
+                      return { row, col, ...cell };
+                    },
+                  ),
+                }
+              : undefined,
+          })),
+        }
+      : {
+          create: {
+            name: 'Sheet1',
+            index: 0,
+          },
+        };
 
     return this.prisma.spreadsheet.create({
       data: {
@@ -66,15 +78,12 @@ export class SheetsService {
     } else if (filter === 'shared') {
       where.AND = [
         { ownerId: { not: userId } },
-        { permissions: { some: { userId } } }
+        { permissions: { some: { userId } } },
       ];
     } else if (filter === 'created') {
       where.ownerId = userId;
     } else {
-      where.OR = [
-        { ownerId: userId },
-        { permissions: { some: { userId } } },
-      ];
+      where.OR = [{ ownerId: userId }, { permissions: { some: { userId } } }];
     }
 
     const spreadsheets = await this.prisma.spreadsheet.findMany({
@@ -86,33 +95,33 @@ export class SheetsService {
         _count: { select: { sheets: true } },
         favorites: {
           where: { userId },
-          select: { id: true }
-        }
+          select: { id: true },
+        },
       },
       orderBy: { updatedAt: 'desc' },
     });
 
-    return spreadsheets.map(s => ({
+    return spreadsheets.map((s) => ({
       ...s,
-      isFavorite: s.favorites.length > 0
+      isFavorite: s.favorites.length > 0,
     }));
   }
 
   async toggleFavorite(userId: string, spreadsheetId: string) {
     const existing = await this.prisma.favorite.findUnique({
       where: {
-        userId_spreadsheetId: { userId, spreadsheetId }
-      }
+        userId_spreadsheetId: { userId, spreadsheetId },
+      },
     });
 
     if (existing) {
       await this.prisma.favorite.delete({
-        where: { id: existing.id }
+        where: { id: existing.id },
       });
       return { isFavorite: false };
     } else {
       await this.prisma.favorite.create({
-        data: { userId, spreadsheetId }
+        data: { userId, spreadsheetId },
       });
       return { isFavorite: true };
     }
@@ -150,10 +159,7 @@ export class SheetsService {
 
     return this.prisma.spreadsheet.findMany({
       where: {
-        AND: [
-          { NOT: { deletedAt: null } },
-          { ownerId: userId }
-        ]
+        AND: [{ NOT: { deletedAt: null } }, { ownerId: userId }],
       },
       include: {
         owner: {
@@ -166,7 +172,9 @@ export class SheetsService {
   }
 
   async restore(userId: string, id: string) {
-    const spreadsheet = await this.prisma.spreadsheet.findUnique({ where: { id } });
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({
+      where: { id },
+    });
     if (!spreadsheet) throw new NotFoundException('Spreadsheet not found');
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -178,13 +186,15 @@ export class SheetsService {
 
     return this.prisma.spreadsheet.update({
       where: { id },
-      data: { deletedAt: null }
+      data: { deletedAt: null },
     });
   }
 
   // Hard delete
   async hardDelete(userId: string, id: string) {
-    const spreadsheet = await this.prisma.spreadsheet.findUnique({ where: { id } });
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({
+      where: { id },
+    });
     if (!spreadsheet) throw new NotFoundException('Spreadsheet not found');
 
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -201,7 +211,7 @@ export class SheetsService {
     const spreadsheet = await this.prisma.spreadsheet.findFirst({
       where: {
         id,
-        deletedAt: null
+        deletedAt: null,
       },
       include: {
         sheets: {
@@ -234,7 +244,9 @@ export class SheetsService {
     // Check access
     const hasAccess = await this.checkAccess(userId, id);
     if (!hasAccess) {
-      throw new ForbiddenException('You do not have access to this spreadsheet');
+      throw new ForbiddenException(
+        'You do not have access to this spreadsheet',
+      );
     }
 
     return spreadsheet;
@@ -267,12 +279,14 @@ export class SheetsService {
     }
 
     if (spreadsheet.ownerId !== userId) {
-      throw new ForbiddenException('Only the owner can delete this spreadsheet');
+      throw new ForbiddenException(
+        'Only the owner can delete this spreadsheet',
+      );
     }
 
     return this.prisma.spreadsheet.update({
       where: { id },
-      data: { deletedAt: new Date() }
+      data: { deletedAt: new Date() },
     });
   }
 
@@ -356,7 +370,7 @@ export class SheetsService {
     sheetId: string,
     row: number,
     col: number,
-    data: { value?: any; formula?: string; format?: any },
+    data: { value?: any; formula?: string | null; format?: any },
   ) {
     const sheet = await this.prisma.sheet.findUnique({
       where: { id: sheetId },
@@ -368,16 +382,19 @@ export class SheetsService {
 
     await this.checkEditAccess(userId, sheet.spreadsheetId);
 
+    this.validateCellCoordinates(row, col, sheet.rowCount, sheet.colCount);
+    const normalizedData = this.normalizeCellUpdate(data);
+
     return this.prisma.cell.upsert({
       where: {
         sheetId_row_col: { sheetId, row, col },
       },
-      update: data,
+      update: normalizedData,
       create: {
         sheetId,
         row,
         col,
-        ...data,
+        ...normalizedData,
       },
     });
   }
@@ -385,10 +402,26 @@ export class SheetsService {
   async updateCells(
     userId: string,
     sheetId: string,
-    updates: Array<{ row: number; col: number; value?: any; formula?: string; format?: any }>,
+    updates: Array<{
+      row: number;
+      col: number;
+      value?: any;
+      formula?: string | null;
+      format?: any;
+    }>,
   ) {
-    this.logger.log(`[updateCells] Called with sheetId=${sheetId}, updates count=${updates.length}`);
-    this.logger.debug(`[updateCells] First update: ${JSON.stringify(updates[0])}`);
+    if (updates.length < 1 || updates.length > 1000) {
+      throw new BadRequestException(
+        'Cell update batch must contain between 1 and 1000 items',
+      );
+    }
+
+    this.logger.log(
+      `[updateCells] Called with sheetId=${sheetId}, updates count=${updates.length}`,
+    );
+    this.logger.debug(
+      `[updateCells] First update: ${JSON.stringify(updates[0])}`,
+    );
 
     const sheet = await this.prisma.sheet.findUnique({
       where: { id: sheetId },
@@ -398,24 +431,47 @@ export class SheetsService {
       throw new NotFoundException('Sheet not found');
     }
 
-    this.logger.log(`[updateCells] Sheet found: spreadsheetId=${sheet.spreadsheetId}`);
+    this.logger.log(
+      `[updateCells] Sheet found: spreadsheetId=${sheet.spreadsheetId}`,
+    );
 
     await this.checkEditAccess(userId, sheet.spreadsheetId);
+
+    const seenCoordinates = new Set<string>();
+    const normalizedUpdates = updates.map((update) => {
+      this.validateCellCoordinates(
+        update.row,
+        update.col,
+        sheet.rowCount,
+        sheet.colCount,
+      );
+      const coordinate = `${update.row}:${update.col}`;
+      if (seenCoordinates.has(coordinate)) {
+        throw new BadRequestException(
+          `Duplicate cell coordinate in batch: ${coordinate}`,
+        );
+      }
+      seenCoordinates.add(coordinate);
+      return { ...update, ...this.normalizeCellUpdate(update) };
+    });
 
     // Get existing cell values for event detection
     const existingCells = await this.prisma.cell.findMany({
       where: {
         sheetId,
-        OR: updates.map(u => ({ row: u.row, col: u.col })),
+        OR: normalizedUpdates.map((update) => ({
+          row: update.row,
+          col: update.col,
+        })),
       },
     });
     const existingMap = new Map(
-      existingCells.map(c => [`${c.row}:${c.col}`, c.value])
+      existingCells.map((c) => [`${c.row}:${c.col}`, c.value]),
     );
 
     // Perform the updates
     const result = await this.prisma.$transaction(
-      updates.map((update) =>
+      normalizedUpdates.map((update) =>
         this.prisma.cell.upsert({
           where: {
             sheetId_row_col: { sheetId, row: update.row, col: update.col },
@@ -438,19 +494,25 @@ export class SheetsService {
     );
 
     // Trigger cell change events (async, don't block response)
-    const cellChangeEvents: CellChangeEvent[] = updates.map(update => ({
-      spreadsheetId: sheet.spreadsheetId,
-      sheetId,
-      row: update.row,
-      col: update.col,
-      previousValue: existingMap.get(`${update.row}:${update.col}`) ?? null,
-      newValue: update.value,
-      changedBy: userId,
-      changeMethod: 'api' as const,
-    }));
+    const cellChangeEvents: CellChangeEvent[] = normalizedUpdates.map(
+      (update) => ({
+        spreadsheetId: sheet.spreadsheetId,
+        sheetId,
+        row: update.row,
+        col: update.col,
+        previousValue: existingMap.get(`${update.row}:${update.col}`) ?? null,
+        newValue: update.value,
+        changedBy: userId,
+        changeMethod: 'api' as const,
+      }),
+    );
 
-    this.logger.log(`[updateCells] Firing ${cellChangeEvents.length} cell change event(s)`);
-    this.logger.debug(`[updateCells] First event: spreadsheetId=${cellChangeEvents[0]?.spreadsheetId}, sheetId=${cellChangeEvents[0]?.sheetId}, row=${cellChangeEvents[0]?.row}, col=${cellChangeEvents[0]?.col}`);
+    this.logger.log(
+      `[updateCells] Firing ${cellChangeEvents.length} cell change event(s)`,
+    );
+    this.logger.debug(
+      `[updateCells] First event: spreadsheetId=${cellChangeEvents[0]?.spreadsheetId}, sheetId=${cellChangeEvents[0]?.sheetId}, row=${cellChangeEvents[0]?.row}, col=${cellChangeEvents[0]?.col}`,
+    );
 
     // Fire events asynchronously
     if (cellChangeEvents.length === 1) {
@@ -459,14 +521,65 @@ export class SheetsService {
         this.logger.error(`[updateCells] detectCellChange error: ${e.message}`);
       });
     } else if (cellChangeEvents.length > 1) {
-      this.logger.log(`[updateCells] Calling detectMultiCellChange for ${cellChangeEvents.length} cells`);
+      this.logger.log(
+        `[updateCells] Calling detectMultiCellChange for ${cellChangeEvents.length} cells`,
+      );
       this.eventsService.detectMultiCellChange(cellChangeEvents).catch((e) => {
-        this.logger.error(`[updateCells] detectMultiCellChange error: ${e.message}`);
+        this.logger.error(
+          `[updateCells] detectMultiCellChange error: ${e.message}`,
+        );
       });
     }
 
-    this.logger.log(`[updateCells] Completed, returning ${result.length} updated cells`);
+    this.logger.log(
+      `[updateCells] Completed, returning ${result.length} updated cells`,
+    );
     return result;
+  }
+
+  private validateCellCoordinates(
+    row: number,
+    col: number,
+    rowCount: number,
+    colCount: number,
+  ): void {
+    if (
+      !Number.isInteger(row) ||
+      !Number.isInteger(col) ||
+      row < 0 ||
+      col < 0
+    ) {
+      throw new BadRequestException(
+        'Cell coordinates must be non-negative integers',
+      );
+    }
+    if (row >= rowCount || col >= colCount) {
+      throw new BadRequestException(
+        `Cell coordinate (${row}, ${col}) is outside sheet bounds (${rowCount}, ${colCount})`,
+      );
+    }
+  }
+
+  private normalizeCellUpdate(data: {
+    value?: any;
+    formula?: string | null;
+    format?: any;
+  }) {
+    const hasValue = Object.prototype.hasOwnProperty.call(data, 'value');
+    const hasFormula = Object.prototype.hasOwnProperty.call(data, 'formula');
+    const hasFormat = Object.prototype.hasOwnProperty.call(data, 'format');
+
+    if (!hasValue && !hasFormula && !hasFormat) {
+      throw new BadRequestException(
+        'Cell update must include value, formula, or format',
+      );
+    }
+
+    return {
+      value: hasValue ? data.value : undefined,
+      formula: hasFormula ? data.formula : hasValue ? null : undefined,
+      format: hasFormat ? data.format : undefined,
+    };
   }
 
   // Permission helpers
@@ -505,8 +618,14 @@ export class SheetsService {
     if (spreadsheet.ownerId === userId) return;
 
     const permission = spreadsheet.permissions[0];
-    if (!permission || (permission.role !== PermissionRole.EDITOR && permission.role !== PermissionRole.OWNER)) {
-      throw new ForbiddenException('You do not have edit access to this spreadsheet');
+    if (
+      !permission ||
+      (permission.role !== PermissionRole.EDITOR &&
+        permission.role !== PermissionRole.OWNER)
+    ) {
+      throw new ForbiddenException(
+        'You do not have edit access to this spreadsheet',
+      );
     }
   }
 
@@ -516,18 +635,21 @@ export class SheetsService {
       include: {
         permissions: {
           include: {
-            user: { select: { id: true, email: true, name: true, avatar: true } },
+            user: {
+              select: { id: true, email: true, name: true, avatar: true },
+            },
           },
         },
       },
     });
 
     if (!spreadsheet) throw new NotFoundException('Spreadsheet not found');
-    if (spreadsheet.ownerId !== userId) throw new ForbiddenException('Only owner can view permissions');
+    if (spreadsheet.ownerId !== userId)
+      throw new ForbiddenException('Only owner can view permissions');
 
     return {
       isPublic: spreadsheet.isPublic,
-      permissions: spreadsheet.permissions.map(p => ({
+      permissions: spreadsheet.permissions.map((p) => ({
         id: p.id,
         user: p.user,
         email: p.email,
@@ -536,10 +658,18 @@ export class SheetsService {
     };
   }
 
-  async addPermission(userId: string, spreadsheetId: string, email: string, role: PermissionRole) {
-    const spreadsheet = await this.prisma.spreadsheet.findUnique({ where: { id: spreadsheetId } });
+  async addPermission(
+    userId: string,
+    spreadsheetId: string,
+    email: string,
+    role: PermissionRole,
+  ) {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({
+      where: { id: spreadsheetId },
+    });
     if (!spreadsheet) throw new NotFoundException('Spreadsheet not found');
-    if (spreadsheet.ownerId !== userId) throw new ForbiddenException('Only owner can add permissions');
+    if (spreadsheet.ownerId !== userId)
+      throw new ForbiddenException('Only owner can add permissions');
 
     // Find user by email
     const targetUser = await this.prisma.user.findUnique({ where: { email } });
@@ -554,20 +684,34 @@ export class SheetsService {
     });
   }
 
-  async removePermission(userId: string, spreadsheetId: string, permissionId: string) {
-    const spreadsheet = await this.prisma.spreadsheet.findUnique({ where: { id: spreadsheetId } });
+  async removePermission(
+    userId: string,
+    spreadsheetId: string,
+    permissionId: string,
+  ) {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({
+      where: { id: spreadsheetId },
+    });
     if (!spreadsheet) throw new NotFoundException('Spreadsheet not found');
-    if (spreadsheet.ownerId !== userId) throw new ForbiddenException('Only owner can remove permissions');
+    if (spreadsheet.ownerId !== userId)
+      throw new ForbiddenException('Only owner can remove permissions');
 
     return this.prisma.permission.delete({
       where: { id: permissionId },
     });
   }
 
-  async updatePublicAccess(userId: string, spreadsheetId: string, isPublic: boolean) {
-    const spreadsheet = await this.prisma.spreadsheet.findUnique({ where: { id: spreadsheetId } });
+  async updatePublicAccess(
+    userId: string,
+    spreadsheetId: string,
+    isPublic: boolean,
+  ) {
+    const spreadsheet = await this.prisma.spreadsheet.findUnique({
+      where: { id: spreadsheetId },
+    });
     if (!spreadsheet) throw new NotFoundException('Spreadsheet not found');
-    if (spreadsheet.ownerId !== userId) throw new ForbiddenException('Only owner can change public access');
+    if (spreadsheet.ownerId !== userId)
+      throw new ForbiddenException('Only owner can change public access');
 
     return this.prisma.spreadsheet.update({
       where: { id: spreadsheetId },
@@ -575,7 +719,10 @@ export class SheetsService {
     });
   }
 
-  async getUserRole(userId: string, spreadsheetId: string): Promise<PermissionRole | null> {
+  async getUserRole(
+    userId: string,
+    spreadsheetId: string,
+  ): Promise<PermissionRole | null> {
     const spreadsheet = await this.prisma.spreadsheet.findUnique({
       where: { id: spreadsheetId },
     });
@@ -604,7 +751,9 @@ export class SheetsService {
     // Check read access
     const hasAccess = await this.checkAccess(userId, id);
     if (!hasAccess) {
-      throw new ForbiddenException('You do not have access to this spreadsheet');
+      throw new ForbiddenException(
+        'You do not have access to this spreadsheet',
+      );
     }
 
     const newSpreadsheet = await this.prisma.spreadsheet.create({
@@ -612,11 +761,11 @@ export class SheetsService {
         name: `Copy of ${spreadsheet.name}`,
         ownerId: userId,
         sheets: {
-          create: spreadsheet.sheets.map(sheet => ({
+          create: spreadsheet.sheets.map((sheet) => ({
             name: sheet.name,
             index: sheet.index,
             cells: {
-              create: sheet.cells.map(cell => ({
+              create: sheet.cells.map((cell) => ({
                 row: cell.row,
                 col: cell.col,
                 value: cell.value as any,
@@ -629,9 +778,9 @@ export class SheetsService {
         permissions: {
           create: {
             userId,
-            role: PermissionRole.OWNER
-          }
-        }
+            role: PermissionRole.OWNER,
+          },
+        },
       },
       select: { id: true },
     });

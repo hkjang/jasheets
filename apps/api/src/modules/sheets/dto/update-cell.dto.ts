@@ -1,4 +1,15 @@
-import { IsString, IsOptional, IsNumber, IsArray, ValidateNested, IsObject } from 'class-validator';
+import {
+  ArrayMaxSize,
+  ArrayMinSize,
+  IsArray,
+  IsInt,
+  IsObject,
+  IsOptional,
+  IsString,
+  Min,
+  ValidateIf,
+  ValidateNested,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UpdateCellDto {
@@ -6,8 +17,9 @@ export class UpdateCellDto {
   value?: any;
 
   @IsOptional()
+  @ValidateIf((_, value) => value !== null)
   @IsString()
-  formula?: string;
+  formula?: string | null;
 
   @IsOptional()
   @IsObject()
@@ -15,18 +27,21 @@ export class UpdateCellDto {
 }
 
 export class CellUpdateItem {
-  @IsNumber()
+  @IsInt()
+  @Min(0)
   row: number;
 
-  @IsNumber()
+  @IsInt()
+  @Min(0)
   col: number;
 
   @IsOptional()
   value?: any;
 
   @IsOptional()
+  @ValidateIf((_, value) => value !== null)
   @IsString()
-  formula?: string;
+  formula?: string | null;
 
   @IsOptional()
   @IsObject()
@@ -35,6 +50,8 @@ export class CellUpdateItem {
 
 export class UpdateCellsDto {
   @IsArray()
+  @ArrayMinSize(1)
+  @ArrayMaxSize(1000)
   @ValidateNested({ each: true })
   @Type(() => CellUpdateItem)
   updates: CellUpdateItem[];
