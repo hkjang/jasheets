@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { ApiClient } from '@/lib/api-client';
 
 interface Author {
   id: string;
@@ -53,6 +54,7 @@ export function useComments({
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const socketRef = useRef<Socket | null>(null);
+  const client = useMemo(() => new ApiClient(apiUrl), [apiUrl]);
 
   // Fetch comments from API
   const fetchComments = useCallback(async () => {
@@ -62,25 +64,14 @@ export function useComments({
     setError(null);
     
     try {
-      const token = localStorage.getItem('auth_token');
-      const response = await fetch(`${apiUrl}/comments/sheet/${sheetId}`, {
-        headers: {
-          Authorization: token ? `Bearer ${token}` : '',
-        },
-      });
-      
-      if (!response.ok) {
-        throw new Error('Failed to fetch comments');
-      }
-      
-      const data = await response.json();
+      const data = await client.request<Comment[]>(`/comments/sheet/${sheetId}`);
       setComments(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Unknown error');
     } finally {
       setIsLoading(false);
     }
-  }, [sheetId, apiUrl]);
+  }, [sheetId, client]);
 
   // Initialize websocket connection
   useEffect(() => {
@@ -134,75 +125,37 @@ export function useComments({
   const addComment = useCallback(async (row: number, col: number, content: string) => {
     if (!sheetId) return;
 
-    const token = localStorage.getItem('auth_token');
-    const response = await fetch(`${apiUrl}/comments`, {
+    const comment = await client.request<Comment>('/comments', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: token ? `Bearer ${token}` : '',
-      },
       body: JSON.stringify({ sheetId, row, col, content }),
     });
-
-    if (!response.ok) {
-      throw new Error('Failed to add comment');
-    }
-
-    // WebSocket will broadcast the new comment
-  }, [sheetId, apiUrl]);
+    setComments((previous) => previous.some(({ id }) => id === comment.id) ? previous : [comment, ...previous]);
+  }, [sheetId, client]);
 
   const replyToComment = useCallback(async (commentId: string, content: string) => {
-    const token = localStorage.getItem('auth_token');
-    const response = await fetch(`${apiUrl}/comments/${commentId}/reply`, {
+    await client.request<Reply>(`/comments/${commentId}/reply`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: token ? `Bearer ${token}` : '',
-      },
       body: JSON.stringify({ content }),
     });
 
-    if (!response.ok) {
-      throw new Error('Failed to reply to comment');
-    }
-
     // Refetch to get updated replies
     await fetchComments();
-  }, [apiUrl, fetchComments]);
+  }, [client, fetchComments]);
 
   const resolveComment = useCallback(async (commentId: string, resolved: boolean) => {
-    const token = localStorage.getItem('auth_token');
-    const response = await fetch(`${apiUrl}/comments/${commentId}/resolve`, {
-      method: 'PATCH',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: token ? `Bearer ${token}` : '',
-      },
+    const updated = await client.request<Comment>(`/comments/${commentId}/resolve`, {
+      method: 'PUT',
       body: JSON.stringify({ resolved }),
     });
-
-    if (!response.ok) {
-      throw new Error('Failed to resolve comment');
-    }
-
-    // WebSocket will broadcast the update
-  }, [apiUrl]);
+    setComments((previous) => previous.map((comment) => comment.id === updated.id ? updated : comment));
+  }, [client]);
 
   const deleteComment = useCallback(async (commentId: string) => {
-    const token = localStorage.getItem('auth_token');
-    const response = await fetch(`${apiUrl}/comments/${commentId}`, {
+    await client.request<Comment>(`/comments/${commentId}`, {
       method: 'DELETE',
-      headers: {
-        Authorization: token ? `Bearer ${token}` : '',
-      },
     });
-
-    if (!response.ok) {
-      throw new Error('Failed to delete comment');
-    }
-
-    // WebSocket will broadcast the deletion
-  }, [apiUrl]);
+    setComments((previous) => previous.filter((comment) => comment.id !== commentId));
+  }, [client]);
 
   return {
     comments,
