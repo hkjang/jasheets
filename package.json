@@ -18,6 +18,7 @@
     "db:down:prod": "docker compose -f docker/docker-compose.prod.yml down",
     "db:generate": "turbo run prisma:generate",
     "db:migrate": "turbo run prisma:migrate",
+    "db:verify": "bash scripts/verify-migrations.sh",
     "db:studio": "turbo run prisma:studio"
   },
   "devDependencies": {
