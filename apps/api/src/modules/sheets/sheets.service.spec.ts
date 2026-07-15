@@ -9,7 +9,7 @@ interface UpsertInput {
 }
 
 interface PrismaMock {
-  sheet: { findUnique: jest.Mock };
+  sheet: { findUnique: jest.Mock; updateMany: jest.Mock };
   cell: {
     findMany: jest.Mock;
     upsert: jest.Mock<Promise<unknown>, [UpsertInput]>;
@@ -28,6 +28,7 @@ describe('SheetsService cell updates', () => {
     spreadsheetId: 'spreadsheet-1',
     rowCount: 100,
     colCount: 26,
+    version: 0,
   };
   let prisma: PrismaMock;
   let eventsService: EventsServiceMock;
@@ -35,7 +36,10 @@ describe('SheetsService cell updates', () => {
 
   beforeEach(() => {
     prisma = {
-      sheet: { findUnique: jest.fn().mockResolvedValue(sheet) },
+      sheet: {
+        findUnique: jest.fn().mockResolvedValue(sheet),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       cell: {
         findMany: jest.fn().mockResolvedValue([]),
         upsert: jest
@@ -46,8 +50,9 @@ describe('SheetsService cell updates', () => {
       },
       $transaction: jest
         .fn()
-        .mockImplementation((operations: Promise<unknown>[]) =>
-          Promise.all(operations),
+        .mockImplementation(
+          (operation: (client: PrismaMock) => Promise<unknown>) =>
+            operation(prisma),
         ),
     };
     eventsService = {
@@ -111,6 +116,22 @@ describe('SheetsService cell updates', () => {
 
     expect(eventsService.detectCellChange).not.toHaveBeenCalled();
     expect(eventsService.detectMultiCellChange).not.toHaveBeenCalled();
+  });
+
+  it('rejects a stale expected version without writing cells', async () => {
+    prisma.sheet.updateMany.mockResolvedValueOnce({ count: 0 });
+
+    await expect(
+      service.updateCells(
+        'user-1',
+        sheet.id,
+        [{ row: 1, col: 1, value: 'stale' }],
+        3,
+      ),
+    ).rejects.toThrow('modified by another user');
+
+    expect(prisma.cell.upsert).not.toHaveBeenCalled();
+    expect(eventsService.detectCellChange).not.toHaveBeenCalled();
   });
 
   it('rejects empty and oversized batches before querying the sheet', async () => {

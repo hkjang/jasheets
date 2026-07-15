@@ -133,6 +133,7 @@ model Sheet {
   frozenCols      Int       @default(0)
   defaultRowHeight Int      @default(25)
   defaultColWidth  Int      @default(100)
+  version          Int      @default(0)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 

@@ -55,4 +55,9 @@ export class UpdateCellsDto {
   @ValidateNested({ each: true })
   @Type(() => CellUpdateItem)
   updates: CellUpdateItem[];
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  expectedVersion?: number;
 }

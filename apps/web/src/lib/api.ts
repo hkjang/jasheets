@@ -242,6 +242,7 @@ export const api = {
         formula?: string;
         format?: any;
       }[],
+      expectedVersion?: number,
     ) => {
       const token = localStorage.getItem("auth_token");
       const res = await fetch(`${API_URL}/sheets/sheet/${sheetId}/cells`, {
@@ -250,8 +251,13 @@ export const api = {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ updates }),
+        body: JSON.stringify({ updates, expectedVersion }),
       });
+      if (res.status === 409) {
+        throw new Error(
+          "다른 사용자가 먼저 시트를 변경했습니다. 입력 내용은 유지되며 새로고침 후 다시 저장해 주세요.",
+        );
+      }
       if (!res.ok) throw new Error("Failed to save cells");
       return res.json();
     },

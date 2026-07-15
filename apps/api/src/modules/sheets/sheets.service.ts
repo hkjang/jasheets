@@ -1,5 +1,6 @@
 import {
   BadRequestException,
+  ConflictException,
   ForbiddenException,
   Injectable,
   Logger,
@@ -409,6 +410,7 @@ export class SheetsService {
       formula?: string | null;
       format?: any;
     }>,
+    expectedVersion?: number,
   ) {
     if (updates.length < 1 || updates.length > 1000) {
       throw new BadRequestException(
@@ -455,42 +457,56 @@ export class SheetsService {
       return { ...update, ...this.normalizeCellUpdate(update) };
     });
 
-    // Get existing cell values for event detection
-    const existingCells = await this.prisma.cell.findMany({
-      where: {
-        sheetId,
-        OR: normalizedUpdates.map((update) => ({
-          row: update.row,
-          col: update.col,
-        })),
-      },
-    });
-    const existingMap = new Map(
-      existingCells.map((c) => [`${c.row}:${c.col}`, c.value]),
-    );
+    const versionToMatch = expectedVersion ?? sheet.version;
+    const transactionResult = await this.prisma.$transaction(async (tx) => {
+      const versionUpdate = await tx.sheet.updateMany({
+        where: { id: sheetId, version: versionToMatch },
+        data: { version: { increment: 1 } },
+      });
+      if (versionUpdate.count !== 1) {
+        throw new ConflictException(
+          'Sheet was modified by another user. Reload before saving again.',
+        );
+      }
 
-    // Perform the updates
-    const result = await this.prisma.$transaction(
-      normalizedUpdates.map((update) =>
-        this.prisma.cell.upsert({
-          where: {
-            sheetId_row_col: { sheetId, row: update.row, col: update.col },
-          },
-          update: {
-            value: update.value,
-            formula: update.formula,
-            format: update.format,
-          },
-          create: {
-            sheetId,
+      const existingCells = await tx.cell.findMany({
+        where: {
+          sheetId,
+          OR: normalizedUpdates.map((update) => ({
             row: update.row,
             col: update.col,
-            value: update.value,
-            formula: update.formula,
-            format: update.format,
-          },
-        }),
-      ),
+          })),
+        },
+      });
+      const cells = await Promise.all(
+        normalizedUpdates.map((update) =>
+          tx.cell.upsert({
+            where: {
+              sheetId_row_col: { sheetId, row: update.row, col: update.col },
+            },
+            update: {
+              value: update.value,
+              formula: update.formula,
+              format: update.format,
+            },
+            create: {
+              sheetId,
+              row: update.row,
+              col: update.col,
+              value: update.value,
+              formula: update.formula,
+              format: update.format,
+            },
+          }),
+        ),
+      );
+      return { cells, existingCells };
+    });
+    const existingMap = new Map(
+      transactionResult.existingCells.map((cell) => [
+        `${cell.row}:${cell.col}`,
+        cell.value,
+      ]),
     );
 
     // Trigger cell change events (async, don't block response)
@@ -532,9 +548,9 @@ export class SheetsService {
     }
 
     this.logger.log(
-      `[updateCells] Completed, returning ${result.length} updated cells`,
+      `[updateCells] Completed, returning ${transactionResult.cells.length} updated cells`,
     );
-    return result;
+    return { cells: transactionResult.cells, version: versionToMatch + 1 };
   }
 
   private validateCellCoordinates(

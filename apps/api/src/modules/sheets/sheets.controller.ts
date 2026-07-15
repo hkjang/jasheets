@@ -20,7 +20,7 @@ import { AdminGuard } from '../auth/guards/admin.guard';
 @Controller('sheets')
 @UseGuards(JwtAuthGuard)
 export class SheetsController {
-  constructor(private readonly sheetsService: SheetsService) { }
+  constructor(private readonly sheetsService: SheetsService) {}
 
   @Post()
   create(@Request() req: any, @Body() dto: CreateSpreadsheetDto) {
@@ -33,7 +33,11 @@ export class SheetsController {
   }
 
   @Get()
-  findAll(@Request() req: any, @Query('filter') filter?: string, @Query('search') search?: string) {
+  findAll(
+    @Request() req: any,
+    @Query('filter') filter?: string,
+    @Query('search') search?: string,
+  ) {
     return this.sheetsService.findAll(req.user.id, filter, search);
   }
 
@@ -48,18 +52,39 @@ export class SheetsController {
   }
 
   @Post(':id/permissions')
-  addPermission(@Request() req: any, @Param('id') id: string, @Body() body: { email: string, role: any }) {
-    return this.sheetsService.addPermission(req.user.id, id, body.email, body.role);
+  addPermission(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { email: string; role: any },
+  ) {
+    return this.sheetsService.addPermission(
+      req.user.id,
+      id,
+      body.email,
+      body.role,
+    );
   }
 
   @Delete(':id/permissions/:permId')
-  removePermission(@Request() req: any, @Param('id') id: string, @Param('permId') permId: string) {
+  removePermission(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Param('permId') permId: string,
+  ) {
     return this.sheetsService.removePermission(req.user.id, id, permId);
   }
 
   @Put(':id/public')
-  updatePublicAccess(@Request() req: any, @Param('id') id: string, @Body() body: { isPublic: boolean }) {
-    return this.sheetsService.updatePublicAccess(req.user.id, id, body.isPublic);
+  updatePublicAccess(
+    @Request() req: any,
+    @Param('id') id: string,
+    @Body() body: { isPublic: boolean },
+  ) {
+    return this.sheetsService.updatePublicAccess(
+      req.user.id,
+      id,
+      body.isPublic,
+    );
   }
 
   @Get(':id')
@@ -159,7 +184,12 @@ export class SheetsController {
     @Param('sheetId') sheetId: string,
     @Body() dto: UpdateCellsDto,
   ) {
-    return this.sheetsService.updateCells(req.user.id, sheetId, dto.updates);
+    return this.sheetsService.updateCells(
+      req.user.id,
+      sheetId,
+      dto.updates,
+      dto.expectedVersion,
+    );
   }
 
   // Chart operations
@@ -167,7 +197,8 @@ export class SheetsController {
   saveCharts(
     @Request() req: any,
     @Param('sheetId') sheetId: string,
-    @Body() dto: {
+    @Body()
+    dto: {
       charts: Array<{
         id?: string;
         type: string;
@@ -177,7 +208,7 @@ export class SheetsController {
         height: number;
         data: any;
         options?: any;
-      }>
+      }>;
     },
   ) {
     return this.sheetsService.saveCharts(req.user.id, sheetId, dto.charts);
@@ -188,17 +219,21 @@ export class SheetsController {
   savePivotTables(
     @Request() req: any,
     @Param('sheetId') sheetId: string,
-    @Body() dto: {
+    @Body()
+    dto: {
       pivotTables: Array<{
         id?: string;
         name?: string;
         config: any;
         sourceRange?: string;
         targetCell?: string;
-      }>
+      }>;
     },
   ) {
-    return this.sheetsService.savePivotTables(req.user.id, sheetId, dto.pivotTables);
+    return this.sheetsService.savePivotTables(
+      req.user.id,
+      sheetId,
+      dto.pivotTables,
+    );
   }
 }
-

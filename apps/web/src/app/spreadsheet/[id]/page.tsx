@@ -16,6 +16,7 @@ export default function SpreadsheetPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
+  const [activeSheetVersion, setActiveSheetVersion] = useState(0);
   const [title, setTitle] = useState("");
 
   // Prevent duplicate API calls
@@ -48,6 +49,7 @@ export default function SpreadsheetPage() {
         if (sheets.length > 0) {
           const firstSheet = sheets[0];
           setActiveSheetId(firstSheet.id);
+          setActiveSheetVersion(firstSheet.version ?? 0);
 
           const sheetData: any = {};
           if (firstSheet.cells) {
@@ -125,6 +127,7 @@ export default function SpreadsheetPage() {
       initialCharts={initialCharts}
       spreadsheetId={id}
       activeSheetId={activeSheetId}
+      initialVersion={activeSheetVersion}
       title={title}
     />
   );
