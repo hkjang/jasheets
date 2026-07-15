@@ -20,7 +20,7 @@ function getDependencies(formula: string): string[] {
     for (const token of tokens) {
         if (token.type === 'REF') {
              // Convert A1 -> row,col
-             const match = token.value.match(/^([A-Z]+)([0-9]+)$/);
+             const match = token.value.match(/^\$?([A-Z]+)\$?([0-9]+)$/);
              if (match) {
                  const colStr = match[1];
                  const rowStr = match[2];
@@ -71,7 +71,7 @@ function getDependencies(formula: string): string[] {
 }
 
 function parseRef(ref: string) {
-    const match = ref.match(/^([A-Z]+)([0-9]+)$/);
+    const match = ref.match(/^\$?([A-Z]+)\$?([0-9]+)$/);
      if (match) {
          const colStr = match[1];
          const rowStr = match[2];

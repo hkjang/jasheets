@@ -67,9 +67,9 @@ export function tokenize(formula: string): Token[] {
       continue;
     }
 
-    if (/[A-Za-z]/.test(char)) {
+    if (/[A-Za-z$]/.test(char)) {
       let word = '';
-      while (i < formula.length && /[A-Za-z0-9:]/.test(formula[i])) { // Include : for ranges
+      while (i < formula.length && /[A-Za-z0-9:$]/.test(formula[i])) { // Include : and $ for ranges/references
         word += formula[i];
         i++;
       }
@@ -95,7 +95,7 @@ export function tokenize(formula: string): Token[] {
 
 // Convert A1 to row/col
 function parseCellRef(ref: string): { row: number, col: number } | null {
-    const match = ref.match(/^([A-Z]+)([0-9]+)$/);
+    const match = ref.match(/^\$?([A-Z]+)\$?([0-9]+)$/);
     if (!match) return null;
     const colStr = match[1];
     const rowStr = match[2];
@@ -105,6 +105,62 @@ function parseCellRef(ref: string): { row: number, col: number } | null {
         col = col * 26 + (colStr.charCodeAt(i) - 64);
     }
     return { row: parseInt(rowStr) - 1, col: col - 1 };
+}
+
+function columnNameToIndex(name: string): number {
+    let index = 0;
+    for (const char of name) {
+        index = index * 26 + (char.charCodeAt(0) - 64);
+    }
+    return index - 1;
+}
+
+function columnIndexToName(index: number): string {
+    let name = '';
+    let value = index + 1;
+    while (value > 0) {
+        const remainder = (value - 1) % 26;
+        name = String.fromCharCode(65 + remainder) + name;
+        value = Math.floor((value - 1) / 26);
+    }
+    return name;
+}
+
+/**
+ * Moves relative parts of A1 references when a formula is copied to another
+ * cell. Absolute row/column anchors remain fixed and references inside quoted
+ * strings are left untouched.
+ */
+export function shiftFormulaReferences(formula: string, rowOffset: number, colOffset: number): string {
+    let result = '';
+    let segmentStart = 0;
+    let quote: string | null = null;
+
+    const shiftSegment = (segment: string) => segment.replace(
+        /(^|[^A-Z0-9_])((\$?)([A-Z]+)(\$?)([1-9][0-9]*))(?![A-Z0-9_])/gi,
+        (_match, prefix: string, _reference: string, colAnchor: string, colName: string, rowAnchor: string, rowNumber: string) => {
+            const col = columnNameToIndex(colName.toUpperCase()) + (colAnchor ? 0 : colOffset);
+            const row = Number(rowNumber) - 1 + (rowAnchor ? 0 : rowOffset);
+            if (col < 0 || row < 0) return `${prefix}#REF!`;
+            return `${prefix}${colAnchor}${columnIndexToName(col)}${rowAnchor}${row + 1}`;
+        },
+    );
+
+    for (let i = 0; i < formula.length; i++) {
+        const char = formula[i];
+        if (!quote && (char === '"' || char === "'")) {
+            result += shiftSegment(formula.slice(segmentStart, i));
+            quote = char;
+            segmentStart = i;
+        } else if (quote && char === quote && formula[i - 1] !== '\\') {
+            result += formula.slice(segmentStart, i + 1);
+            quote = null;
+            segmentStart = i + 1;
+        }
+    }
+
+    const tail = formula.slice(segmentStart);
+    return result + (quote ? tail : shiftSegment(tail));
 }
 
 function getRangeValues(range: string, data: SheetData): number[] {
