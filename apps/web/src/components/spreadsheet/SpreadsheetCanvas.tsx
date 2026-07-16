@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import { useRef, useEffect, useCallback, useState, useMemo, useId } from 'react';
 import {
   CellPosition,
   CellRange,
@@ -20,6 +20,7 @@ import {
   getVisibleRange,
 } from '@/utils/viewportGeometry';
 import styles from './SpreadsheetCanvas.module.css';
+import { describeSpreadsheetCell } from '@/utils/spreadsheetAccessibility';
 
 interface SpreadsheetCanvasProps {
   data: SheetData;
@@ -73,6 +74,10 @@ export default function SpreadsheetCanvas({
   const [isSelecting, setIsSelecting] = useState(false);
   const [selectionStart, setSelectionStart] = useState<CellPosition | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
+  const accessibilityId = useId().replace(/:/g, '');
+  const activeCellId = `spreadsheet-cell-${accessibilityId}`;
+  const activeRowId = `spreadsheet-row-${accessibilityId}`;
+  const instructionsId = `spreadsheet-instructions-${accessibilityId}`;
 
   // Resize State
   const resizingRef = useRef<{ type: 'col' | 'row', index: number, start: number, initialSize: number } | null>(null);
@@ -707,6 +712,10 @@ export default function SpreadsheetCanvas({
   // Calculate total content size for scrolling
   const totalWidth = config.headerWidth + columnGeometry.totalSize;
   const totalHeight = config.headerHeight + rowGeometry.totalSize;
+  const cellDescription = useMemo(
+    () => describeSpreadsheetCell(data, selectedCell, selection),
+    [data, selectedCell, selection],
+  );
 
   return (
     <div ref={containerRef} className={styles.container}>
@@ -722,6 +731,12 @@ export default function SpreadsheetCanvas({
           ref={canvasRef}
           tabIndex={0}
           aria-label="Spreadsheet grid"
+          aria-describedby={instructionsId}
+          aria-activedescendant={selectedCell ? activeCellId : undefined}
+          aria-owns={selectedCell ? activeRowId : undefined}
+          aria-rowcount={config.totalRows}
+          aria-colcount={config.totalCols}
+          role="grid"
           className={styles.canvas}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
@@ -730,6 +745,26 @@ export default function SpreadsheetCanvas({
           onDoubleClick={handleDoubleClick}
           onContextMenu={handleContextMenu}
         />
+        <div id={instructionsId} className={styles.srOnly}>
+          Use arrow keys to move between cells, Shift plus arrow keys to select a range,
+          Enter to move down, and type to edit the selected cell.
+        </div>
+        {selectedCell && (
+          <div id={activeRowId} role="row" className={styles.srOnly}>
+            <div
+              id={activeCellId}
+              role="gridcell"
+              aria-rowindex={selectedCell.row + 1}
+              aria-colindex={selectedCell.col + 1}
+              aria-selected="true"
+            >
+              {cellDescription}
+            </div>
+          </div>
+        )}
+        <div className={styles.srOnly} aria-live="polite" aria-atomic="true">
+          {cellDescription}
+        </div>
       </div>
     </div>
   );
