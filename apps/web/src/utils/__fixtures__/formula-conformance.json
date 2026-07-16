@@ -1,0 +1,20 @@
+[
+  { "name": "operator precedence", "formula": "=1+2*3", "expected": 7 },
+  { "name": "parentheses", "formula": "=(1+2)*3", "expected": 9 },
+  { "name": "relative references", "cells": { "A1": 10, "A2": 20 }, "formula": "=A1+A2", "expected": 30 },
+  { "name": "absolute references", "cells": { "A1": 10, "B2": 5 }, "formula": "=$A$1+$B2", "expected": 15 },
+  { "name": "range sum", "cells": { "A1": 1, "A2": 2, "A3": 3 }, "formula": "=SUM(A1:A3)", "expected": 6 },
+  { "name": "range average", "cells": { "A1": 2, "A2": 4, "A3": 6 }, "formula": "=AVERAGE(A1:A3)", "expected": 4 },
+  { "name": "named range", "cells": { "B1": 3, "B2": 7 }, "namedRanges": { "SALES": "B1:B2" }, "formula": "=SUM(SALES)", "expected": 10 },
+  { "name": "date arithmetic", "formula": "=DATE(2024,1,1)+1", "expected": 45293 },
+  { "name": "time fraction", "formula": "=TIME(12,0,0)", "expected": 0.5 },
+  { "name": "date extraction", "formula": "=DAY(DATE(2024,2,29))", "expected": 29 },
+  { "name": "vertical lookup", "cells": { "A1": "A", "B1": 10, "A2": "B", "B2": 20 }, "formula": "=VLOOKUP(\"B\",A1:B2,2,FALSE)", "expected": 20 },
+  { "name": "xlookup fallback", "cells": { "A1": "A", "B1": 10 }, "formula": "=XLOOKUP(\"B\",A1:A1,B1:B1,\"missing\")", "expected": "missing" },
+  { "name": "division error", "formula": "=1/0", "expected": "#DIV/0!" },
+  { "name": "error recovery", "formula": "=IFERROR(1/0,42)", "expected": 42 },
+  { "name": "error propagation", "cells": { "A1": "#REF!" }, "formula": "=A1+1", "expected": "#REF!" },
+  { "name": "localized arguments", "locale": "de-DE", "formula": "=SUM(1,5;2,5)", "expected": 4 },
+  { "name": "sequence array", "formula": "=SEQUENCE(2,2,1,1)", "expected": [[1,2],[3,4]] },
+  { "name": "array constant", "formula": "={1,2;3,4}", "expected": [[1,2],[3,4]] }
+]
