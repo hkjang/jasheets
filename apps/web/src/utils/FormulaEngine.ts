@@ -1,5 +1,6 @@
 import { NamedRanges, SheetData } from '@/types/spreadsheet';
 import { datePartsToSerial, dateToSerial, serialToDate, timePartsToSerial } from './dateSerial';
+import { normalizeLocalizedFormula } from './localeNumber';
 
 /**
  * Basic Formula Engine for JaSheets
@@ -308,15 +309,21 @@ function evaluateLookupFormula(formula: string, data: SheetData, namedRanges: Na
     return index < 0 ? scalar(args[3] ? lookupValue(args[3], data) : undefined) : scalar(returns[index]);
 }
 
-export function evaluateFormula(formula: string, data: SheetData, namedRanges: NamedRanges = {}): FormulaResult {
+export function evaluateFormula(
+    formula: string,
+    data: SheetData,
+    namedRanges: NamedRanges = {},
+    locale: string = 'en-US',
+): FormulaResult {
     try {
         if (!formula.startsWith('=')) return formula;
+        formula = normalizeLocalizedFormula(formula, locale);
 
         const errorHandler = formula.match(/^=(IFERROR|IFNA)\((.*)\)$/i);
         if (errorHandler) {
             const args = splitFunctionArgs(errorHandler[2]);
             if (args.length !== 2) return '#VALUE!';
-            const result = evaluateFormula(`=${args[0]}`, data, namedRanges);
+            const result = evaluateFormula(`=${args[0]}`, data, namedRanges, locale);
             const recover = errorHandler[1].toUpperCase() === 'IFERROR'
                 ? isFormulaError(result)
                 : result === '#N/A';

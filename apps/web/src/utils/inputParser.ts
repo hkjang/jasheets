@@ -1,9 +1,12 @@
+import { datePartsToSerial, timePartsToSerial } from './dateSerial';
+import { parseLocaleNumber } from './localeNumber';
+
 export interface ParsedInput {
   value: number | string | boolean | null;
   format?: 'general' | 'number' | 'currency' | 'percent' | 'date' | 'time';
 }
 
-export function parseInput(input: string): ParsedInput {
+export function parseInput(input: string, locale: string = 'en-US'): ParsedInput {
     // 1. Check for empty
     if (input === '' || input === null || input === undefined) {
         return { value: null, format: 'general' };
@@ -20,8 +23,9 @@ export function parseInput(input: string): ParsedInput {
     // 3. Percentage: "50%", "12.5%"
     if (trimmed.endsWith('%')) {
         const numPart = trimmed.slice(0, -1);
-        if (!isNaN(parseFloat(numPart))) {
-            return { value: parseFloat(numPart) / 100, format: 'percent' };
+        const parsed = parseLocaleNumber(numPart, locale);
+        if (parsed !== null) {
+            return { value: parsed / 100, format: 'percent' };
         }
     }
 
@@ -31,9 +35,10 @@ export function parseInput(input: string): ParsedInput {
     // Simple check: start or end with currency symbol?
     if (/^[$€£¥]/.test(trimmed) || /[$€£¥]$/.test(trimmed)) {
         // Remove symbols and commas
-        const clean = trimmed.replace(/[$€£¥,]/g, '').trim();
-        if (!isNaN(parseFloat(clean))) {
-             return { value: parseFloat(clean), format: 'currency' };
+        const clean = trimmed.replace(/[$€£¥]/g, '').trim();
+        const parsed = parseLocaleNumber(clean, locale);
+        if (parsed !== null) {
+             return { value: parsed, format: 'currency' };
         }
     }
 
@@ -78,12 +83,11 @@ export function parseInput(input: string): ParsedInput {
 
     // 8. Number
     // Remove commas for parsing? "1,000" -> 1000
-    const cleanNum = trimmed.replace(/,/g, '');
-    if (!isNaN(Number(cleanNum)) && trimmed !== '') {
-        return { value: Number(cleanNum), format: 'number' };
+    const parsedNumber = parseLocaleNumber(trimmed, locale);
+    if (parsedNumber !== null && trimmed !== '') {
+        return { value: parsedNumber, format: 'number' };
     }
 
     // 9. Default: String
     return { value: input, format: 'general' };
 }
-import { datePartsToSerial, timePartsToSerial } from './dateSerial';
