@@ -16,7 +16,9 @@ export interface Token {
 }
 
 const OPERATORS = ['+', '-', '*', '/'];
-const FUNCTIONS = ['SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT'];
+const FUNCTIONS = ['SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'SEQUENCE'];
+
+export type FormulaResult = string | number | number[][];
 
 export function tokenize(formula: string): Token[] {
   const tokens: Token[] = [];
@@ -190,9 +192,30 @@ function getRangeValues(range: string, data: SheetData): number[] {
     return values;
 }
 
-export function evaluateFormula(formula: string, data: SheetData, namedRanges: NamedRanges = {}): string | number {
+export function evaluateFormula(formula: string, data: SheetData, namedRanges: NamedRanges = {}): FormulaResult {
     try {
         if (!formula.startsWith('=')) return formula;
+
+        const sequence = formula.match(/^=SEQUENCE\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?(?:,\s*(-?\d+(?:\.\d+)?)\s*)?(?:,\s*(-?\d+(?:\.\d+)?)\s*)?\)$/i);
+        if (sequence) {
+            const rows = Number(sequence[1]);
+            const cols = Number(sequence[2] ?? 1);
+            const start = Number(sequence[3] ?? 1);
+            const step = Number(sequence[4] ?? 1);
+            if (rows < 1 || cols < 1 || rows * cols > 10000) return '#NUM!';
+            return Array.from({ length: rows }, (_, row) =>
+                Array.from({ length: cols }, (_, col) => start + (row * cols + col) * step),
+            );
+        }
+
+        const arrayLiteral = formula.match(/^=\{(.+)\}$/);
+        if (arrayLiteral) {
+            const rows = arrayLiteral[1].split(';').map((row) =>
+                row.split(',').map((value) => Number(value.trim())),
+            );
+            if (rows.some((row) => row.length !== rows[0].length || row.some(Number.isNaN))) return '#VALUE!';
+            return rows;
+        }
         
         const tokens = tokenize(formula);
         let pos = 0;

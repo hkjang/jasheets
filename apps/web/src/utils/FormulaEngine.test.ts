@@ -50,3 +50,21 @@ describe('named ranges', () => {
     expect(evaluateFormula('=UNKNOWN+5', data, namedRanges)).toBe(5);
   });
 });
+
+describe('array formulas', () => {
+  it('creates two-dimensional SEQUENCE results', () => {
+    expect(evaluateFormula('=SEQUENCE(2,3,10,2)', data)).toEqual([
+      [10, 12, 14],
+      [16, 18, 20],
+    ]);
+  });
+
+  it('parses numeric array constants', () => {
+    expect(evaluateFormula('={1,2;3,4}', data)).toEqual([[1, 2], [3, 4]]);
+  });
+
+  it('limits invalid or excessively large arrays', () => {
+    expect(evaluateFormula('=SEQUENCE(0)', data)).toBe('#NUM!');
+    expect(evaluateFormula('={1,NOPE}', data)).toBe('#VALUE!');
+  });
+});

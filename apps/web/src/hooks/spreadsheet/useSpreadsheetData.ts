@@ -23,6 +23,39 @@ interface UseSpreadsheetDataProps {
     onDataChange?: (data: SheetData) => void;
 }
 
+function spillArray(
+    draft: SheetData,
+    originRow: number,
+    originCol: number,
+    values: number[][],
+    formula: string,
+    format: string,
+): string | null {
+    for (let rowOffset = 0; rowOffset < values.length; rowOffset++) {
+        for (let colOffset = 0; colOffset < values[rowOffset].length; colOffset++) {
+            if (rowOffset === 0 && colOffset === 0) continue;
+            const target = draft[originRow + rowOffset]?.[originCol + colOffset];
+            const belongsToOrigin = target?.spillParent?.row === originRow && target.spillParent.col === originCol;
+            if (target && target.value !== null && !belongsToOrigin) return '#SPILL!';
+        }
+    }
+
+    for (let rowOffset = 0; rowOffset < values.length; rowOffset++) {
+        if (!draft[originRow + rowOffset]) draft[originRow + rowOffset] = {};
+        for (let colOffset = 0; colOffset < values[rowOffset].length; colOffset++) {
+            const value = values[rowOffset][colOffset];
+            draft[originRow + rowOffset][originCol + colOffset] = {
+                value,
+                displayValue: formatValue(value, format),
+                formula: rowOffset === 0 && colOffset === 0 ? formula : undefined,
+                format,
+                spillParent: rowOffset === 0 && colOffset === 0 ? undefined : { row: originRow, col: originCol },
+            };
+        }
+    }
+    return null;
+}
+
 export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpreadsheetDataProps) {
     // Note: initialData is only used for initial state.
     // External updates should use updateData() directly to avoid infinite loops.
@@ -71,6 +104,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
             let error: string | undefined;
             let numValue: number | string | boolean | null = value;
             let detectedFormat: string | undefined;
+            let arrayResult: number[][] | null = null;
 
             // Retrieve existing format
             const currentFormat = draft[row][col]?.format || 'general';
@@ -79,6 +113,11 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                 try {
                     // ... formula eval ...
                     const result = evaluateFormula(value, draft as unknown as SheetData, namedRanges);
+                    if (Array.isArray(result)) {
+                        arrayResult = result;
+                        numValue = result[0]?.[0] ?? '#VALUE!';
+                        displayValue = String(numValue);
+                    } else {
                     // Apply format to result
                     if (typeof result === 'number') {
                         displayValue = formatValue(result, currentFormat);
@@ -86,6 +125,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                         displayValue = String(result);
                     }
                     numValue = result;
+                    }
                 } catch (e) {
                     displayValue = '#ERROR!';
                     error = e instanceof Error ? e.message : 'Formula error';
@@ -116,6 +156,13 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                 format: finalFormat,
             };
 
+            if (arrayResult) {
+                const spillError = spillArray(draft, row, col, arrayResult, value, finalFormat);
+                if (spillError) {
+                    draft[row][col] = { ...draft[row][col], value: spillError, displayValue: spillError, error: spillError };
+                }
+            }
+
             // Trigger Recalculation
             recalculate(draft, namedRanges);
         });
@@ -131,18 +178,23 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                 let error: string | undefined;
                 let numValue: number | string | boolean | null = value;
                 let detectedFormat: string | undefined;
+                let arrayResult: number[][] | null = null;
 
                 const currentFormat = draft[row][col]?.format || 'general';
 
                 if (isFormula) {
                     try {
                         const result = evaluateFormula(value, draft as unknown as SheetData, namedRanges);
-                        if (typeof result === 'number') {
+                        if (Array.isArray(result)) {
+                            arrayResult = result;
+                            numValue = result[0]?.[0] ?? '#VALUE!';
+                            displayValue = String(numValue);
+                        } else if (typeof result === 'number') {
                             displayValue = formatValue(result, currentFormat);
                         } else {
                             displayValue = String(result);
                         }
-                        numValue = result;
+                        if (!Array.isArray(result)) numValue = result;
                     } catch (e) {
                         displayValue = '#ERROR!';
                         error = e instanceof Error ? e.message : 'Formula error';
@@ -168,6 +220,12 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                     style: draft[row][col]?.style,
                     format: finalFormat,
                 };
+                if (arrayResult) {
+                    const spillError = spillArray(draft, row, col, arrayResult, value, finalFormat);
+                    if (spillError) {
+                        draft[row][col] = { ...draft[row][col], value: spillError, displayValue: spillError, error: spillError };
+                    }
+                }
             });
             recalculate(draft, namedRanges);
         });

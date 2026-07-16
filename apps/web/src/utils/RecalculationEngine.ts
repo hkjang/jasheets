@@ -240,6 +240,7 @@ export function recalculate(data: SheetData, namedRanges: NamedRanges = {}): She
             try {
                 // Evaluate
                 const result = evaluateFormula(cell.formula, data, namedRanges);
+                const scalarResult = Array.isArray(result) ? (result[0]?.[0] ?? '#VALUE!') : result;
                  // Check if result changed?
                  // Update cell
                  // NOTE: evaluateFormula needs to support 'data' being the draft itself.
@@ -260,15 +261,15 @@ export function recalculate(data: SheetData, namedRanges: NamedRanges = {}): She
                 // But wait, displayValue IS stored. We must update it.
                 // Otherwise Canvas shows old value.
                 
-                let displayVal = String(result);
-                if (typeof result === 'number') {
-                     displayVal = formatValue(result, cell.format || 'general');
+                let displayVal = String(scalarResult);
+                if (typeof scalarResult === 'number') {
+                     displayVal = formatValue(scalarResult, cell.format || 'general');
                 }
                 
                 // Update
                 data[row][col] = {
                     ...cell,
-                    value: typeof result === 'number' || typeof result === 'string' || typeof result === 'boolean' ? result : String(result),
+                    value: scalarResult,
                     displayValue: displayVal,
                     error: undefined
                 };

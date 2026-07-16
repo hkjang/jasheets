@@ -70,6 +70,7 @@ export interface CellData {
   style?: CellStyle;
   format?: string;
   error?: string;
+  spillParent?: CellPosition;
 }
 
 export interface RowData {
