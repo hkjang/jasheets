@@ -71,6 +71,7 @@ import HistoryTimelinePanel from "./HistoryTimelinePanel";
 import SheetAutomationDialog from "./SheetAutomationDialog";
 import FilterProfilesDropdown, { FilterProfile } from "./FilterProfilesDropdown";
 import { getHiddenRowsForFilterView } from "@/utils/filterViews";
+import { createFillUpdates } from "@/utils/fillHandle";
 import SnapshotManagerPanel from "./SnapshotManagerPanel";
 import CommandPalette from "./CommandPalette";
 
@@ -1479,6 +1480,7 @@ export default function Spreadsheet({
           onHeaderContextMenu={handleHeaderContextMenu}
           onCellContextMenu={(x, y) => setCellContextMenu({ x, y })}
           isEditing={isEditing}
+          onFillRange={(source, target) => updateCells(createFillUpdates(data, source, target))}
         />
 
         {isEditing && selectedCell && (

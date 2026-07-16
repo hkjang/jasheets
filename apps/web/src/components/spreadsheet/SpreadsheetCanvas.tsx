@@ -35,6 +35,7 @@ interface SpreadsheetCanvasProps {
   onCellContextMenu?: (x: number, y: number) => void;
   showGridlines?: boolean;
   isEditing?: boolean;
+  onFillRange?: (source: CellRange, target: CellRange) => void;
 }
 
 export default function SpreadsheetCanvas({
@@ -54,6 +55,7 @@ export default function SpreadsheetCanvas({
   onCellContextMenu,
   showGridlines = true,
   isEditing = false,
+  onFillRange,
 }: SpreadsheetCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -71,6 +73,8 @@ export default function SpreadsheetCanvas({
 
   // Resize State
   const resizingRef = useRef<{ type: 'col' | 'row', index: number, start: number, initialSize: number } | null>(null);
+  const fillSourceRef = useRef<CellRange | null>(null);
+  const fillTargetRef = useRef<CellRange | null>(null);
 
   const config = useMemo(
     () => ({ ...DEFAULT_CONFIG, ...configOverride }),
@@ -329,6 +333,8 @@ export default function SpreadsheetCanvas({
       ctx.lineWidth = 1;
       ctx.setLineDash([]);
       ctx.strokeRect(selStartX + 0.5, selStartY + 0.5, selWidth, selHeight);
+      ctx.fillStyle = '#1a73e8';
+      ctx.fillRect(selStartX + selWidth - 5, selStartY + selHeight - 5, 6, 6);
     }
 
     ctx.restore();
@@ -451,6 +457,16 @@ export default function SpreadsheetCanvas({
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
 
+      if (e.button === 0 && selection) {
+        const handleX = getColX(selection.end.col) - viewport.scrollX + (columns[selection.end.col]?.width ?? config.defaultColWidth);
+        const handleY = getRowY(selection.end.row) - viewport.scrollY + (rows[selection.end.row]?.height ?? config.defaultRowHeight);
+        if (Math.abs(x - handleX) <= 7 && Math.abs(y - handleY) <= 7) {
+          fillSourceRef.current = selection;
+          fillTargetRef.current = selection;
+          return;
+        }
+      }
+
       // Check for structural resize (Headers)
       if (y < config.headerHeight && x > config.headerWidth) {
         // Check Col Resize
@@ -537,7 +553,7 @@ export default function SpreadsheetCanvas({
         }
       }
     },
-    [getCellFromPoint, onCellSelect, onSelectionChange, config, columns, rows, viewport, canvasSize]
+    [getCellFromPoint, getColX, getRowY, onCellSelect, onSelectionChange, config, columns, rows, viewport, canvasSize, selection]
   );
 
   // Handle mouse move
@@ -549,6 +565,21 @@ export default function SpreadsheetCanvas({
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const y = e.clientY - rect.top;
+
+      if (fillSourceRef.current) {
+        const cell = getCellFromPoint(x, y);
+        if (cell) {
+          const source = fillSourceRef.current;
+          const target = {
+            start: source.start,
+            end: { row: Math.max(source.end.row, cell.row), col: Math.max(source.end.col, cell.col) },
+          };
+          fillTargetRef.current = target;
+          onSelectionChange(target);
+        }
+        canvas.style.cursor = 'crosshair';
+        return;
+      }
 
       // Handle Resize
       if (resizingRef.current) {
@@ -623,10 +654,15 @@ export default function SpreadsheetCanvas({
 
   // Handle mouse up
   const handleMouseUp = useCallback(() => {
+    if (fillSourceRef.current && fillTargetRef.current) {
+      onFillRange?.(fillSourceRef.current, fillTargetRef.current);
+    }
+    fillSourceRef.current = null;
+    fillTargetRef.current = null;
     setIsSelecting(false);
     setSelectionStart(null);
     resizingRef.current = null;
-  }, []);
+  }, [onFillRange]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
