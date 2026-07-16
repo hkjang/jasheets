@@ -71,7 +71,13 @@ export interface CellData {
   format?: string;
   error?: string;
   spillParent?: CellPosition;
+  validation?: DataValidationRule;
 }
+
+export type DataValidationRule =
+  | { type: 'list'; values: string[]; allowBlank?: boolean }
+  | { type: 'number'; min?: number; max?: number; allowBlank?: boolean }
+  | { type: 'textLength'; min?: number; max?: number; allowBlank?: boolean };
 
 export interface RowData {
   [colIndex: number]: CellData;

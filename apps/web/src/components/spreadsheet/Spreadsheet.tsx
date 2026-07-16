@@ -142,6 +142,7 @@ export default function Spreadsheet({
     sortRange,
     removeDuplicates,
     defineNamedRange,
+    updateCellValidation,
   } = useSpreadsheetData({ initialData, onDataChange });
 
   // Selection
@@ -1307,9 +1308,21 @@ export default function Spreadsheet({
         onSortRangeDesc={handleSortRangeDesc}
         onRemoveDuplicates={handleRemoveDuplicates}
         onSplitTextToColumns={handleSplitTextToColumns}
-        onDataValidation={() =>
-          alert("데이터 확인 기능은 준비 중입니다. (유효성 검사 규칙 설정)")
-        }
+        onDataValidation={() => {
+          if (!selection) {
+            alert("유효성 검사를 설정할 범위를 먼저 선택해주세요.");
+            return;
+          }
+          const values = prompt("허용할 값을 쉼표로 구분해 입력하세요. (예: 대기,진행,완료)");
+          if (values === null) return;
+          const allowedValues = values.split(",").map((value) => value.trim()).filter(Boolean);
+          if (allowedValues.length === 0) {
+            alert("하나 이상의 허용 값을 입력해주세요.");
+            return;
+          }
+          updateCellValidation(selection, { type: "list", values: allowedValues });
+          setToastMessage("데이터 유효성 검사 규칙이 적용되었습니다.");
+        }}
         onNamedRanges={() => {
           if (!selection) {
             alert("이름을 지정할 범위를 먼저 선택해주세요.");

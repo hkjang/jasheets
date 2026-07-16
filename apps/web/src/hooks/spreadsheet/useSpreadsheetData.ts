@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { CellRange, NamedRanges, SheetData, CellStyle } from '@/types/spreadsheet';
+import { CellRange, DataValidationRule, NamedRanges, SheetData, CellStyle } from '@/types/spreadsheet';
 import { produce, applyPatches, Patch, enablePatches } from 'immer';
 // Use local FormulaEngine
 import { evaluateFormula } from '@/utils/FormulaEngine';
@@ -7,6 +7,7 @@ import { formatValue } from '@/utils/formatting';
 import { parseInput } from '@/utils/inputParser';
 import { recalculate } from '@/utils/RecalculationEngine';
 import { rewriteFormulaForStructuralChange, StructuralChange } from '@/utils/formulaReferences';
+import { validateCellInput } from '@/utils/dataValidation';
 
 enablePatches();
 
@@ -109,6 +110,15 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
         applyChange((draft) => {
             if (!draft[row]) draft[row] = {};
 
+            const validation = draft[row][col]?.validation;
+            if (validation && !value.startsWith('=')) {
+                const result = validateCellInput(value, validation);
+                if (!result.valid) {
+                    draft[row][col] = { ...draft[row][col], error: result.message };
+                    return;
+                }
+            }
+
             // Check if value is formula
             const isFormula = value.startsWith('=');
             let displayValue = value;
@@ -165,6 +175,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                 error,
                 style: draft[row][col]?.style,
                 format: finalFormat,
+                validation,
             };
 
             if (arrayResult) {
@@ -183,6 +194,15 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
         applyChange((draft) => {
             updates.forEach(({ row, col, value }) => {
                 if (!draft[row]) draft[row] = {};
+
+                const validation = draft[row][col]?.validation;
+                if (validation && !value.startsWith('=')) {
+                    const validationResult = validateCellInput(value, validation);
+                    if (!validationResult.valid) {
+                        draft[row][col] = { ...draft[row][col], error: validationResult.message };
+                        return;
+                    }
+                }
 
                 const isFormula = value.startsWith('=');
                 let displayValue = value;
@@ -230,6 +250,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                     error,
                     style: draft[row][col]?.style,
                     format: finalFormat,
+                    validation,
                 };
                 if (arrayResult) {
                     const spillError = spillArray(draft, row, col, arrayResult, value, finalFormat);
@@ -455,6 +476,17 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
         setCellValue,
         updateCells,
         updateCellStyle,
+        updateCellValidation: (range: CellRange, validation?: DataValidationRule) => {
+            applyChange((draft) => {
+                for (let row = range.start.row; row <= range.end.row; row++) {
+                    if (!draft[row]) draft[row] = {};
+                    for (let col = range.start.col; col <= range.end.col; col++) {
+                        const current = draft[row][col] ?? { value: null };
+                        draft[row][col] = { ...current, validation, error: undefined };
+                    }
+                }
+            });
+        },
         insertRow,
         deleteRow,
         insertColumn,
