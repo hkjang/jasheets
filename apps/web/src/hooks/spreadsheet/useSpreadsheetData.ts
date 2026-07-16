@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { CellRange, DataValidationRule, NamedRanges, SheetData, CellStyle } from '@/types/spreadsheet';
+import { CellRange, DataValidationRule, NamedRanges, ProtectedRange, SheetData, CellStyle } from '@/types/spreadsheet';
 import { produce, applyPatches, Patch, enablePatches } from 'immer';
 // Use local FormulaEngine
 import { evaluateFormula } from '@/utils/FormulaEngine';
@@ -8,6 +8,7 @@ import { parseInput } from '@/utils/inputParser';
 import { recalculate } from '@/utils/RecalculationEngine';
 import { rewriteFormulaForStructuralChange, StructuralChange } from '@/utils/formulaReferences';
 import { validateCellInput } from '@/utils/dataValidation';
+import { canEditCell } from '@/utils/protectedRanges';
 
 enablePatches();
 
@@ -23,6 +24,7 @@ interface Commit {
 interface UseSpreadsheetDataProps {
     initialData?: SheetData;
     onDataChange?: (data: SheetData) => void;
+    currentUserId?: string;
 }
 
 function spillArray(
@@ -68,13 +70,14 @@ function rewriteFormulas(data: SheetData, change: StructuralChange): void {
     });
 }
 
-export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpreadsheetDataProps) {
+export function useSpreadsheetData({ initialData = {}, onDataChange, currentUserId }: UseSpreadsheetDataProps) {
     // Note: initialData is only used for initial state.
     // External updates should use updateData() directly to avoid infinite loops.
     const [data, setData] = useState<SheetData>(() => initialData || {});
     const [history, setHistory] = useState<Commit[]>([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
     const [namedRanges, setNamedRanges] = useState<NamedRanges>({});
+    const [protectedRanges, setProtectedRanges] = useState<ProtectedRange[]>([]);
 
     // Helper to apply changes and record history
     const applyChange = useCallback((recipe: (draft: SheetData) => void) => {
@@ -108,6 +111,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
 
     const setCellValue = useCallback((row: number, col: number, value: string) => {
         applyChange((draft) => {
+            if (!canEditCell(protectedRanges, { row, col }, currentUserId)) return;
             if (!draft[row]) draft[row] = {};
 
             const validation = draft[row][col]?.validation;
@@ -188,11 +192,12 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
             // Trigger Recalculation
             recalculate(draft, namedRanges);
         });
-    }, [applyChange, namedRanges]);
+    }, [applyChange, namedRanges, protectedRanges, currentUserId]);
 
     const updateCells = useCallback((updates: { row: number; col: number; value: string }[]) => {
         applyChange((draft) => {
             updates.forEach(({ row, col, value }) => {
+                if (!canEditCell(protectedRanges, { row, col }, currentUserId)) return;
                 if (!draft[row]) draft[row] = {};
 
                 const validation = draft[row][col]?.validation;
@@ -261,7 +266,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
             });
             recalculate(draft, namedRanges);
         });
-    }, [applyChange, namedRanges]);
+    }, [applyChange, namedRanges, protectedRanges, currentUserId]);
 
     const updateCellFormat = useCallback((range: { start: { row: number, col: number }, end: { row: number, col: number } } | null, format: string) => {
         if (!range) return;
@@ -269,6 +274,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
         applyChange((draft) => {
             for (let row = range.start.row; row <= range.end.row; row++) {
                 for (let col = range.start.col; col <= range.end.col; col++) {
+                    if (!canEditCell(protectedRanges, { row, col }, currentUserId)) continue;
                     if (!draft[row]) draft[row] = {};
 
                     const cell = draft[row][col];
@@ -326,7 +332,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                 }
             }
         });
-    }, [applyChange]);
+    }, [applyChange, protectedRanges, currentUserId]);
 
     const updateCellStyle = useCallback((range: { start: { row: number, col: number }, end: { row: number, col: number } } | null, styleUpdate: Partial<CellStyle>) => {
         if (!range) return;
@@ -334,6 +340,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
         applyChange((draft) => {
             for (let row = range.start.row; row <= range.end.row; row++) {
                 for (let col = range.start.col; col <= range.end.col; col++) {
+                    if (!canEditCell(protectedRanges, { row, col }, currentUserId)) continue;
                     if (!draft[row]) draft[row] = {};
                     const currentStyle = draft[row][col]?.style || {};
 
@@ -345,7 +352,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                 }
             }
         });
-    }, [applyChange]);
+    }, [applyChange, protectedRanges, currentUserId]);
 
     const handleUndo = useCallback(() => {
         if (historyIndex >= 0) {
@@ -451,6 +458,19 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
 
     return {
         data,
+        protectedRanges,
+        addProtectedRange: (range: CellRange, allowedUserIds: string[] = []) => {
+            if (!currentUserId) throw new Error('로그인이 필요합니다.');
+            setProtectedRanges((current) => [...current, {
+                id: globalThis.crypto.randomUUID(),
+                range,
+                ownerId: currentUserId,
+                allowedUserIds,
+            }]);
+        },
+        removeProtectedRange: (id: string) => {
+            setProtectedRanges((current) => current.filter((item) => item.id !== id || item.ownerId !== currentUserId));
+        },
         namedRanges,
         defineNamedRange: (name: string, range: CellRange) => {
             const normalizedName = name.trim().toUpperCase();
@@ -481,6 +501,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                 for (let row = range.start.row; row <= range.end.row; row++) {
                     if (!draft[row]) draft[row] = {};
                     for (let col = range.start.col; col <= range.end.col; col++) {
+                        if (!canEditCell(protectedRanges, { row, col }, currentUserId)) continue;
                         const current = draft[row][col] ?? { value: null };
                         draft[row][col] = { ...current, validation, error: undefined };
                     }

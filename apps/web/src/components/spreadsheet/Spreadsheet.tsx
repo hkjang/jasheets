@@ -94,6 +94,7 @@ export default function Spreadsheet({
 }: SpreadsheetProps) {
   const [sheetTitle, setSheetTitle] = useState(title);
   const [sheetVersion, setSheetVersion] = useState(initialVersion);
+  const { user, loading } = useAuth();
 
   // Update title if prop changes (e.g. loaded from server)
   useEffect(() => {
@@ -143,7 +144,8 @@ export default function Spreadsheet({
     removeDuplicates,
     defineNamedRange,
     updateCellValidation,
-  } = useSpreadsheetData({ initialData, onDataChange });
+    addProtectedRange,
+  } = useSpreadsheetData({ initialData, onDataChange, currentUserId: user?.id });
 
   // Selection
   const {
@@ -307,7 +309,6 @@ export default function Spreadsheet({
   ]);
 
   // Collaboration
-  const { user, loading } = useAuth();
   const router = useRouter();
   const [isEmailOpen, setIsEmailOpen] = useState(false);
 
@@ -1337,9 +1338,18 @@ export default function Spreadsheet({
             alert(error instanceof Error ? error.message : "이름 범위를 등록하지 못했습니다.");
           }
         }}
-        onProtectedRanges={() =>
-          alert("보호된 시트 및 범위 기능은 준비 중입니다.")
-        }
+        onProtectedRanges={() => {
+          if (!selection) {
+            alert("보호할 범위를 먼저 선택해주세요.");
+            return;
+          }
+          try {
+            addProtectedRange(selection);
+            setToastMessage("선택 범위가 보호되었습니다.");
+          } catch (error) {
+            alert(error instanceof Error ? error.message : "범위를 보호하지 못했습니다.");
+          }
+        }}
         showFormulaBar={showFormulaBar}
         showGridlines={showGridlines}
         zoom={zoom}

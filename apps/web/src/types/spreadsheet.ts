@@ -89,6 +89,13 @@ export interface SheetData {
 
 export type NamedRanges = Record<string, CellRange>;
 
+export interface ProtectedRange {
+  id: string;
+  range: CellRange;
+  ownerId: string;
+  allowedUserIds: string[];
+}
+
 export interface ColumnDef {
   width: number;
   hidden?: boolean;
