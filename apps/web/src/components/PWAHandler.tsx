@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useServiceWorker, useOfflineSync } from '@/hooks/usePWA';
 import Toast from './ui/Toast';
+import { useLocalization } from '@/contexts/LocalizationContext';
 
 export default function PWAHandler() {
   // Skip PWA functionality entirely in development
   const isDev = process.env.NODE_ENV === 'development';
   
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
+  const [dismissedMessage, setDismissedMessage] = useState<string | null>(null);
+  const { t } = useLocalization();
   
   // Call hooks unconditionally to satisfy React rules
   const serviceWorker = useServiceWorker();
@@ -17,25 +19,16 @@ export default function PWAHandler() {
   const { hasUpdate, update, installPrompt, promptInstall } = serviceWorker;
   const { isOnline } = offlineSync;
 
-  useEffect(() => {
-    // Skip in development
-    if (isDev) return;
-    
-    if (hasUpdate) {
-      setToastMsg('New version available. Click to reload.');
-    } else if (installPrompt) {
-      setToastMsg('Install JaSheets for offline use.');
-    }
-  }, [hasUpdate, installPrompt, isDev]);
-
-  useEffect(() => {
-    // Skip in development
-    if (isDev) return;
-    
-    if (!isOnline) {
-      setToastMsg('You are offline. Changes will be saved locally.');
-    }
-  }, [isOnline, isDev]);
+  const activeMessage = isDev
+    ? null
+    : hasUpdate
+      ? t('pwa.update')
+      : !isOnline
+        ? t('pwa.offline')
+        : installPrompt
+          ? t('pwa.install')
+          : null;
+  const toastMsg = activeMessage === dismissedMessage ? null : activeMessage;
 
   // Skip rendering in development
   if (isDev) {
@@ -43,7 +36,7 @@ export default function PWAHandler() {
   }
 
   const handleToastClose = () => {
-    setToastMsg(null);
+    setDismissedMessage(activeMessage);
   };
 
   const handleToastClick = () => {
@@ -52,7 +45,7 @@ export default function PWAHandler() {
       window.location.reload();
     } else if (installPrompt) {
       promptInstall();
-      setToastMsg(null);
+      setDismissedMessage(activeMessage);
     }
   };
 

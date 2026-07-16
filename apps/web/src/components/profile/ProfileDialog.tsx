@@ -1,7 +1,9 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { api } from '@/lib/api';
+import { useLocalization } from '@/contexts/LocalizationContext';
+import { resolveLocale } from '@/lib/i18n';
 
 interface ProfileDialogProps {
   isOpen: boolean;
@@ -9,25 +11,22 @@ interface ProfileDialogProps {
 }
 
 export function ProfileDialog({ isOpen, onClose }: ProfileDialogProps) {
+  const { locale, setLocale, t } = useLocalization();
   const [name, setName] = useState('');
-  const [language, setLanguage] = useState('ko');
+  const [language, setLanguage] = useState(locale);
   const [theme, setTheme] = useState('light');
   const [contact, setContact] = useState('');
   const [loading, setLoading] = useState(false);
   const [fetching, setFetching] = useState(true);
 
-  useEffect(() => {
-    if (isOpen) {
-      loadProfile();
-    }
-  }, [isOpen]);
-
-  const loadProfile = async () => {
+  const loadProfile = useCallback(async () => {
     setFetching(true);
     try {
       const data = await api.users.getProfile();
       setName(data.name || '');
-      setLanguage(data.language || 'ko');
+      const profileLocale = resolveLocale(data.language);
+      setLanguage(profileLocale);
+      setLocale(profileLocale);
       setTheme(data.theme || 'light');
       setContact(data.contact || '');
     } catch (e) {
@@ -35,16 +34,21 @@ export function ProfileDialog({ isOpen, onClose }: ProfileDialogProps) {
     } finally {
       setFetching(false);
     }
-  };
+  }, [setLocale]);
+
+  useEffect(() => {
+    if (isOpen) void loadProfile();
+  }, [isOpen, loadProfile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     try {
       await api.users.updateProfile({ name, language, theme, contact });
+      setLocale(resolveLocale(language));
       onClose();
-    } catch (e) {
-      alert('Failed to update profile');
+    } catch {
+      alert(t('profile.saveError'));
     } finally {
       setLoading(false);
     }
@@ -55,14 +59,14 @@ export function ProfileDialog({ isOpen, onClose }: ProfileDialogProps) {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 w-full max-w-md shadow-xl">
-        <h2 className="text-xl font-bold mb-4 text-gray-800">Edit Profile</h2>
+        <h2 className="text-xl font-bold mb-4 text-gray-800">{t('profile.title')}</h2>
         
         {fetching ? (
-          <div>Loading...</div>
+          <div>{t('profile.loading')}</div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Name</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('profile.name')}</label>
               <input 
                 type="text" 
                 value={name}
@@ -72,7 +76,7 @@ export function ProfileDialog({ isOpen, onClose }: ProfileDialogProps) {
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Contact</label>
+              <label className="block text-sm font-medium text-gray-700 mb-1">{t('profile.contact')}</label>
               <input 
                 type="text" 
                 value={contact}
@@ -83,26 +87,26 @@ export function ProfileDialog({ isOpen, onClose }: ProfileDialogProps) {
 
             <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Language</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('profile.language')}</label>
                   <select
                     value={language}
-                    onChange={e => setLanguage(e.target.value)}
+                    onChange={e => setLanguage(resolveLocale(e.target.value))}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                   >
-                    <option value="ko">Korean</option>
-                    <option value="en">English</option>
+                    <option value="ko">{t('profile.korean')}</option>
+                    <option value="en">{t('profile.english')}</option>
                   </select>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Theme</label>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">{t('profile.theme')}</label>
                   <select
                     value={theme}
                     onChange={e => setTheme(e.target.value)}
                     className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                   >
-                    <option value="light">Light</option>
-                    <option value="dark">Dark</option>
+                    <option value="light">{t('profile.light')}</option>
+                    <option value="dark">{t('profile.dark')}</option>
                   </select>
                 </div>
             </div>
@@ -113,14 +117,14 @@ export function ProfileDialog({ isOpen, onClose }: ProfileDialogProps) {
                 onClick={onClose}
                 className="px-4 py-2 bg-gray-100 text-gray-700 rounded hover:bg-gray-200"
               >
-                Cancel
+                {t('common.cancel')}
               </button>
               <button 
                 type="submit" 
                 disabled={loading}
                 className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
               >
-                {loading ? 'Saving...' : 'Save'}
+                {loading ? t('common.saving') : t('common.save')}
               </button>
             </div>
           </form>

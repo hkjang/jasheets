@@ -3,6 +3,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import PWAHandler from '@/components/PWAHandler';
 import GlobalHeader from '@/components/layout/GlobalHeader';
+import { LocalizationProvider } from '@/contexts/LocalizationContext';
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,9 +37,11 @@ export default function RootLayout({
   return (
     <html lang="ko" suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <GlobalHeader />
-        <PWAHandler />
-        {children}
+        <LocalizationProvider>
+          <GlobalHeader />
+          <PWAHandler />
+          {children}
+        </LocalizationProvider>
       </body>
     </html>
   );
