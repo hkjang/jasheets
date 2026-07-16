@@ -84,6 +84,7 @@ model Spreadsheet {
   customCommands          CustomCommand[]
   masterViews             MasterView[]
   collaborationOperations CollaborationOperation[]
+  collaborationSnapshots  CollaborationSnapshot[]
 
   @@map("spreadsheets")
 }
@@ -158,6 +159,7 @@ model Sheet {
   filterProfiles          FilterProfile[]
   sheetAutomations        SheetAutomation[]
   collaborationOperations CollaborationOperation[]
+  collaborationSnapshots  CollaborationSnapshot[]
 
   @@unique([spreadsheetId, index])
   @@map("sheets")
@@ -194,6 +196,21 @@ model CollaborationOperation {
   @@index([spreadsheetId, id])
   @@index([sheetId, id])
   @@map("collaboration_operations")
+}
+
+model CollaborationSnapshot {
+  id            String      @id @default(uuid())
+  spreadsheetId String
+  spreadsheet   Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  sheetId       String
+  sheet         Sheet       @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  sequence      BigInt
+  state         Json
+  createdAt     DateTime    @default(now())
+
+  @@unique([sheetId, sequence])
+  @@index([sheetId, sequence(sort: Desc)])
+  @@map("collaboration_snapshots")
 }
 
 // Cell model

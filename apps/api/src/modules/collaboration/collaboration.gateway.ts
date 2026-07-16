@@ -11,6 +11,7 @@ import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { SheetsService } from '../sheets/sheets.service';
 import { PrismaService } from '../../prisma/prisma.service';
+import { reduceOperationLog, SnapshotCell } from './operation-log.util';
 
 interface UserPresence {
   id: string;
@@ -353,6 +354,41 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
         payload: JSON.parse(JSON.stringify(payload)),
       },
     });
+    await this.createPeriodicSnapshot(spreadsheetId, sheetId, operation.id);
     return { sequence: Number(operation.id) };
+  }
+
+  private async createPeriodicSnapshot(
+    spreadsheetId: string,
+    sheetId: string,
+    sequence: bigint,
+  ): Promise<void> {
+    const operationCount = await this.prisma.collaborationOperation.count({ where: { sheetId } });
+    if (operationCount % 100 !== 0) return;
+    const previous = await this.prisma.collaborationSnapshot.findFirst({
+      where: { sheetId },
+      orderBy: { sequence: 'desc' },
+    });
+    const operations = await this.prisma.collaborationOperation.findMany({
+      where: { sheetId, id: { gt: previous?.sequence ?? 0n, lte: sequence } },
+      orderBy: { id: 'asc' },
+    });
+    const previousState = previous?.state as unknown as { cells?: SnapshotCell[] } | undefined;
+    const cells = reduceOperationLog(
+      operations.map((operation) => ({
+        sequence: Number(operation.id),
+        event: operation.event,
+        payload: operation.payload,
+      })),
+      previousState?.cells ?? [],
+    );
+    await this.prisma.collaborationSnapshot.create({
+      data: {
+        spreadsheetId,
+        sheetId,
+        sequence,
+        state: JSON.parse(JSON.stringify({ cells })),
+      },
+    });
   }
 }
