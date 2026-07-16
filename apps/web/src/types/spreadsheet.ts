@@ -80,6 +80,8 @@ export interface SheetData {
   [rowIndex: number]: RowData;
 }
 
+export type NamedRanges = Record<string, CellRange>;
+
 export interface ColumnDef {
   width: number;
   hidden?: boolean;

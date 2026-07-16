@@ -141,6 +141,7 @@ export default function Spreadsheet({
     applyTableFormat,
     sortRange,
     removeDuplicates,
+    defineNamedRange,
   } = useSpreadsheetData({ initialData, onDataChange });
 
   // Selection
@@ -1309,7 +1310,20 @@ export default function Spreadsheet({
         onDataValidation={() =>
           alert("데이터 확인 기능은 준비 중입니다. (유효성 검사 규칙 설정)")
         }
-        onNamedRanges={() => alert("이름이 지정된 범위 기능은 준비 중입니다.")}
+        onNamedRanges={() => {
+          if (!selection) {
+            alert("이름을 지정할 범위를 먼저 선택해주세요.");
+            return;
+          }
+          const name = prompt("선택한 범위의 이름을 입력하세요.");
+          if (!name) return;
+          try {
+            defineNamedRange(name, selection);
+            setToastMessage(`이름 범위 ${name.trim().toUpperCase()}가 등록되었습니다.`);
+          } catch (error) {
+            alert(error instanceof Error ? error.message : "이름 범위를 등록하지 못했습니다.");
+          }
+        }}
         onProtectedRanges={() =>
           alert("보호된 시트 및 범위 기능은 준비 중입니다.")
         }

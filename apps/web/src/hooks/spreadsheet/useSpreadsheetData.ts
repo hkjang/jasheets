@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from 'react';
-import { SheetData, CellStyle } from '@/types/spreadsheet';
+import { CellRange, NamedRanges, SheetData, CellStyle } from '@/types/spreadsheet';
 import { produce, applyPatches, Patch, enablePatches } from 'immer';
 // Use local FormulaEngine
 import { evaluateFormula } from '@/utils/FormulaEngine';
@@ -29,6 +29,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
     const [data, setData] = useState<SheetData>(() => initialData || {});
     const [history, setHistory] = useState<Commit[]>([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
+    const [namedRanges, setNamedRanges] = useState<NamedRanges>({});
 
     // Helper to apply changes and record history
     const applyChange = useCallback((recipe: (draft: SheetData) => void) => {
@@ -77,7 +78,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
             if (isFormula) {
                 try {
                     // ... formula eval ...
-                    const result = evaluateFormula(value, draft as unknown as SheetData);
+                    const result = evaluateFormula(value, draft as unknown as SheetData, namedRanges);
                     // Apply format to result
                     if (typeof result === 'number') {
                         displayValue = formatValue(result, currentFormat);
@@ -116,9 +117,9 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
             };
 
             // Trigger Recalculation
-            recalculate(draft);
+            recalculate(draft, namedRanges);
         });
-    }, [applyChange]);
+    }, [applyChange, namedRanges]);
 
     const updateCells = useCallback((updates: { row: number; col: number; value: string }[]) => {
         applyChange((draft) => {
@@ -135,7 +136,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
 
                 if (isFormula) {
                     try {
-                        const result = evaluateFormula(value, draft as unknown as SheetData);
+                        const result = evaluateFormula(value, draft as unknown as SheetData, namedRanges);
                         if (typeof result === 'number') {
                             displayValue = formatValue(result, currentFormat);
                         } else {
@@ -168,9 +169,9 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                     format: finalFormat,
                 };
             });
-            recalculate(draft);
+            recalculate(draft, namedRanges);
         });
-    }, [applyChange]);
+    }, [applyChange, namedRanges]);
 
     const updateCellFormat = useCallback((range: { start: { row: number, col: number }, end: { row: number, col: number } } | null, format: string) => {
         if (!range) return;
@@ -352,6 +353,26 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
 
     return {
         data,
+        namedRanges,
+        defineNamedRange: (name: string, range: CellRange) => {
+            const normalizedName = name.trim().toUpperCase();
+            if (!/^[A-Z_][A-Z0-9_.]*$/.test(normalizedName) || /^\$?[A-Z]+\$?[1-9][0-9]*$/.test(normalizedName)) {
+                throw new Error('이름은 문자 또는 밑줄로 시작해야 하며 셀 주소와 같을 수 없습니다.');
+            }
+            const next = { ...namedRanges, [normalizedName]: range };
+            setNamedRanges(next);
+            setData((currentData) => produce(currentData, (draft) => {
+                recalculate(draft, next);
+            }));
+        },
+        deleteNamedRange: (name: string) => {
+            const next = { ...namedRanges };
+            delete next[name.toUpperCase()];
+            setNamedRanges(next);
+            setData((currentData) => produce(currentData, (draft) => {
+                recalculate(draft, next);
+            }));
+        },
         setData,
         updateData, // External update
         setCellValue,

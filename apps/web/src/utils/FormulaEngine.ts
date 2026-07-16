@@ -1,4 +1,4 @@
-import { SheetData, CellData } from '@/types/spreadsheet';
+import { NamedRanges, SheetData } from '@/types/spreadsheet';
 
 /**
  * Basic Formula Engine for JaSheets
@@ -8,7 +8,7 @@ import { SheetData, CellData } from '@/types/spreadsheet';
  * - References: A1, B2, A1:B2 (Ranges)
  */
 
-export type TokenType = 'NUMBER' | 'STRING' | 'REF' | 'RANGE' | 'FUNCTION' | 'OPERATOR' | 'LPAREN' | 'RPAREN' | 'COMMA' | 'EOF';
+export type TokenType = 'NUMBER' | 'STRING' | 'REF' | 'RANGE' | 'NAME' | 'FUNCTION' | 'OPERATOR' | 'LPAREN' | 'RPAREN' | 'COMMA' | 'EOF';
 
 export interface Token {
   type: TokenType;
@@ -77,10 +77,12 @@ export function tokenize(formula: string): Token[] {
       const upper = word.toUpperCase();
       if (FUNCTIONS.includes(upper)) {
         tokens.push({ type: 'FUNCTION', value: upper });
-      } else if (word.includes(':')) {
+      } else if (/^\$?[A-Z]+\$?[1-9][0-9]*:\$?[A-Z]+\$?[1-9][0-9]*$/.test(upper)) {
          tokens.push({ type: 'RANGE', value: upper }); // A1:B2
-      } else {
+      } else if (/^\$?[A-Z]+\$?[1-9][0-9]*$/.test(upper)) {
          tokens.push({ type: 'REF', value: upper }); // A1
+      } else {
+         tokens.push({ type: 'NAME', value: upper });
       }
       continue;
     }
@@ -188,7 +190,7 @@ function getRangeValues(range: string, data: SheetData): number[] {
     return values;
 }
 
-export function evaluateFormula(formula: string, data: SheetData): string | number {
+export function evaluateFormula(formula: string, data: SheetData, namedRanges: NamedRanges = {}): string | number {
     try {
         if (!formula.startsWith('=')) return formula;
         
@@ -248,6 +250,15 @@ export function evaluateFormula(formula: string, data: SheetData): string | numb
                 const num = parseFloat(String(val));
                 return isNaN(num) ? 0 : num;
             }
+
+            if (token.type === 'NAME') {
+                consume();
+                const range = namedRanges[token.value];
+                if (!range) return 0;
+                const val = data[range.start.row]?.[range.start.col]?.value;
+                const num = parseFloat(String(val));
+                return isNaN(num) ? 0 : num;
+            }
             
             if (token.type === 'LPAREN') {
                 consume();
@@ -282,6 +293,15 @@ export function evaluateFormula(formula: string, data: SheetData): string | numb
                       consume();
                       const rangeVals = getRangeValues(t.value, data);
                       args.push(...rangeVals);
+                  } else if (t.type === 'NAME') {
+                      consume();
+                      const range = namedRanges[t.value];
+                      if (range) {
+                          args.push(...getRangeValues(
+                              `${columnIndexToName(range.start.col)}${range.start.row + 1}:${columnIndexToName(range.end.col)}${range.end.row + 1}`,
+                              data,
+                          ));
+                      }
                   } else {
                       // Expression might match Ref or Number
                       args.push(parseExpression());

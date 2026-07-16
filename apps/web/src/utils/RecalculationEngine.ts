@@ -1,4 +1,4 @@
-import { SheetData } from '@/types/spreadsheet';
+import { NamedRanges, SheetData } from '@/types/spreadsheet';
 import { tokenize, evaluateFormula } from './FormulaEngine';
 import { formatValue } from './formatting';
 
@@ -11,7 +11,7 @@ const parseCellKey = (key: string) => {
 
 // Extract dependencies from a formula string
 // Returns array of cell keys "row:col"
-function getDependencies(formula: string): string[] {
+function getDependencies(formula: string, namedRanges: NamedRanges): string[] {
     if (!formula.startsWith('=')) return [];
     
     const tokens = tokenize(formula);
@@ -65,6 +65,15 @@ function getDependencies(formula: string): string[] {
                      }
                  }
              }
+        } else if (token.type === 'NAME') {
+            const range = namedRanges[token.value];
+            if (range) {
+                for (let row = range.start.row; row <= range.end.row; row++) {
+                    for (let col = range.start.col; col <= range.end.col; col++) {
+                        deps.add(getCellKey(row, col));
+                    }
+                }
+            }
         }
     }
     return Array.from(deps);
@@ -84,7 +93,7 @@ function parseRef(ref: string) {
      return null;
 }
 
-export function recalculate(data: SheetData): SheetData {
+export function recalculate(data: SheetData, namedRanges: NamedRanges = {}): SheetData {
     // 1. Build Graph
     const graph = new Map<string, string[]>(); // Key -> dependants (who depends on Key)
     const inDegree = new Map<string, number>(); // Key -> number of dependencies
@@ -106,7 +115,7 @@ export function recalculate(data: SheetData): SheetData {
                 const key = getCellKey(row, col);
                 cellsWithFormulas.push(key);
                 
-                const deps = getDependencies(cell.formula);
+                const deps = getDependencies(cell.formula, namedRanges);
                 deps.forEach(dep => {
                     // dep is a cell that 'key' needs.
                     // So if 'dep' changes, 'key' needs update.
@@ -160,7 +169,7 @@ export function recalculate(data: SheetData): SheetData {
          // Re-scan dependencies to count only internal formula deps
          const { row, col } = parseCellKey(cellKey);
          const cell = data[row]?.[col];
-         const deps = getDependencies(cell?.formula || '');
+         const deps = getDependencies(cell?.formula || '', namedRanges);
          
          let count = 0;
          deps.forEach(dep => {
@@ -230,7 +239,7 @@ export function recalculate(data: SheetData): SheetData {
         if (cell && cell.formula) {
             try {
                 // Evaluate
-                const result = evaluateFormula(cell.formula, data);
+                const result = evaluateFormula(cell.formula, data, namedRanges);
                  // Check if result changed?
                  // Update cell
                  // NOTE: evaluateFormula needs to support 'data' being the draft itself.
