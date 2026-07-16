@@ -235,6 +235,20 @@ export class SheetDocument {
   }
 }
 
+function compareUpdates(left: Uint8Array, right: Uint8Array): number {
+  const length = Math.min(left.length, right.length);
+  for (let index = 0; index < length; index++) {
+    if (left[index] !== right[index]) return left[index] - right[index];
+  }
+  return left.length - right.length;
+}
+
+/** Merge commutative Yjs updates in a canonical byte order for reproducible snapshots. */
+export function reconcileUpdates(updates: Uint8Array[]): Uint8Array {
+  if (updates.length === 0) return new Uint8Array();
+  return Y.mergeUpdates([...updates].sort(compareUpdates));
+}
+
 // Provider for WebSocket synchronization
 export interface SyncProvider {
   connect(): void;
