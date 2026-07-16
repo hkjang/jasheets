@@ -21,6 +21,7 @@ const FUNCTIONS = [
   'SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'SEQUENCE',
   'DATE', 'TIME', 'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND', 'TODAY', 'NOW',
   'VLOOKUP', 'HLOOKUP', 'INDEX', 'MATCH', 'XLOOKUP',
+  'IFERROR', 'IFNA',
 ];
 
 export type FormulaResult = string | number | boolean | number[][];
@@ -253,6 +254,10 @@ function valuesEqual(left: unknown, right: unknown): boolean {
     return left === right;
 }
 
+function isFormulaError(value: unknown): value is string {
+    return typeof value === 'string' && /^#[A-Z0-9/?!]+/.test(value);
+}
+
 function evaluateLookupFormula(formula: string, data: SheetData, namedRanges: NamedRanges): FormulaResult | undefined {
     const match = formula.match(/^=(VLOOKUP|HLOOKUP|INDEX|MATCH|XLOOKUP)\((.*)\)$/i);
     if (!match) return undefined;
@@ -306,6 +311,19 @@ function evaluateLookupFormula(formula: string, data: SheetData, namedRanges: Na
 export function evaluateFormula(formula: string, data: SheetData, namedRanges: NamedRanges = {}): FormulaResult {
     try {
         if (!formula.startsWith('=')) return formula;
+
+        const errorHandler = formula.match(/^=(IFERROR|IFNA)\((.*)\)$/i);
+        if (errorHandler) {
+            const args = splitFunctionArgs(errorHandler[2]);
+            if (args.length !== 2) return '#VALUE!';
+            const result = evaluateFormula(`=${args[0]}`, data, namedRanges);
+            const recover = errorHandler[1].toUpperCase() === 'IFERROR'
+                ? isFormulaError(result)
+                : result === '#N/A';
+            if (!recover) return result;
+            const fallback = lookupValue(args[1], data);
+            return fallback ?? '';
+        }
 
         const lookupResult = evaluateLookupFormula(formula, data, namedRanges);
         if (lookupResult !== undefined) return lookupResult;
@@ -365,7 +383,10 @@ export function evaluateFormula(formula: string, data: SheetData, namedRanges: N
                  const op = consume().value;
                  const right = parseFactor();
                  if (op === '*') left *= right;
-                 else left /= right;
+                 else {
+                     if (right === 0) throw new Error('#DIV/0!');
+                     left /= right;
+                 }
             }
             return left;
         }
@@ -384,6 +405,7 @@ export function evaluateFormula(formula: string, data: SheetData, namedRanges: N
                 if (!coords) return 0;
                 
                 const val = data[coords.row]?.[coords.col]?.value;
+                if (isFormulaError(val)) throw new Error(val);
                 const num = parseFloat(String(val));
                 return isNaN(num) ? 0 : num;
             }
@@ -391,8 +413,9 @@ export function evaluateFormula(formula: string, data: SheetData, namedRanges: N
             if (token.type === 'NAME') {
                 consume();
                 const range = namedRanges[token.value];
-                if (!range) return 0;
+                if (!range) throw new Error('#NAME?');
                 const val = data[range.start.row]?.[range.start.col]?.value;
+                if (isFormulaError(val)) throw new Error(val);
                 const num = parseFloat(String(val));
                 return isNaN(num) ? 0 : num;
             }
@@ -473,9 +496,10 @@ export function evaluateFormula(formula: string, data: SheetData, namedRanges: N
         }
         
         const result = parseExpression();
-        return isNaN(result) ? '#REF!' : result; // Simplistic error handling
+        return isNaN(result) ? '#VALUE!' : result;
         
     } catch (e) {
+        if (e instanceof Error && isFormulaError(e.message)) return e.message;
         console.error("Formula Error", e);
         return '#ERROR';
     }

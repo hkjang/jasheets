@@ -46,8 +46,8 @@ describe('named ranges', () => {
     expect(evaluateFormula('=SUM(SALES)', data, namedRanges)).toBe(30);
   });
 
-  it('treats an unknown name as an empty value', () => {
-    expect(evaluateFormula('=UNKNOWN+5', data, namedRanges)).toBe(5);
+  it('returns a name error for an unknown name', () => {
+    expect(evaluateFormula('=UNKNOWN+5', data, namedRanges)).toBe('#NAME?');
   });
 });
 
@@ -94,5 +94,26 @@ describe('lookup formulas', () => {
   it('returns spreadsheet errors for invalid lookups', () => {
     expect(evaluateFormula('=VLOOKUP("D",A1:C3,2,FALSE)', lookupData)).toBe('#N/A');
     expect(evaluateFormula('=INDEX(A1:C3,1,4)', lookupData)).toBe('#REF!');
+  });
+});
+
+describe('formula error propagation', () => {
+  it('propagates errors from referenced cells through arithmetic', () => {
+    const errorData: SheetData = {
+      0: { 0: { value: '#REF!' }, 1: { value: '#N/A' } },
+    };
+    expect(evaluateFormula('=A1+10', errorData)).toBe('#REF!');
+    expect(evaluateFormula('=B1*2', errorData)).toBe('#N/A');
+  });
+
+  it('returns standard arithmetic and name errors', () => {
+    expect(evaluateFormula('=10/0', {})).toBe('#DIV/0!');
+    expect(evaluateFormula('=UNKNOWN_NAME+1', {})).toBe('#NAME?');
+  });
+
+  it('recovers errors with IFERROR and only missing values with IFNA', () => {
+    expect(evaluateFormula('=IFERROR(10/0,99)', {})).toBe(99);
+    expect(evaluateFormula('=IFNA(XLOOKUP("Z",A1:A1,B1:B1),"missing")', {})).toBe('missing');
+    expect(evaluateFormula('=IFNA(10/0,99)', {})).toBe('#DIV/0!');
   });
 });
