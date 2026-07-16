@@ -301,6 +301,7 @@ export default function Spreadsheet({
     selection,
     setData,
     spreadsheetId: spreadsheetId || "demo-sheet",
+    activeSheetId,
   });
 
   // Charts

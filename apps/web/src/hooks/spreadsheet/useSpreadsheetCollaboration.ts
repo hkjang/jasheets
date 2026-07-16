@@ -1,7 +1,8 @@
 
-import { useState, useCallback, useMemo, useEffect } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useCollaboration, ChatMessage } from '@/hooks/useCollaboration';
 import { CellPosition, CellRange, SheetData } from '@/types/spreadsheet';
+import { applyCollaborationOperation } from '@/utils/collaborationConflict';
 
 interface UseSpreadsheetCollaborationProps {
   userId: string;
@@ -10,6 +11,7 @@ interface UseSpreadsheetCollaborationProps {
   selection: CellRange | null;
   setData: React.Dispatch<React.SetStateAction<SheetData>>;
   spreadsheetId: string;
+  activeSheetId?: string | null;
 }
 
 export function useSpreadsheetCollaboration({
@@ -19,10 +21,12 @@ export function useSpreadsheetCollaboration({
   selection,
   setData,
   spreadsheetId,
+  activeSheetId,
 }: UseSpreadsheetCollaborationProps) {
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
+  const cellSequencesRef = useRef(new Map<string, number>());
 
   const handleChatMessage = useCallback((message: ChatMessage) => {
     setChatMessages(prev => [...prev, message]);
@@ -35,18 +39,23 @@ export function useSpreadsheetCollaboration({
     col: number;
     value: any;
     formula?: string;
+    sequence?: number;
   }) => {
-     setData(prev => {
-       const next = { ...prev };
-       if (!next[data.row]) next[data.row] = {};
-       next[data.row][data.col] = {
-         ...next[data.row][data.col],
-         value: data.value,
-         formula: data.formula
-       };
-       return next;
-     });
-  }, [setData]);
+    if (activeSheetId && data.sheetId !== activeSheetId) return;
+    setData(prev => applyCollaborationOperation(prev, data, cellSequencesRef.current));
+  }, [activeSheetId, setData]);
+
+  const handleCellsUpdate = useCallback((data: {
+    sheetId: string;
+    updates: Array<{ row: number; col: number; value: any; formula?: string }>;
+    sequence?: number;
+  }) => {
+    if (activeSheetId && data.sheetId !== activeSheetId) return;
+    setData(prev => data.updates.reduce(
+      (next, update) => applyCollaborationOperation(next, { ...update, sheetId: data.sheetId, sequence: data.sequence }, cellSequencesRef.current),
+      prev,
+    ));
+  }, [activeSheetId, setData]);
 
   const {
     users,
@@ -62,6 +71,7 @@ export function useSpreadsheetCollaboration({
     userName,
     onChatMessage: handleChatMessage,
     onCellUpdate: handleCellUpdate,
+    onCellsUpdate: handleCellsUpdate,
   });
 
   useEffect(() => {
