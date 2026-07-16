@@ -36,6 +36,7 @@ import {
   ColumnDef,
   RowDef,
   DEFAULT_CONFIG,
+  parseSelection,
 } from "@/types/spreadsheet";
 import styles from "./Spreadsheet.module.css";
 import { useSpreadsheetData } from "@/hooks/spreadsheet/useSpreadsheetData";
@@ -667,9 +668,11 @@ export default function Spreadsheet({
     onCommit: commitEditing,
     onCancel: cancelEditing,
     onStartEdit: (val) => selectedCell && startEditing(selectedCell, val),
-    onNavigate: (row, col) => {
+    onNavigate: (row, col, extend, anchor) => {
       handleCellSelect({ row, col });
-      setSelection({ start: { row, col }, end: { row, col } });
+      setSelection(extend
+        ? parseSelection(anchor, { row, col })
+        : { start: { row, col }, end: { row, col } });
     },
     onClearSelection: () => {
       if (!selection) return;

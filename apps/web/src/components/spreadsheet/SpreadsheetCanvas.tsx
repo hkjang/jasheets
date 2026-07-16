@@ -413,6 +413,23 @@ export default function SpreadsheetCanvas({
     }));
   }, []);
 
+  // Keep keyboard navigation visible without requiring pointer-based scrolling.
+  useEffect(() => {
+    const container = containerRef.current?.querySelector<HTMLElement>(`.${styles.scrollContainer}`);
+    if (!container || !selectedCell) return;
+    const left = columnGeometry.offsets[selectedCell.col];
+    const right = left + columnGeometry.sizes[selectedCell.col];
+    const top = rowGeometry.offsets[selectedCell.row];
+    const bottom = top + rowGeometry.sizes[selectedCell.row];
+    const visibleWidth = container.clientWidth - config.headerWidth;
+    const visibleHeight = container.clientHeight - config.headerHeight;
+
+    if (left < container.scrollLeft) container.scrollLeft = left;
+    else if (right > container.scrollLeft + visibleWidth) container.scrollLeft = right - visibleWidth;
+    if (top < container.scrollTop) container.scrollTop = top;
+    else if (bottom > container.scrollTop + visibleHeight) container.scrollTop = bottom - visibleHeight;
+  }, [columnGeometry, config.headerHeight, config.headerWidth, rowGeometry, selectedCell]);
+
   // Handle mouse down
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
@@ -703,6 +720,8 @@ export default function SpreadsheetCanvas({
         />
         <canvas
           ref={canvasRef}
+          tabIndex={0}
+          aria-label="Spreadsheet grid"
           className={styles.canvas}
           onMouseDown={handleMouseDown}
           onMouseMove={handleMouseMove}
