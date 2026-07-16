@@ -42,10 +42,17 @@ export function parseInput(input: string): ParsedInput {
     // Be careful not to match simple ratios 1:2 if not intended as time?
     // Let's assume colon implies time for now if it parses as date.
     if (trimmed.includes(':') && !trimmed.includes('-') && !trimmed.includes('/')) {
-        // Use a dummy date to parse time
-        const d = new Date(`1970-01-01 ${trimmed}`);
-        if (!isNaN(d.getTime())) {
-             return { value: d.getTime(), format: 'time' };
+        const match = trimmed.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i);
+        if (match) {
+             let hour = Number(match[1]);
+             const minute = Number(match[2]);
+             const second = Number(match[3] ?? 0);
+             const period = match[4]?.toUpperCase();
+             if (period === 'PM' && hour < 12) hour += 12;
+             if (period === 'AM' && hour === 12) hour = 0;
+             if (hour < 24 && minute < 60 && second < 60) {
+                 return { value: timePartsToSerial(hour, minute, second), format: 'time' };
+             }
         }
     }
 
@@ -58,7 +65,10 @@ export function parseInput(input: string): ParsedInput {
             // Check if it looks like a date?
             // "1.2.3" might parse?
             // "hello" is NaN.
-            return { value: date.getTime(), format: 'date' };
+            return {
+                value: datePartsToSerial(date.getFullYear(), date.getMonth() + 1, date.getDate()),
+                format: 'date',
+            };
         }
     }
 
@@ -76,3 +86,4 @@ export function parseInput(input: string): ParsedInput {
     // 9. Default: String
     return { value: input, format: 'general' };
 }
+import { datePartsToSerial, timePartsToSerial } from './dateSerial';

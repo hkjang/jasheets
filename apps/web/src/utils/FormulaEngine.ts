@@ -1,4 +1,5 @@
 import { NamedRanges, SheetData } from '@/types/spreadsheet';
+import { datePartsToSerial, dateToSerial, serialToDate, timePartsToSerial } from './dateSerial';
 
 /**
  * Basic Formula Engine for JaSheets
@@ -16,7 +17,10 @@ export interface Token {
 }
 
 const OPERATORS = ['+', '-', '*', '/'];
-const FUNCTIONS = ['SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'SEQUENCE'];
+const FUNCTIONS = [
+  'SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'SEQUENCE',
+  'DATE', 'TIME', 'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND', 'TODAY', 'NOW',
+];
 
 export type FormulaResult = string | number | number[][];
 
@@ -341,6 +345,19 @@ export function evaluateFormula(formula: string, data: SheetData, namedRanges: N
                  case 'MIN': return Math.min(...args);
                  case 'MAX': return Math.max(...args);
                  case 'COUNT': return args.length;
+                 case 'DATE': return datePartsToSerial(args[0] ?? 0, args[1] ?? 1, args[2] ?? 1);
+                 case 'TIME': return timePartsToSerial(args[0] ?? 0, args[1] ?? 0, args[2] ?? 0);
+                 case 'YEAR': return serialToDate(args[0] ?? 0).getUTCFullYear();
+                 case 'MONTH': return serialToDate(args[0] ?? 0).getUTCMonth() + 1;
+                 case 'DAY': return serialToDate(args[0] ?? 0).getUTCDate();
+                 case 'HOUR': return Math.floor(((args[0] ?? 0) % 1) * 24 + 1e-9);
+                 case 'MINUTE': return Math.floor(((args[0] ?? 0) * 1440 + 1e-7) % 60);
+                 case 'SECOND': return Math.floor(((args[0] ?? 0) * 86400 + 1e-5) % 60);
+                 case 'TODAY': {
+                     const now = new Date();
+                     return datePartsToSerial(now.getUTCFullYear(), now.getUTCMonth() + 1, now.getUTCDate());
+                 }
+                 case 'NOW': return dateToSerial(new Date());
                  default: return 0;
              }
         }

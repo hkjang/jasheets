@@ -10,11 +10,11 @@ export function formatValue(value: string | number | boolean | null, format: str
     // If we still have a string, try to parse it if format implies we should?
     // For now, let's just try to parse if it's a number-like string and format is specific.
     
-    let num = typeof value === 'string' ? parseFloat(value) : value;
+    const num = typeof value === 'string' ? parseFloat(value) : value;
 
     // Special handling for Date/Time where value might be a timestamp number
     if ((format === 'date' || format === 'time') && typeof value === 'number') {
-        const date = new Date(value);
+        const date = storedNumberToDate(value);
         if (isNaN(date.getTime())) return String(value);
         
         if (format === 'date') return date.toLocaleDateString();
@@ -40,13 +40,13 @@ export function formatValue(value: string | number | boolean | null, format: str
              // Let's assume if it's a small number, maybe excel serial? (Not implementing that yet)
              // If large number, timestamp.
              try {
-                 const date = new Date(num); 
+                 const date = storedNumberToDate(num);
                  if (isNaN(date.getTime())) return String(value);
                  return date.toLocaleDateString();
              } catch { return String(value); }
         case 'time':
              try {
-                 const date = new Date(num);
+                 const date = storedNumberToDate(num);
                  if (isNaN(date.getTime())) return String(value);
                  return date.toLocaleTimeString();
              } catch { return String(value); }
@@ -55,3 +55,4 @@ export function formatValue(value: string | number | boolean | null, format: str
             return String(value);
     }
 }
+import { storedNumberToDate } from './dateSerial';
