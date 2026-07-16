@@ -27,13 +27,14 @@ model User {
   contact  String?
 
   // Relations
-  ownedSpreadsheets Spreadsheet[] @relation("SpreadsheetOwner")
+  ownedSpreadsheets Spreadsheet[]   @relation("SpreadsheetOwner")
   permissions       Permission[]
   comments          Comment[]
   versions          Version[]
   sessions          Session[]
   auditLogs         AuditLog[]
   favorites         Favorite[]
+  filterProfiles    FilterProfile[]
 
   roleId          String?
   role            Role?            @relation(fields: [roleId], references: [id])
@@ -747,6 +748,8 @@ model FilterProfile {
   id         String   @id @default(uuid())
   sheetId    String
   sheet      Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name       String
   filters    Json // 필터 조건 배열 [{column, operator, value}]
   sortings   Json? // 정렬 설정 [{column, direction}]
@@ -756,7 +759,7 @@ model FilterProfile {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
-  @@index([sheetId])
+  @@index([sheetId, userId])
   @@map("filter_profiles")
 }
 

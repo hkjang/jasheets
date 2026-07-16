@@ -69,7 +69,8 @@ import DocumentationDialog from "./DocumentationDialog";
 import SheetPermissionsDialog from "./SheetPermissionsDialog";
 import HistoryTimelinePanel from "./HistoryTimelinePanel";
 import SheetAutomationDialog from "./SheetAutomationDialog";
-import FilterProfilesDropdown from "./FilterProfilesDropdown";
+import FilterProfilesDropdown, { FilterProfile } from "./FilterProfilesDropdown";
+import { getHiddenRowsForFilterView } from "@/utils/filterViews";
 import SnapshotManagerPanel from "./SnapshotManagerPanel";
 import CommandPalette from "./CommandPalette";
 
@@ -1430,6 +1431,20 @@ export default function Spreadsheet({
           onSubmit={commitEditing}
           onCancel={cancelEditing}
           onEdit={() => selectedCell && startEditing(selectedCell)}
+        />
+      )}
+
+      {activeSheetId && (
+        <FilterProfilesDropdown
+          sheetId={activeSheetId}
+          onApplyProfile={(profile: FilterProfile) => {
+            const hiddenRows = new Set([
+              ...getHiddenRowsForFilterView(data, profile.filters),
+              ...(profile.hiddenRows ?? []),
+            ]);
+            setRows((current) => current.map((row, index) => ({ ...row, hidden: hiddenRows.has(index) })));
+          }}
+          onClearFilters={() => setRows((current) => current.map((row) => ({ ...row, hidden: false })))}
         />
       )}
 

@@ -3,11 +3,13 @@
 import { useState, useEffect } from 'react';
 import styles from './FilterProfilesDropdown.module.css';
 
-interface FilterProfile {
+export interface FilterProfile {
     id: string;
     name: string;
-    filters: Array<{ column: number; operator: string; value: any }>;
+    filters: Array<{ column: number; operator: string; value: unknown }>;
     sortings?: Array<{ column: number; direction: 'asc' | 'desc' }>;
+    hiddenRows?: number[];
+    hiddenCols?: number[];
     isDefault: boolean;
     createdAt: string;
 }

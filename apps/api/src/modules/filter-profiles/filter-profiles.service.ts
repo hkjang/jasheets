@@ -55,7 +55,7 @@ export class FilterProfilesService {
         await this.checkSheetAccess(userId, sheetId);
 
         return this.prisma.filterProfile.findMany({
-            where: { sheetId },
+            where: { sheetId, userId },
             orderBy: [{ isDefault: 'desc' }, { createdAt: 'desc' }],
         });
     }
@@ -67,7 +67,7 @@ export class FilterProfilesService {
         await this.checkSheetAccess(userId, sheetId);
 
         return this.prisma.filterProfile.findFirst({
-            where: { sheetId, isDefault: true },
+            where: { sheetId, userId, isDefault: true },
         });
     }
 
@@ -83,6 +83,10 @@ export class FilterProfilesService {
             throw new NotFoundException('Filter profile not found');
         }
 
+        if (profile.userId !== userId) {
+            throw new ForbiddenException('Filter profile belongs to another user');
+        }
+
         await this.checkSheetAccess(userId, profile.sheetId);
         return profile;
     }
@@ -91,12 +95,12 @@ export class FilterProfilesService {
      * Create a new filter profile
      */
     async createProfile(userId: string, sheetId: string, dto: CreateFilterProfileDto) {
-        await this.checkSheetAccess(userId, sheetId, true);
+        await this.checkSheetAccess(userId, sheetId);
 
         // If setting as default, unset other defaults
         if (dto.isDefault) {
             await this.prisma.filterProfile.updateMany({
-                where: { sheetId, isDefault: true },
+                where: { sheetId, userId, isDefault: true },
                 data: { isDefault: false },
             });
         }
@@ -104,6 +108,7 @@ export class FilterProfilesService {
         return this.prisma.filterProfile.create({
             data: {
                 sheetId,
+                userId,
                 name: dto.name,
                 filters: dto.filters,
                 sortings: dto.sortings,
@@ -119,12 +124,12 @@ export class FilterProfilesService {
      */
     async updateProfile(userId: string, profileId: string, dto: UpdateFilterProfileDto) {
         const profile = await this.getProfile(userId, profileId);
-        await this.checkSheetAccess(userId, profile.sheetId, true);
+        await this.checkSheetAccess(userId, profile.sheetId);
 
         // If setting as default, unset other defaults
         if (dto.isDefault) {
             await this.prisma.filterProfile.updateMany({
-                where: { sheetId: profile.sheetId, isDefault: true, id: { not: profileId } },
+                where: { sheetId: profile.sheetId, userId, isDefault: true, id: { not: profileId } },
                 data: { isDefault: false },
             });
         }
@@ -147,7 +152,7 @@ export class FilterProfilesService {
      */
     async deleteProfile(userId: string, profileId: string) {
         const profile = await this.getProfile(userId, profileId);
-        await this.checkSheetAccess(userId, profile.sheetId, true);
+        await this.checkSheetAccess(userId, profile.sheetId);
 
         await this.prisma.filterProfile.delete({
             where: { id: profileId },
@@ -165,7 +170,7 @@ export class FilterProfilesService {
 
         // Unset other defaults
         await this.prisma.filterProfile.updateMany({
-            where: { sheetId: profile.sheetId, isDefault: true },
+            where: { sheetId: profile.sheetId, userId, isDefault: true },
             data: { isDefault: false },
         });
 
