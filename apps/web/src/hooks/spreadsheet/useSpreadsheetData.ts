@@ -6,6 +6,7 @@ import { evaluateFormula } from '@/utils/FormulaEngine';
 import { formatValue } from '@/utils/formatting';
 import { parseInput } from '@/utils/inputParser';
 import { recalculate } from '@/utils/RecalculationEngine';
+import { rewriteFormulaForStructuralChange, StructuralChange } from '@/utils/formulaReferences';
 
 enablePatches();
 
@@ -54,6 +55,16 @@ function spillArray(
         }
     }
     return null;
+}
+
+function rewriteFormulas(data: SheetData, change: StructuralChange): void {
+    Object.keys(data).forEach((rowKey) => {
+        const row = data[Number(rowKey)];
+        Object.keys(row).forEach((colKey) => {
+            const cell = row[Number(colKey)];
+            if (cell?.formula) cell.formula = rewriteFormulaForStructuralChange(cell.formula, change);
+        });
+    });
 }
 
 export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpreadsheetDataProps) {
@@ -349,8 +360,10 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
             }
             // Ensure the new row is empty (it might have been deleted above, or didn't exist)
             draft[rowIndex] = {};
+            rewriteFormulas(draft, { axis: 'row', type: 'insert', index: rowIndex });
+            recalculate(draft, namedRanges);
         });
-    }, [applyChange]);
+    }, [applyChange, namedRanges]);
 
     const deleteRow = useCallback((rowIndex: number) => {
         applyChange((draft) => {
@@ -365,8 +378,10 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                     delete draft[r];
                 }
             }
+            rewriteFormulas(draft, { axis: 'row', type: 'delete', index: rowIndex });
+            recalculate(draft, namedRanges);
         });
-    }, [applyChange]);
+    }, [applyChange, namedRanges]);
 
     const insertColumn = useCallback((colIndex: number) => {
         applyChange((draft) => {
@@ -384,8 +399,10 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                     }
                 }
             }
+            rewriteFormulas(draft, { axis: 'column', type: 'insert', index: colIndex });
+            recalculate(draft, namedRanges);
         });
-    }, [applyChange]);
+    }, [applyChange, namedRanges]);
 
     const deleteColumn = useCallback((colIndex: number) => {
         applyChange((draft) => {
@@ -406,8 +423,10 @@ export function useSpreadsheetData({ initialData = {}, onDataChange }: UseSpread
                     }
                 }
             }
+            rewriteFormulas(draft, { axis: 'column', type: 'delete', index: colIndex });
+            recalculate(draft, namedRanges);
         });
-    }, [applyChange]);
+    }, [applyChange, namedRanges]);
 
     return {
         data,
