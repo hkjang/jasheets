@@ -4,7 +4,6 @@ import { useRef, useEffect, useCallback, useState, useMemo } from 'react';
 import {
   CellPosition,
   CellRange,
-  CellData,
   SheetData,
   ColumnDef,
   RowDef,
@@ -12,10 +11,14 @@ import {
   SpreadsheetConfig,
   DEFAULT_CONFIG,
   colIndexToLetter,
-  parseSelection,
 } from '@/types/spreadsheet';
 import { ConditionalRule } from './ConditionalFormattingDialog';
 import { resolveConditionalStyle } from '@/utils/conditionalFormatting';
+import {
+  buildAxisGeometry,
+  findAxisIndex,
+  getVisibleRange,
+} from '@/utils/viewportGeometry';
 import styles from './SpreadsheetCanvas.module.css';
 
 interface SpreadsheetCanvasProps {
@@ -81,30 +84,37 @@ export default function SpreadsheetCanvas({
     [configOverride]
   );
 
+  const columnGeometry = useMemo(
+    () => buildAxisGeometry(
+      config.totalCols,
+      columns.map((column) => ({ size: column.width, hidden: column.hidden })),
+      config.defaultColWidth,
+    ),
+    [columns, config.defaultColWidth, config.totalCols],
+  );
+  const rowGeometry = useMemo(
+    () => buildAxisGeometry(
+      config.totalRows,
+      rows.map((row) => ({ size: row.height, hidden: row.hidden })),
+      config.defaultRowHeight,
+    ),
+    [rows, config.defaultRowHeight, config.totalRows],
+  );
+
   // Calculate column positions
   const getColX = useCallback(
     (colIndex: number): number => {
-      let x = config.headerWidth;
-      for (let i = 0; i < colIndex; i++) {
-        if (columns[i]?.hidden) continue;
-        x += columns[i]?.width ?? config.defaultColWidth;
-      }
-      return x;
+      return config.headerWidth + columnGeometry.offsets[colIndex];
     },
-    [columns, config]
+    [columnGeometry, config.headerWidth]
   );
 
   // Calculate row positions
   const getRowY = useCallback(
     (rowIndex: number): number => {
-      let y = config.headerHeight;
-      for (let i = 0; i < rowIndex; i++) {
-        if (rows[i]?.hidden) continue;
-        y += rows[i]?.height ?? config.defaultRowHeight;
-      }
-      return y;
+      return config.headerHeight + rowGeometry.offsets[rowIndex];
     },
-    [rows, config]
+    [config.headerHeight, rowGeometry]
   );
 
   // Get cell position from mouse coordinates
@@ -118,38 +128,15 @@ export default function SpreadsheetCanvas({
         return null;
       }
 
-      // Find column
-      let col = -1;
-      let currentX = config.headerWidth - scrollX;
-      for (let i = 0; i < config.totalCols; i++) {
-        if (columns[i]?.hidden) continue;
-        const colWidth = columns[i]?.width ?? config.defaultColWidth;
-        if (x >= currentX && x < currentX + colWidth) {
-          col = i;
-          break;
-        }
-        currentX += colWidth;
-      }
-
-      // Find row
-      let row = -1;
-      let currentY = config.headerHeight - scrollY;
-      for (let i = 0; i < config.totalRows; i++) {
-        if (rows[i]?.hidden) continue;
-        const rowHeight = rows[i]?.height ?? config.defaultRowHeight;
-        if (y >= currentY && y < currentY + rowHeight) {
-          row = i;
-          break;
-        }
-        currentY += rowHeight;
-      }
+      const col = findAxisIndex(columnGeometry, x - config.headerWidth + scrollX);
+      const row = findAxisIndex(rowGeometry, y - config.headerHeight + scrollY);
 
       if (col >= 0 && row >= 0) {
         return { row, col };
       }
       return null;
     },
-    [viewport, columns, rows, config]
+    [viewport, columnGeometry, rowGeometry, config.headerHeight, config.headerWidth]
   );
 
   // Draw the canvas
@@ -174,34 +161,16 @@ export default function SpreadsheetCanvas({
 
     const { scrollX, scrollY } = viewport;
 
-    // Calculate visible range
-    let startCol = 0;
-    let endCol = 0;
-    let x = config.headerWidth - scrollX;
-    for (let i = 0; i < config.totalCols; i++) {
-      if (columns[i]?.hidden) continue;
-      const colWidth = columns[i]?.width ?? config.defaultColWidth;
-      if (x + colWidth > config.headerWidth) {
-        if (startCol === 0 && x < config.headerWidth) startCol = i;
-        endCol = i;
-      }
-      x += colWidth;
-      if (x > width) break;
-    }
-
-    let startRow = 0;
-    let endRow = 0;
-    let y = config.headerHeight - scrollY;
-    for (let i = 0; i < config.totalRows; i++) {
-      if (rows[i]?.hidden) continue;
-      const rowHeight = rows[i]?.height ?? config.defaultRowHeight;
-      if (y + rowHeight > config.headerHeight) {
-        if (startRow === 0 && y < config.headerHeight) startRow = i;
-        endRow = i;
-      }
-      y += rowHeight;
-      if (y > height) break;
-    }
+    const { start: startCol, end: endCol } = getVisibleRange(
+      columnGeometry,
+      scrollX,
+      width - config.headerWidth,
+    );
+    const { start: startRow, end: endRow } = getVisibleRange(
+      rowGeometry,
+      scrollY,
+      height - config.headerHeight,
+    );
 
     // Draw grid lines and cells
     ctx.save();
@@ -248,9 +217,7 @@ export default function SpreadsheetCanvas({
         const conditionalStyle = resolveConditionalStyle(conditionalRules, row, col, cellData?.value ?? null);
 
         // Apply conditional background if present
-        // @ts-ignore
         if (conditionalStyle.backgroundColor) {
-          // @ts-ignore
           ctx.fillStyle = conditionalStyle.backgroundColor;
           ctx.fillRect(currentX, currentY, colWidth, rowHeight);
         }
@@ -266,12 +233,9 @@ export default function SpreadsheetCanvas({
         if (cellData) {
           const displayValue = cellData.error || cellData.displayValue || String(cellData.value ?? '');
 
-          // @ts-ignore
           ctx.fillStyle = conditionalStyle.color || (cellData.error ? '#ea4335' : (cellData.style?.color || '#202124'));
 
-          // @ts-ignore
           const fontWeight = conditionalStyle.fontWeight || cellData.style?.fontWeight;
-          // @ts-ignore
           const fontStyle = conditionalStyle.fontStyle || cellData.style?.fontStyle;
 
           ctx.font = `${fontWeight === 'bold' ? 'bold ' : ''}${fontStyle === 'italic' ? 'italic ' : ''}${cellData.style?.fontSize || 13}px ${cellData.style?.fontFamily || 'Arial'}`;
@@ -411,6 +375,8 @@ export default function SpreadsheetCanvas({
     getRowY,
     showGridlines,
     isEditing,
+    columnGeometry,
+    rowGeometry,
   ]);
 
   // Handle resize
@@ -722,23 +688,8 @@ export default function SpreadsheetCanvas({
   );
 
   // Calculate total content size for scrolling
-  const totalWidth = useMemo(() => {
-    let width = config.headerWidth;
-    for (let i = 0; i < config.totalCols; i++) {
-      if (columns[i]?.hidden) continue;
-      width += columns[i]?.width ?? config.defaultColWidth;
-    }
-    return width;
-  }, [columns, config]);
-
-  const totalHeight = useMemo(() => {
-    let height = config.headerHeight;
-    for (let i = 0; i < config.totalRows; i++) {
-      if (rows[i]?.hidden) continue;
-      height += rows[i]?.height ?? config.defaultRowHeight;
-    }
-    return height;
-  }, [rows, config]);
+  const totalWidth = config.headerWidth + columnGeometry.totalSize;
+  const totalHeight = config.headerHeight + rowGeometry.totalSize;
 
   return (
     <div ref={containerRef} className={styles.container}>
