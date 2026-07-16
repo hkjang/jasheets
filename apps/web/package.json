@@ -8,7 +8,8 @@
     "start": "next start",
     "start:prod": "next start",
     "lint": "eslint",
-    "test": "jest"
+    "test": "jest",
+    "test:performance": "jest --runInBand src/utils/__tests__/largeSheetPerformance.test.ts"
   },
   "dependencies": {
     "@jasheets/formula-engine": "workspace:^",
