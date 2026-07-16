@@ -27,14 +27,15 @@ model User {
   contact  String?
 
   // Relations
-  ownedSpreadsheets Spreadsheet[]   @relation("SpreadsheetOwner")
-  permissions       Permission[]
-  comments          Comment[]
-  versions          Version[]
-  sessions          Session[]
-  auditLogs         AuditLog[]
-  favorites         Favorite[]
-  filterProfiles    FilterProfile[]
+  ownedSpreadsheets       Spreadsheet[]            @relation("SpreadsheetOwner")
+  permissions             Permission[]
+  comments                Comment[]
+  versions                Version[]
+  sessions                Session[]
+  auditLogs               AuditLog[]
+  favorites               Favorite[]
+  filterProfiles          FilterProfile[]
+  collaborationOperations CollaborationOperation[]
 
   roleId          String?
   role            Role?            @relation(fields: [roleId], references: [id])
@@ -80,8 +81,9 @@ model Spreadsheet {
   embedConfig EmbedConfig?
 
   // Phase 3: Advanced Features
-  customCommands CustomCommand[]
-  masterViews    MasterView[]
+  customCommands          CustomCommand[]
+  masterViews             MasterView[]
+  collaborationOperations CollaborationOperation[]
 
   @@map("spreadsheets")
 }
@@ -147,14 +149,15 @@ model Sheet {
   cellMutations CellMutation[]
 
   // Phase 1: Advanced Features
-  sheetPermissions SheetPermission[]
-  revisionLogs     RevisionLog[]
-  conditionalRules ConditionalRule[]
-  sourceReferences CrossSheetReference[] @relation("SourceReferences")
-  targetReferences CrossSheetReference[] @relation("TargetReferences")
-  sheetSnapshots   SheetSnapshot[]
-  filterProfiles   FilterProfile[]
-  sheetAutomations SheetAutomation[]
+  sheetPermissions        SheetPermission[]
+  revisionLogs            RevisionLog[]
+  conditionalRules        ConditionalRule[]
+  sourceReferences        CrossSheetReference[]    @relation("SourceReferences")
+  targetReferences        CrossSheetReference[]    @relation("TargetReferences")
+  sheetSnapshots          SheetSnapshot[]
+  filterProfiles          FilterProfile[]
+  sheetAutomations        SheetAutomation[]
+  collaborationOperations CollaborationOperation[]
 
   @@unique([spreadsheetId, index])
   @@map("sheets")
@@ -174,6 +177,23 @@ model CellMutation {
   @@unique([sheetId, userId, idempotencyKey])
   @@index([sheetId, createdAt])
   @@map("cell_mutations")
+}
+
+model CollaborationOperation {
+  id            BigInt      @id @default(autoincrement())
+  spreadsheetId String
+  spreadsheet   Spreadsheet @relation(fields: [spreadsheetId], references: [id], onDelete: Cascade)
+  sheetId       String
+  sheet         Sheet       @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  event         String
+  payload       Json
+  createdAt     DateTime    @default(now())
+
+  @@index([spreadsheetId, id])
+  @@index([sheetId, id])
+  @@map("collaboration_operations")
 }
 
 // Cell model

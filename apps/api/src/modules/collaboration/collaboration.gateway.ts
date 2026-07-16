@@ -10,6 +10,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { SheetsService } from '../sheets/sheets.service';
+import { PrismaService } from '../../prisma/prisma.service';
 
 interface UserPresence {
   id: string;
@@ -28,17 +29,9 @@ interface UserPresence {
   lastSeenAt: number;
 }
 
-interface RoomOperation {
-  sequence: number;
-  event: 'cell-updated' | 'cells-updated';
-  payload: Record<string, unknown>;
-}
-
 interface RoomState {
   spreadsheetId: string;
   users: Map<string, UserPresence>;
-  operationSequence: number;
-  operations: RoomOperation[];
 }
 
 @WebSocketGateway({
@@ -59,7 +52,10 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
   ];
   private colorIndex = 0;
 
-  constructor(private readonly sheetsService: SheetsService) {}
+  constructor(
+    private readonly sheetsService: SheetsService,
+    private readonly prisma: PrismaService,
+  ) {}
 
   handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`);
@@ -86,8 +82,6 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
       this.rooms.set(roomId, {
         spreadsheetId,
         users: new Map(),
-        operationSequence: 0,
-        operations: [],
       });
     }
 
@@ -114,11 +108,20 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
       user,
     }));
 
-    const lastSequence = Number(data.lastSequence ?? 0);
+    const lastSequence = BigInt(Math.max(0, Number(data.lastSequence ?? 0)));
+    const operations = await this.prisma.collaborationOperation.findMany({
+      where: { spreadsheetId, id: { gt: lastSequence } },
+      orderBy: { id: 'asc' },
+      take: 1000,
+    });
     return {
       users: currentUsers,
-      operations: room.operations.filter((operation) => operation.sequence > lastSequence),
-      sequence: room.operationSequence,
+      operations: operations.map((operation) => ({
+        sequence: Number(operation.id),
+        event: operation.event,
+        payload: operation.payload,
+      })),
+      sequence: operations.length > 0 ? Number(operations[operations.length - 1].id) : Number(lastSequence),
     };
   }
 
@@ -194,7 +197,7 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
   ) {
     const roomId = `sheet:${data.spreadsheetId}`;
 
-    const operation = this.appendOperation(roomId, 'cell-updated', {
+    const operation = await this.appendOperation(client, data.spreadsheetId, data.sheetId, 'cell-updated', {
       socketId: client.id,
       sheetId: data.sheetId,
       row: data.row,
@@ -211,7 +214,7 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
       col: data.col,
       value: data.value,
       formula: data.formula,
-      sequence: operation?.sequence,
+      sequence: operation.sequence,
     });
 
     // Note: In production, you would also persist to database here
@@ -234,7 +237,7 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
   ) {
     const roomId = `sheet:${data.spreadsheetId}`;
 
-    const operation = this.appendOperation(roomId, 'cells-updated', {
+    const operation = await this.appendOperation(client, data.spreadsheetId, data.sheetId, 'cells-updated', {
       socketId: client.id,
       sheetId: data.sheetId,
       updates: data.updates,
@@ -244,7 +247,7 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
       socketId: client.id,
       sheetId: data.sheetId,
       updates: data.updates,
-      sequence: operation?.sequence,
+      sequence: operation.sequence,
     });
   }
 
@@ -331,16 +334,25 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
     return color;
   }
 
-  private appendOperation(
-    roomId: string,
-    event: RoomOperation['event'],
+  private async appendOperation(
+    client: Socket,
+    spreadsheetId: string,
+    sheetId: string,
+    event: 'cell-updated' | 'cells-updated',
     payload: Record<string, unknown>,
-  ): RoomOperation | undefined {
-    const room = this.rooms.get(roomId);
-    if (!room) return undefined;
-    const operation = { sequence: ++room.operationSequence, event, payload };
-    room.operations.push(operation);
-    if (room.operations.length > 1000) room.operations.splice(0, room.operations.length - 1000);
-    return operation;
+  ): Promise<{ sequence: number }> {
+    const room = this.rooms.get(`sheet:${spreadsheetId}`);
+    const user = room?.users.get(client.id);
+    if (!user) throw new Error('Client must join before editing');
+    const operation = await this.prisma.collaborationOperation.create({
+      data: {
+        spreadsheetId,
+        sheetId,
+        userId: user.id,
+        event,
+        payload: JSON.parse(JSON.stringify(payload)),
+      },
+    });
+    return { sequence: Number(operation.id) };
   }
 }
