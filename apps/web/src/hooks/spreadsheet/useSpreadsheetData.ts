@@ -215,7 +215,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, currentUser
             }
 
             // Trigger Recalculation
-            recalculate(draft, namedRanges);
+            recalculate(draft, namedRanges, [{ row, col }]);
         });
     }, [applyChange, namedRanges, protectedRanges, currentUserId]);
 
@@ -289,7 +289,7 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, currentUser
                     }
                 }
             });
-            recalculate(draft, namedRanges);
+            recalculate(draft, namedRanges, updates.map(({ row, col }) => ({ row, col })));
         });
     }, [applyChange, namedRanges, protectedRanges, currentUserId]);
 

@@ -1,4 +1,4 @@
-import { NamedRanges, SheetData } from '@/types/spreadsheet';
+import { CellPosition, NamedRanges, SheetData } from '@/types/spreadsheet';
 import { tokenize, evaluateFormula } from './FormulaEngine';
 import { formatValue } from './formatting';
 
@@ -93,10 +93,13 @@ function parseRef(ref: string) {
      return null;
 }
 
-export function recalculate(data: SheetData, namedRanges: NamedRanges = {}): SheetData {
+export function recalculate(
+    data: SheetData,
+    namedRanges: NamedRanges = {},
+    changedCells?: CellPosition[],
+): SheetData {
     // 1. Build Graph
     const graph = new Map<string, string[]>(); // Key -> dependants (who depends on Key)
-    const inDegree = new Map<string, number>(); // Key -> number of dependencies
     
     // Scan all cells with formulas
     const cellsWithFormulas: string[] = [];
@@ -124,7 +127,6 @@ export function recalculate(data: SheetData, namedRanges: NamedRanges = {}): She
                     graph.get(dep)!.push(key);
                 });
                 
-                inDegree.set(key, deps.length);
             }
         });
     });
@@ -163,9 +165,26 @@ export function recalculate(data: SheetData, namedRanges: NamedRanges = {}): She
     //    So InDegree should count ONLY dependencies that are *also* in the 'cellsWithFormulas' set.
     
     const formulaSet = new Set(cellsWithFormulas);
+    const affected = new Set<string>();
+    if (changedCells) {
+        const pending = changedCells.map(({ row, col }) => getCellKey(row, col));
+        pending.forEach((key) => affected.add(key));
+        while (pending.length > 0) {
+            const key = pending.shift()!;
+            for (const dependant of graph.get(key) ?? []) {
+                if (affected.has(dependant)) continue;
+                affected.add(dependant);
+                pending.push(dependant);
+            }
+        }
+    }
+    const activeFormulaSet = changedCells
+        ? new Set(cellsWithFormulas.filter((key) => affected.has(key)))
+        : formulaSet;
+    const activeFormulaCells = cellsWithFormulas.filter((key) => activeFormulaSet.has(key));
     const effectiveInDegree = new Map<string, number>();
     
-    cellsWithFormulas.forEach(cellKey => {
+    activeFormulaCells.forEach(cellKey => {
          // Re-scan dependencies to count only internal formula deps
          const { row, col } = parseCellKey(cellKey);
          const cell = data[row]?.[col];
@@ -173,7 +192,7 @@ export function recalculate(data: SheetData, namedRanges: NamedRanges = {}): She
          
          let count = 0;
          deps.forEach(dep => {
-             if (formulaSet.has(dep)) {
+             if (activeFormulaSet.has(dep)) {
                  count++;
                  // We also need to build the internal graph for these
                  if (!graph.has(dep)) graph.set(dep, []);
@@ -208,7 +227,7 @@ export function recalculate(data: SheetData, namedRanges: NamedRanges = {}): She
         const consumers = graph.get(u);
         if (consumers) {
             consumers.forEach(v => {
-                if (formulaSet.has(v)) {
+                if (activeFormulaSet.has(v)) {
                     const current = effectiveInDegree.get(v) || 0;
                     effectiveInDegree.set(v, current - 1);
                     if (current - 1 === 0) {
@@ -223,7 +242,7 @@ export function recalculate(data: SheetData, namedRanges: NamedRanges = {}): She
     // depend on one. Marking all of them prevents stale cached values from
     // surviving after a circular reference is introduced.
     const resolved = new Set(sortedOrder);
-    cellsWithFormulas.forEach((key) => {
+    activeFormulaCells.forEach((key) => {
         if (resolved.has(key)) return;
         const { row, col } = parseCellKey(key);
         const cell = data[row]?.[col];
