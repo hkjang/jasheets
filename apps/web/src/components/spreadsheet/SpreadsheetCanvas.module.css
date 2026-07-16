@@ -25,6 +25,7 @@
   top: 0;
   left: 0;
   cursor: cell;
+  touch-action: pan-x pan-y pinch-zoom;
 }
 
 .srOnly {

@@ -1,0 +1,26 @@
+.editor {
+  border: 2px solid #1a73e8;
+  outline: none;
+  padding: 0 4px;
+  font-size: 13px;
+  font-family: Arial, sans-serif;
+  z-index: 100;
+  box-sizing: border-box;
+}
+
+@media (max-width: 640px), (pointer: coarse) {
+  .editor {
+    position: fixed !important;
+    left: 8px !important;
+    right: 8px;
+    top: auto !important;
+    bottom: max(8px, env(safe-area-inset-bottom));
+    width: calc(100vw - 16px) !important;
+    height: 48px !important;
+    padding: 0 12px;
+    font-size: 16px;
+    border-radius: 8px;
+    background: white;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
+  }
+}

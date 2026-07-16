@@ -1,4 +1,5 @@
 import React, { useEffect, useRef } from 'react';
+import styles from './CellEditor.module.css';
 
 interface CellEditorProps {
   position: { x: number; y: number; width: number; height: number };
@@ -57,19 +58,13 @@ export default function CellEditor({ position, value, onChange, onCommit, onCanc
   return (
     <input
       ref={inputRef}
+      className={styles.editor}
       style={{
         position: 'absolute',
         left: position.x,
         top: position.y,
         width: position.width,
         height: position.height,
-        border: '2px solid #1a73e8',
-        outline: 'none',
-        padding: '0 4px',
-        fontSize: '13px',
-        fontFamily: 'Arial',
-        zIndex: 100,
-        boxSizing: 'border-box'
       }}
       value={value}
       onChange={(e) => onChange(e.target.value)}

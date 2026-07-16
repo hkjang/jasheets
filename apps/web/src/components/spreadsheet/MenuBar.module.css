@@ -9,6 +9,26 @@
   gap: 16px;
 }
 
+@media (max-width: 640px), (pointer: coarse) {
+  .container {
+    height: auto;
+    min-height: 52px;
+    padding: 4px 8px;
+    gap: 8px;
+    overflow-x: auto;
+  }
+
+  .titleInput {
+    min-width: 120px;
+    width: 40vw;
+  }
+
+  .menuButton {
+    min-height: 40px;
+    padding: 8px 10px;
+  }
+}
+
 .leftSection {
     display: flex;
     align-items: center;
@@ -180,4 +200,3 @@
   font-weight: bold;
   margin-left: auto;
 }
-

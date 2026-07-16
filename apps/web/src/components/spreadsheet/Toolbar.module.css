@@ -8,6 +8,27 @@
   gap: 4px;
 }
 
+@media (max-width: 640px), (pointer: coarse) {
+  .container {
+    min-height: 48px;
+    height: 48px;
+    overflow-x: auto;
+    flex-shrink: 0;
+    scrollbar-width: none;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .container::-webkit-scrollbar {
+    display: none;
+  }
+
+  .button,
+  .dropdownButton {
+    min-width: 40px;
+    height: 40px;
+  }
+}
+
 .group {
   display: flex;
   align-items: center;

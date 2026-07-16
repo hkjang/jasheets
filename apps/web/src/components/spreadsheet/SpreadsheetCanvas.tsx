@@ -21,6 +21,7 @@ import {
 } from '@/utils/viewportGeometry';
 import styles from './SpreadsheetCanvas.module.css';
 import { describeSpreadsheetCell } from '@/utils/spreadsheetAccessibility';
+import { isDoubleTap, isTap, PointerSample } from '@/utils/mobileGestures';
 
 interface SpreadsheetCanvasProps {
   data: SheetData;
@@ -83,6 +84,8 @@ export default function SpreadsheetCanvas({
   const resizingRef = useRef<{ type: 'col' | 'row', index: number, start: number, initialSize: number } | null>(null);
   const fillSourceRef = useRef<CellRange | null>(null);
   const fillTargetRef = useRef<CellRange | null>(null);
+  const touchStartRef = useRef<PointerSample | null>(null);
+  const lastTapRef = useRef<PointerSample | null>(null);
 
   const config = useMemo(
     () => ({ ...DEFAULT_CONFIG, ...configOverride }),
@@ -437,7 +440,7 @@ export default function SpreadsheetCanvas({
 
   // Handle mouse down
   const handleMouseDown = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
 
@@ -546,9 +549,11 @@ export default function SpreadsheetCanvas({
 
   // Handle mouse move
   const handleMouseMove = useCallback(
-    (e: React.MouseEvent<HTMLCanvasElement>) => {
+    (e: React.PointerEvent<HTMLCanvasElement>) => {
       const canvas = canvasRef.current;
       if (!canvas) return;
+
+      if (e.pointerType === 'touch') return;
 
       const rect = canvas.getBoundingClientRect();
       const x = e.clientX - rect.left;
@@ -652,6 +657,33 @@ export default function SpreadsheetCanvas({
     resizingRef.current = null;
   }, [onFillRange]);
 
+  const handlePointerDown = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (event.pointerType === 'touch') {
+      touchStartRef.current = { x: event.clientX, y: event.clientY, time: event.timeStamp };
+      return;
+    }
+    handleMouseDown(event);
+  }, [handleMouseDown]);
+
+  const handlePointerUp = useCallback((event: React.PointerEvent<HTMLCanvasElement>) => {
+    handleMouseUp();
+    if (event.pointerType !== 'touch' || !touchStartRef.current) return;
+    const sample = { x: event.clientX, y: event.clientY, time: event.timeStamp };
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!isTap(start, sample)) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    const cell = getCellFromPoint(event.clientX - rect.left, event.clientY - rect.top);
+    if (cell) {
+      onCellSelect(cell);
+      onSelectionChange({ start: cell, end: cell });
+      if (isDoubleTap(lastTapRef.current, sample)) onCellEdit(cell);
+    }
+    lastTapRef.current = sample;
+  }, [getCellFromPoint, handleMouseUp, onCellEdit, onCellSelect, onSelectionChange]);
+
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();
 
@@ -738,10 +770,11 @@ export default function SpreadsheetCanvas({
           aria-colcount={config.totalCols}
           role="grid"
           className={styles.canvas}
-          onMouseDown={handleMouseDown}
-          onMouseMove={handleMouseMove}
-          onMouseUp={handleMouseUp}
-          onMouseLeave={handleMouseUp}
+          onPointerDown={handlePointerDown}
+          onPointerMove={handleMouseMove}
+          onPointerUp={handlePointerUp}
+          onPointerCancel={handleMouseUp}
+          onPointerLeave={handleMouseUp}
           onDoubleClick={handleDoubleClick}
           onContextMenu={handleContextMenu}
         />
