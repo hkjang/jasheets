@@ -218,12 +218,23 @@ export function recalculate(data: SheetData, namedRanges: NamedRanges = {}): She
             });
         }
     }
-    
-    // Cycle detection?
-    // If sortedOrder.length < cellsWithFormulas.length, there is a cycle.
-    // Users with cycles won't be in the list, so they won't update? 
-    // Or we should update them with error?
-    // For now, let's just update what we can.
+
+    // Formula cells omitted by Kahn's algorithm are either part of a cycle or
+    // depend on one. Marking all of them prevents stale cached values from
+    // surviving after a circular reference is introduced.
+    const resolved = new Set(sortedOrder);
+    cellsWithFormulas.forEach((key) => {
+        if (resolved.has(key)) return;
+        const { row, col } = parseCellKey(key);
+        const cell = data[row]?.[col];
+        if (!cell) return;
+        data[row][col] = {
+            ...cell,
+            value: '#CIRCULAR!',
+            displayValue: '#CIRCULAR!',
+            error: '#CIRCULAR!',
+        };
+    });
     
     // 3. Evaluate in Order
     // We need to mutate data? Or produce new one.

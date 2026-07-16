@@ -1,0 +1,51 @@
+import { SheetData } from '@/types/spreadsheet';
+import { recalculate } from './RecalculationEngine';
+
+function formula(value: string, cached: number = 0) {
+  return { formula: value, value: cached, displayValue: String(cached) };
+}
+
+describe('circular reference detection', () => {
+  it('marks every cell in a direct cycle', () => {
+    const data: SheetData = {
+      0: {
+        0: formula('=B1+1'),
+        1: formula('=A1+1'),
+      },
+    };
+
+    recalculate(data);
+
+    expect(data[0][0]).toMatchObject({ value: '#CIRCULAR!', error: '#CIRCULAR!' });
+    expect(data[0][1]).toMatchObject({ value: '#CIRCULAR!', error: '#CIRCULAR!' });
+  });
+
+  it('detects a self reference and invalidates dependants', () => {
+    const data: SheetData = {
+      0: {
+        0: formula('=A1+1'),
+        1: formula('=A1+1'),
+      },
+    };
+
+    recalculate(data);
+
+    expect(data[0][0].value).toBe('#CIRCULAR!');
+    expect(data[0][1].value).toBe('#CIRCULAR!');
+  });
+
+  it('continues to calculate an acyclic dependency chain', () => {
+    const data: SheetData = {
+      0: {
+        0: { value: 2 },
+        1: formula('=A1+1'),
+        2: formula('=B1+1'),
+      },
+    };
+
+    recalculate(data);
+
+    expect(data[0][1].value).toBe(3);
+    expect(data[0][2].value).toBe(4);
+  });
+});
