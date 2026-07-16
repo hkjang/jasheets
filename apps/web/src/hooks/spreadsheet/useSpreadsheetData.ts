@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { CellRange, DataValidationRule, NamedRanges, ProtectedRange, SheetData, CellStyle } from '@/types/spreadsheet';
 import { produce, applyPatches, Patch, enablePatches } from 'immer';
 // Use local FormulaEngine
@@ -9,6 +9,7 @@ import { recalculate } from '@/utils/RecalculationEngine';
 import { rewriteFormulaForStructuralChange, StructuralChange } from '@/utils/formulaReferences';
 import { validateCellInput } from '@/utils/dataValidation';
 import { canEditCell } from '@/utils/protectedRanges';
+import { FormulaWorkerClient } from '@/utils/formulaWorkerClient';
 
 enablePatches();
 
@@ -78,9 +79,23 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, currentUser
     const [historyIndex, setHistoryIndex] = useState(-1);
     const [namedRanges, setNamedRanges] = useState<NamedRanges>({});
     const [protectedRanges, setProtectedRanges] = useState<ProtectedRange[]>([]);
+    const formulaWorkerRef = useRef<FormulaWorkerClient | null>(null);
+    const workerGenerationRef = useRef(0);
+
+    useEffect(() => {
+        if (typeof Worker === 'undefined') return;
+        const worker = new Worker(new URL('../../workers/formula.worker.ts', import.meta.url));
+        formulaWorkerRef.current = new FormulaWorkerClient(worker);
+        return () => {
+            formulaWorkerRef.current?.terminate();
+            formulaWorkerRef.current = null;
+        };
+    }, []);
 
     // Helper to apply changes and record history
     const applyChange = useCallback((recipe: (draft: SheetData) => void) => {
+        // A local edit makes any in-flight full-sheet worker result stale.
+        workerGenerationRef.current++;
         let patches: Patch[] = [];
         let inversePatches: Patch[] = [];
 
@@ -104,8 +119,18 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, currentUser
 
     // Direct update without history (e.g. from server)
     const updateData = useCallback((newData: SheetData) => {
+        const generation = ++workerGenerationRef.current;
         setData(newData);
-    }, []);
+        const worker = formulaWorkerRef.current;
+        if (!worker) return;
+        void worker.calculate(newData, namedRanges).then((calculated) => {
+            if (generation !== workerGenerationRef.current) return;
+            setData(calculated);
+            onDataChange?.(calculated);
+        }).catch(() => {
+            // Keep the server-provided values when worker calculation fails.
+        });
+    }, [namedRanges, onDataChange]);
 
 
 
