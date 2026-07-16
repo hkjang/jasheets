@@ -2,25 +2,8 @@
 
 import { useState } from 'react';
 import styles from './AIAssistant.module.css'; // Reusing panel styles for consistency
-
-export interface ConditionalRule {
-  id: string;
-  type: 'greaterThan' | 'lessThan' | 'equalTo' | 'contains' | 'between';
-  value: string;
-  value2?: string; // for between
-  style: {
-    color?: string;
-    backgroundColor?: string;
-    fontWeight?: 'bold';
-    fontStyle?: 'italic';
-  };
-  range: {
-    startRow: number;
-    startCol: number;
-    endRow: number;
-    endCol: number;
-  };
-}
+import { ConditionalRule } from '@/utils/conditionalFormatting';
+export type { ConditionalRule } from '@/utils/conditionalFormatting';
 
 interface ConditionalFormattingDialogProps {
   isOpen: boolean;
@@ -47,6 +30,8 @@ export default function ConditionalFormattingDialog({
   const [backgroundColor, setBackgroundColor] = useState('#ffffff');
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
+  const [priority, setPriority] = useState(1);
+  const [stopIfTrue, setStopIfTrue] = useState(false);
 
   const handleSave = () => {
     onSave({
@@ -61,6 +46,8 @@ export default function ConditionalFormattingDialog({
         fontStyle: isItalic ? 'italic' : undefined,
       },
       range: selection,
+      priority,
+      stopIfTrue,
     });
     onClose();
   };
@@ -95,6 +82,11 @@ export default function ConditionalFormattingDialog({
             <option value="contains">텍스트 포함</option>
             <option value="between">다음 값 사이에 있음</option>
           </select>
+        </div>
+
+        <div style={{ marginBottom: '16px', display: 'flex', gap: '16px', alignItems: 'center' }}>
+          <label>우선순위 <input type="number" min="1" value={priority} onChange={e => setPriority(Number(e.target.value) || 1)} style={{ width: '64px' }} /></label>
+          <label><input type="checkbox" checked={stopIfTrue} onChange={e => setStopIfTrue(e.target.checked)} /> 일치하면 중단</label>
         </div>
 
         <div style={{ marginBottom: '16px' }}>

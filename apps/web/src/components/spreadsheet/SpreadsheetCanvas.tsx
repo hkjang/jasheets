@@ -15,6 +15,7 @@ import {
   parseSelection,
 } from '@/types/spreadsheet';
 import { ConditionalRule } from './ConditionalFormattingDialog';
+import { resolveConditionalStyle } from '@/utils/conditionalFormatting';
 import styles from './SpreadsheetCanvas.module.css';
 
 interface SpreadsheetCanvasProps {
@@ -240,40 +241,7 @@ export default function SpreadsheetCanvas({
         }
 
         // Apply conditional formatting
-        let conditionalStyle = {};
-        for (const rule of conditionalRules) {
-          const isInRuleRange =
-            row >= rule.range.startRow &&
-            row <= rule.range.endRow &&
-            col >= rule.range.startCol &&
-            col <= rule.range.endCol;
-
-          if (isInRuleRange) {
-            const value = cellData?.value;
-            const cellValue = typeof value === 'number' ? value : String(value ?? '');
-            const ruleValue = parseFloat(rule.value);
-            const ruleValue2 = parseFloat(rule.value2 || '0');
-
-            let match = false;
-
-            if (rule.type === 'greaterThan' && typeof cellValue === 'number') {
-              match = cellValue > ruleValue;
-            } else if (rule.type === 'lessThan' && typeof cellValue === 'number') {
-              match = cellValue < ruleValue;
-            } else if (rule.type === 'equalTo') {
-              // eslint-disable-next-line eqeqeq
-              match = cellValue == rule.value;
-            } else if (rule.type === 'contains') {
-              match = String(cellValue).includes(rule.value);
-            } else if (rule.type === 'between' && typeof cellValue === 'number') {
-              match = cellValue >= ruleValue && cellValue <= ruleValue2;
-            }
-
-            if (match) {
-              conditionalStyle = { ...conditionalStyle, ...rule.style };
-            }
-          }
-        }
+        const conditionalStyle = resolveConditionalStyle(conditionalRules, row, col, cellData?.value ?? null);
 
         // Apply conditional background if present
         // @ts-ignore
