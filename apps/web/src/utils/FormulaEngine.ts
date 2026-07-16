@@ -20,9 +20,10 @@ const OPERATORS = ['+', '-', '*', '/'];
 const FUNCTIONS = [
   'SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'SEQUENCE',
   'DATE', 'TIME', 'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND', 'TODAY', 'NOW',
+  'VLOOKUP', 'HLOOKUP', 'INDEX', 'MATCH', 'XLOOKUP',
 ];
 
-export type FormulaResult = string | number | number[][];
+export type FormulaResult = string | number | boolean | number[][];
 
 export function tokenize(formula: string): Token[] {
   const tokens: Token[] = [];
@@ -196,9 +197,118 @@ function getRangeValues(range: string, data: SheetData): number[] {
     return values;
 }
 
+function getRangeMatrix(range: string, data: SheetData): Array<Array<string | number | boolean | null>> {
+    const [startRef, endRef] = range.split(':');
+    const start = parseCellRef(startRef);
+    const end = parseCellRef(endRef);
+    if (!start || !end) return [];
+
+    const rows: Array<Array<string | number | boolean | null>> = [];
+    for (let row = Math.min(start.row, end.row); row <= Math.max(start.row, end.row); row++) {
+        const values: Array<string | number | boolean | null> = [];
+        for (let col = Math.min(start.col, end.col); col <= Math.max(start.col, end.col); col++) {
+            values.push(data[row]?.[col]?.value ?? null);
+        }
+        rows.push(values);
+    }
+    return rows;
+}
+
+function splitFunctionArgs(input: string): string[] {
+    const args: string[] = [];
+    let start = 0;
+    let depth = 0;
+    let quote: string | null = null;
+    for (let i = 0; i < input.length; i++) {
+        const char = input[i];
+        if (quote) {
+            if (char === quote && input[i - 1] !== '\\') quote = null;
+        } else if (char === '"' || char === "'") {
+            quote = char;
+        } else if (char === '(') {
+            depth++;
+        } else if (char === ')') {
+            depth--;
+        } else if (char === ',' && depth === 0) {
+            args.push(input.slice(start, i).trim());
+            start = i + 1;
+        }
+    }
+    args.push(input.slice(start).trim());
+    return args;
+}
+
+function lookupValue(argument: string, data: SheetData): string | number | boolean | null {
+    if (/^(["']).*\1$/.test(argument)) return argument.slice(1, -1);
+    if (/^(TRUE|FALSE)$/i.test(argument)) return argument.toUpperCase() === 'TRUE';
+    if (!Number.isNaN(Number(argument))) return Number(argument);
+    const ref = parseCellRef(argument.toUpperCase());
+    return ref ? (data[ref.row]?.[ref.col]?.value ?? null) : argument;
+}
+
+function valuesEqual(left: unknown, right: unknown): boolean {
+    if (typeof left === 'string' && typeof right === 'string') {
+        return left.localeCompare(right, undefined, { sensitivity: 'accent' }) === 0;
+    }
+    return left === right;
+}
+
+function evaluateLookupFormula(formula: string, data: SheetData, namedRanges: NamedRanges): FormulaResult | undefined {
+    const match = formula.match(/^=(VLOOKUP|HLOOKUP|INDEX|MATCH|XLOOKUP)\((.*)\)$/i);
+    if (!match) return undefined;
+    const name = match[1].toUpperCase();
+    const args = splitFunctionArgs(match[2]);
+    const matrixFor = (argument: string) => {
+        const named = namedRanges[argument.toUpperCase()];
+        const range = named
+            ? `${columnIndexToName(named.start.col)}${named.start.row + 1}:${columnIndexToName(named.end.col)}${named.end.row + 1}`
+            : argument.toUpperCase();
+        return getRangeMatrix(range, data);
+    };
+    const scalar = (value: string | number | boolean | null | undefined): FormulaResult => value ?? '#N/A';
+
+    if (name === 'VLOOKUP') {
+        const key = lookupValue(args[0], data);
+        const table = matrixFor(args[1]);
+        const column = Number(args[2]) - 1;
+        const row = table.find((candidate) => valuesEqual(candidate[0], key));
+        return column < 0 || column >= (table[0]?.length ?? 0) ? '#REF!' : scalar(row?.[column]);
+    }
+    if (name === 'HLOOKUP') {
+        const key = lookupValue(args[0], data);
+        const table = matrixFor(args[1]);
+        const rowIndex = Number(args[2]) - 1;
+        const column = table[0]?.findIndex((candidate) => valuesEqual(candidate, key)) ?? -1;
+        return rowIndex < 0 || rowIndex >= table.length ? '#REF!' : scalar(column < 0 ? undefined : table[rowIndex][column]);
+    }
+    if (name === 'MATCH') {
+        const key = lookupValue(args[0], data);
+        const values = matrixFor(args[1]).flat();
+        const index = values.findIndex((candidate) => valuesEqual(candidate, key));
+        return index < 0 ? '#N/A' : index + 1;
+    }
+    if (name === 'INDEX') {
+        const table = matrixFor(args[0]);
+        const row = Number(args[1]) - 1;
+        const col = Number(args[2] ?? 1) - 1;
+        return row < 0 || col < 0 || row >= table.length || col >= (table[0]?.length ?? 0)
+            ? '#REF!'
+            : scalar(table[row][col]);
+    }
+
+    const key = lookupValue(args[0], data);
+    const lookup = matrixFor(args[1]).flat();
+    const returns = matrixFor(args[2]).flat();
+    const index = lookup.findIndex((candidate) => valuesEqual(candidate, key));
+    return index < 0 ? scalar(args[3] ? lookupValue(args[3], data) : undefined) : scalar(returns[index]);
+}
+
 export function evaluateFormula(formula: string, data: SheetData, namedRanges: NamedRanges = {}): FormulaResult {
     try {
         if (!formula.startsWith('=')) return formula;
+
+        const lookupResult = evaluateLookupFormula(formula, data, namedRanges);
+        if (lookupResult !== undefined) return lookupResult;
 
         const sequence = formula.match(/^=SEQUENCE\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?(?:,\s*(-?\d+(?:\.\d+)?)\s*)?(?:,\s*(-?\d+(?:\.\d+)?)\s*)?\)$/i);
         if (sequence) {

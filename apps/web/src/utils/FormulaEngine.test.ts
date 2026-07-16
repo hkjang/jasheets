@@ -68,3 +68,31 @@ describe('array formulas', () => {
     expect(evaluateFormula('={1,NOPE}', data)).toBe('#VALUE!');
   });
 });
+
+describe('lookup formulas', () => {
+  const lookupData: SheetData = {
+    0: { 0: { value: 'A' }, 1: { value: 10 }, 2: { value: 20 } },
+    1: { 0: { value: 'B' }, 1: { value: 30 }, 2: { value: 40 } },
+    2: { 0: { value: 'C' }, 1: { value: 50 }, 2: { value: 60 } },
+  };
+
+  it('supports vertical and horizontal lookup', () => {
+    expect(evaluateFormula('=VLOOKUP("B",A1:C3,3,FALSE)', lookupData)).toBe(40);
+    expect(evaluateFormula('=HLOOKUP(20,A1:C3,2,FALSE)', lookupData)).toBe(40);
+  });
+
+  it('supports INDEX and MATCH', () => {
+    expect(evaluateFormula('=INDEX(B1:C3,3,2)', lookupData)).toBe(60);
+    expect(evaluateFormula('=MATCH("C",A1:A3,0)', lookupData)).toBe(3);
+  });
+
+  it('supports XLOOKUP and custom missing values', () => {
+    expect(evaluateFormula('=XLOOKUP("B",A1:A3,C1:C3)', lookupData)).toBe(40);
+    expect(evaluateFormula('=XLOOKUP("D",A1:A3,C1:C3,"missing")', lookupData)).toBe('missing');
+  });
+
+  it('returns spreadsheet errors for invalid lookups', () => {
+    expect(evaluateFormula('=VLOOKUP("D",A1:C3,2,FALSE)', lookupData)).toBe('#N/A');
+    expect(evaluateFormula('=INDEX(A1:C3,1,4)', lookupData)).toBe('#REF!');
+  });
+});
