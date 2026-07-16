@@ -291,6 +291,7 @@ export default function Spreadsheet({
     chatMessages,
     isChatOpen,
     unreadCount,
+    syncStatus,
     toggleChat,
     sendChatMessage,
   } = useSpreadsheetCollaboration({
@@ -1417,6 +1418,9 @@ export default function Spreadsheet({
           onClearFilters={() => setRows((current) => current.map((row) => ({ ...row, hidden: false })))}
         />
       )}
+      <div role="status" aria-live="polite" style={{ padding: "2px 8px", fontSize: "12px", color: syncStatus === "connected" ? "#188038" : "#b06000" }}>
+        동기화: {syncStatus === "connected" ? "연결됨" : syncStatus === "reconnecting" ? "재연결 중" : syncStatus === "connecting" ? "연결 중" : "연결 끊김"}
+      </div>
 
       <div className={styles.canvasWrapper} style={{ position: "relative" }}>
         <VersionHistorySidebar

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 
 interface UserPresence {
+  socketId?: string;
   id: string;
   name: string;
   color: string;
@@ -17,6 +18,7 @@ interface UserPresence {
     row: number;
     col: number;
   };
+  lastSeenAt?: number;
 }
 
 interface UseCollaborationOptions {
@@ -48,6 +50,7 @@ export interface ChatMessage {
 
 interface UseCollaborationReturn {
   isConnected: boolean;
+  syncStatus: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
   users: UserPresence[];
   sendCellUpdate: (sheetId: string, row: number, col: number, value: any, formula?: string) => void;
   sendBatchUpdate: (sheetId: string, updates: Array<{ row: number; col: number; value: any; formula?: string }>) => void;
@@ -67,7 +70,9 @@ export function useCollaboration({
 }: UseCollaborationOptions): UseCollaborationReturn {
   const socketRef = useRef<Socket | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<UseCollaborationReturn['syncStatus']>('connecting');
   const [users, setUsers] = useState<UserPresence[]>([]);
+  const lastSequenceRef = useRef(0);
 
   const onCellUpdateRef = useRef(onCellUpdate);
   const onCellsUpdateRef = useRef(onCellsUpdate);
@@ -81,65 +86,69 @@ export function useCollaboration({
 
   // Initialize socket connection
   useEffect(() => {
-    // Skip WebSocket in development to avoid Fast Refresh issues
-    if (process.env.NODE_ENV === 'development') {
-      console.log('[useCollaboration] WebSocket disabled in development mode');
-      return;
-    }
-
     const socket = io(wsUrl, {
       transports: ['websocket'],
       autoConnect: true,
       reconnectionAttempts: 3,
       reconnectionDelay: 2000,
+      reconnectionDelayMax: 10000,
     });
 
     socketRef.current = socket;
 
     socket.on('connect', () => {
       setIsConnected(true);
+      setSyncStatus('connected');
       
       // Join the spreadsheet room
       socket.emit('join', {
         spreadsheetId,
         userId,
         userName,
-      }, (response: { users: Array<{ socketId: string; user: UserPresence }> }) => {
+        lastSequence: lastSequenceRef.current,
+      }, (response: {
+        users: Array<{ socketId: string; user: UserPresence }>;
+        operations?: Array<{ sequence: number; event: 'cell-updated' | 'cells-updated'; payload: any }>;
+        sequence?: number;
+      }) => {
         if (response?.users) {
-          setUsers(response.users.map(u => u.user));
+          setUsers(response.users.map(u => ({ ...u.user, socketId: u.socketId })));
         }
+        response?.operations?.forEach((operation) => {
+          if (operation.event === 'cell-updated') onCellUpdateRef.current?.(operation.payload);
+          else onCellsUpdateRef.current?.(operation.payload);
+          lastSequenceRef.current = Math.max(lastSequenceRef.current, operation.sequence);
+        });
+        lastSequenceRef.current = Math.max(lastSequenceRef.current, response?.sequence ?? 0);
       });
     });
 
     socket.on('disconnect', () => {
       setIsConnected(false);
+      setSyncStatus('reconnecting');
     });
 
     // Handle user events
     socket.on('user-joined', (data: { socketId: string; user: UserPresence }) => {
-      setUsers(prev => [...prev.filter(u => u.id !== data.user.id), data.user]);
+      setUsers(prev => [...prev.filter(u => u.socketId !== data.socketId), { ...data.user, socketId: data.socketId }]);
     });
 
     socket.on('user-left', (data: { socketId: string }) => {
-      setUsers(prev => prev.filter((_, index) => {
-        // This is a simplified approach - in production, map socketId to userId
-        return true; 
-      }));
+      setUsers(prev => prev.filter(user => user.socketId !== data.socketId));
     });
 
     // Handle cursor updates
     socket.on('cursor-updated', (data: { socketId: string; cursor: { row: number; col: number } }) => {
-      setUsers(prev => prev.map(user => {
-        // Update cursor for the user
-        return { ...user, cursor: data.cursor };
-      }));
+      setUsers(prev => prev.map(user => user.socketId === data.socketId
+        ? { ...user, cursor: data.cursor, lastSeenAt: Date.now() }
+        : user));
     });
 
     // Handle selection updates
     socket.on('selection-updated', (data: { socketId: string; selection: UserPresence['selection'] }) => {
-      setUsers(prev => prev.map(user => {
-        return { ...user, selection: data.selection };
-      }));
+      setUsers(prev => prev.map(user => user.socketId === data.socketId
+        ? { ...user, selection: data.selection, lastSeenAt: Date.now() }
+        : user));
     });
 
     // Handle cell updates
@@ -150,7 +159,9 @@ export function useCollaboration({
       col: number;
       value: any;
       formula?: string;
+      sequence?: number;
     }) => {
+      lastSequenceRef.current = Math.max(lastSequenceRef.current, data.sequence ?? 0);
       onCellUpdateRef.current?.(data);
     });
 
@@ -158,7 +169,9 @@ export function useCollaboration({
       socketId: string;
       sheetId: string;
       updates: Array<{ row: number; col: number; value: any; formula?: string }>;
+      sequence?: number;
     }) => {
+      lastSequenceRef.current = Math.max(lastSequenceRef.current, data.sequence ?? 0);
       onCellsUpdateRef.current?.(data);
     });
 
@@ -167,9 +180,19 @@ export function useCollaboration({
       onChatMessageRef.current?.(message);
     });
 
+    socket.io.on('reconnect_attempt', () => setSyncStatus('reconnecting'));
+    socket.on('connect_error', () => setSyncStatus('disconnected'));
+
+    const heartbeat = window.setInterval(() => {
+      socket.emit('presence-heartbeat', { spreadsheetId });
+      const cutoff = Date.now() - 45000;
+      setUsers(current => current.filter(user => (user.lastSeenAt ?? Date.now()) >= cutoff));
+    }, 15000);
+
     return () => {
       socket.emit('leave', { spreadsheetId });
       socket.disconnect();
+      window.clearInterval(heartbeat);
     };
   }, [spreadsheetId, userId, userName, wsUrl]);
 
@@ -240,6 +263,7 @@ export function useCollaboration({
 
   return {
     isConnected,
+    syncStatus,
     users,
     sendCellUpdate,
     sendBatchUpdate,

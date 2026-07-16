@@ -25,11 +25,20 @@ interface UserPresence {
     row: number;
     col: number;
   };
+  lastSeenAt: number;
+}
+
+interface RoomOperation {
+  sequence: number;
+  event: 'cell-updated' | 'cells-updated';
+  payload: Record<string, unknown>;
 }
 
 interface RoomState {
   spreadsheetId: string;
   users: Map<string, UserPresence>;
+  operationSequence: number;
+  operations: RoomOperation[];
 }
 
 @WebSocketGateway({
@@ -64,7 +73,7 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
   @SubscribeMessage('join')
   async handleJoin(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { spreadsheetId: string; userId: string; userName: string },
+    @MessageBody() data: { spreadsheetId: string; userId: string; userName: string; lastSequence?: number },
   ) {
     const { spreadsheetId, userId, userName } = data;
     const roomId = `sheet:${spreadsheetId}`;
@@ -77,6 +86,8 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
       this.rooms.set(roomId, {
         spreadsheetId,
         users: new Map(),
+        operationSequence: 0,
+        operations: [],
       });
     }
 
@@ -86,6 +97,7 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
       id: userId,
       name: userName,
       color: this.getNextColor(),
+      lastSeenAt: Date.now(),
     };
 
     room.users.set(client.id, userPresence);
@@ -102,7 +114,12 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
       user,
     }));
 
-    return { users: currentUsers };
+    const lastSequence = Number(data.lastSequence ?? 0);
+    return {
+      users: currentUsers,
+      operations: room.operations.filter((operation) => operation.sequence > lastSequence),
+      sequence: room.operationSequence,
+    };
   }
 
   @SubscribeMessage('leave')
@@ -122,6 +139,7 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
 
     if (room && room.users.has(client.id)) {
       const user = room.users.get(client.id)!;
+      user.lastSeenAt = Date.now();
       user.cursor = { row: data.row, col: data.col };
 
       client.to(roomId).emit('cursor-updated', {
@@ -147,6 +165,7 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
 
     if (room && room.users.has(client.id)) {
       const user = room.users.get(client.id)!;
+      user.lastSeenAt = Date.now();
       user.selection = {
         startRow: data.startRow,
         startCol: data.startCol,
@@ -175,6 +194,15 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
   ) {
     const roomId = `sheet:${data.spreadsheetId}`;
 
+    const operation = this.appendOperation(roomId, 'cell-updated', {
+      socketId: client.id,
+      sheetId: data.sheetId,
+      row: data.row,
+      col: data.col,
+      value: data.value,
+      formula: data.formula,
+    });
+
     // Broadcast the update to all other clients in the room
     client.to(roomId).emit('cell-updated', {
       socketId: client.id,
@@ -183,6 +211,7 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
       col: data.col,
       value: data.value,
       formula: data.formula,
+      sequence: operation?.sequence,
     });
 
     // Note: In production, you would also persist to database here
@@ -205,11 +234,28 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
   ) {
     const roomId = `sheet:${data.spreadsheetId}`;
 
-    client.to(roomId).emit('cells-updated', {
+    const operation = this.appendOperation(roomId, 'cells-updated', {
       socketId: client.id,
       sheetId: data.sheetId,
       updates: data.updates,
     });
+
+    client.to(roomId).emit('cells-updated', {
+      socketId: client.id,
+      sheetId: data.sheetId,
+      updates: data.updates,
+      sequence: operation?.sequence,
+    });
+  }
+
+  @SubscribeMessage('presence-heartbeat')
+  handlePresenceHeartbeat(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { spreadsheetId: string },
+  ) {
+    const room = this.rooms.get(`sheet:${data.spreadsheetId}`);
+    const user = room?.users.get(client.id);
+    if (user) user.lastSeenAt = Date.now();
   }
 
   @SubscribeMessage('crdt-update')
@@ -283,5 +329,18 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
     const color = this.userColors[this.colorIndex % this.userColors.length];
     this.colorIndex++;
     return color;
+  }
+
+  private appendOperation(
+    roomId: string,
+    event: RoomOperation['event'],
+    payload: Record<string, unknown>,
+  ): RoomOperation | undefined {
+    const room = this.rooms.get(roomId);
+    if (!room) return undefined;
+    const operation = { sequence: ++room.operationSequence, event, payload };
+    room.operations.push(operation);
+    if (room.operations.length > 1000) room.operations.splice(0, room.operations.length - 1000);
+    return operation;
   }
 }

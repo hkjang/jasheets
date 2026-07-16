@@ -50,6 +50,8 @@ export function useSpreadsheetCollaboration({
 
   const {
     users,
+    isConnected,
+    syncStatus,
     sendCellUpdate,
     sendCursorMove,
     sendSelectionChange,
@@ -63,14 +65,10 @@ export function useSpreadsheetCollaboration({
   });
 
   useEffect(() => {
-    // Skip in development mode
-    if (process.env.NODE_ENV === 'development') return;
     if (selectedCell) sendCursorMove(selectedCell.row, selectedCell.col);
   }, [selectedCell, sendCursorMove]);
 
   useEffect(() => {
-    // Skip in development mode
-    if (process.env.NODE_ENV === 'development') return;
     if (selection) sendSelectionChange(selection.start.row, selection.start.col, selection.end.row, selection.end.col);
   }, [selection, sendSelectionChange]);
 
@@ -81,6 +79,8 @@ export function useSpreadsheetCollaboration({
 
   return {
     users,
+    isConnected,
+    syncStatus,
     chatMessages,
     isChatOpen,
     unreadCount,
