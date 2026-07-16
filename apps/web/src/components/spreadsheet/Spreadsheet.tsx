@@ -72,6 +72,7 @@ import SheetAutomationDialog from "./SheetAutomationDialog";
 import FilterProfilesDropdown, { FilterProfile } from "./FilterProfilesDropdown";
 import { getHiddenRowsForFilterView } from "@/utils/filterViews";
 import { createFillUpdates } from "@/utils/fillHandle";
+import { createPasteUpdates, serializeRangeToTsv } from "@/utils/clipboard";
 import SnapshotManagerPanel from "./SnapshotManagerPanel";
 import CommandPalette from "./CommandPalette";
 
@@ -175,16 +176,7 @@ export default function Spreadsheet({
   const copyToClipboard = useCallback(async () => {
     if (!selection) return;
 
-    const rows = [];
-    for (let r = selection.start.row; r <= selection.end.row; r++) {
-      const rowData = [];
-      for (let c = selection.start.col; c <= selection.end.col; c++) {
-        const val = data[r]?.[c]?.value;
-        rowData.push(val === null || val === undefined ? "" : String(val));
-      }
-      rows.push(rowData.join("\t"));
-    }
-    const text = rows.join("\n");
+    const text = serializeRangeToTsv(data, selection);
 
     try {
       await navigator.clipboard.writeText(text);
@@ -218,20 +210,7 @@ export default function Spreadsheet({
       const text = await navigator.clipboard.readText();
       if (!text) return;
 
-      const rows = text.split(/\r\n|\n|\r/);
-      const updates: { row: number; col: number; value: string }[] = [];
-
-      rows.forEach((rowStr, rIdx) => {
-        if (rIdx === rows.length - 1 && rowStr === "") return;
-        const cols = rowStr.split("\t");
-        cols.forEach((val, cIdx) => {
-          updates.push({
-            row: selectedCell.row + rIdx,
-            col: selectedCell.col + cIdx,
-            value: val,
-          });
-        });
-      });
+      const updates = createPasteUpdates(text, selectedCell);
 
       if (updates.length > 0) {
         updateCells(updates);
@@ -250,7 +229,8 @@ export default function Spreadsheet({
       if (activeTag === "input" || activeTag === "textarea") return;
       if (!selection) return;
       e.preventDefault();
-      copyToClipboard();
+      const text = serializeRangeToTsv(data, selection);
+      e.clipboardData?.setData("text/plain", text);
     };
 
     const handleCut = (e: ClipboardEvent) => {
@@ -276,19 +256,7 @@ export default function Spreadsheet({
         // Refactoring parsing to separate function is cleaner but for now let's just duplicate the parsing logic
         // or updates logic.
 
-        const rows = text.split(/\r\n|\n|\r/);
-        const updates: { row: number; col: number; value: string }[] = [];
-        rows.forEach((rowStr, rIdx) => {
-          if (rIdx === rows.length - 1 && rowStr === "") return;
-          const cols = rowStr.split("\t");
-          cols.forEach((val, cIdx) => {
-            updates.push({
-              row: selectedCell.row + rIdx,
-              col: selectedCell.col + cIdx,
-              value: val,
-            });
-          });
-        });
+        const updates = createPasteUpdates(text, selectedCell);
         if (updates.length > 0) updateCells(updates);
       }
     };
@@ -304,6 +272,7 @@ export default function Spreadsheet({
     };
   }, [
     selection,
+    data,
     selectedCell,
     copyToClipboard,
     cutoffToClipboard,
