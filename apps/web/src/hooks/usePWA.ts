@@ -1,18 +1,28 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import {
+  IndexedDbChangeStore,
+  OfflineChange,
+  OfflineChangeQueue,
+} from '@/utils/offlineChangeQueue';
+
+interface BeforeInstallPromptEvent extends Event {
+  prompt(): Promise<void>;
+  userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>;
+}
 
 export function useServiceWorker() {
   const [isReady, setIsReady] = useState(false);
   const [hasUpdate, setHasUpdate] = useState(false);
   const [registration, setRegistration] = useState<ServiceWorkerRegistration | null>(null);
-  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
 
   useEffect(() => {
     // Capture the install prompt
-    const handleBeforeInstallPrompt = (e: any) => {
-      e.preventDefault();
-      setDeferredPrompt(e);
+    const handleBeforeInstallPrompt = (event: Event) => {
+      event.preventDefault();
+      setDeferredPrompt(event as BeforeInstallPromptEvent);
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
@@ -24,7 +34,7 @@ export function useServiceWorker() {
     if (process.env.NODE_ENV === 'development') {
       // In development, unregister any existing service workers to avoid caching issues
       navigator.serviceWorker.getRegistrations().then((registrations) => {
-        for (let registration of registrations) {
+        for (const registration of registrations) {
           registration.unregister();
         }
       });
@@ -101,16 +111,50 @@ export function useServiceWorker() {
   };
 }
 
-export function useOfflineSync() {
+export function useOfflineSync<T = unknown>(sendChange?: (change: T) => Promise<void>) {
   const [isOnline, setIsOnline] = useState(
     typeof navigator !== 'undefined' ? navigator.onLine : true
   );
-  const [pendingChanges, setPendingChanges] = useState<any[]>([]);
+  const [pendingChanges, setPendingChanges] = useState<OfflineChange<T>[]>([]);
+  const queueRef = useRef<OfflineChangeQueue<T> | null>(null);
+
+  const getQueue = useCallback(() => {
+    if (!queueRef.current) {
+      queueRef.current = new OfflineChangeQueue(new IndexedDbChangeStore<T>());
+    }
+    return queueRef.current;
+  }, []);
+
+  const refreshChanges = useCallback(async () => {
+    if (typeof indexedDB === 'undefined') return;
+    setPendingChanges(await getQueue().list());
+  }, [getQueue]);
+
+  const syncChanges = useCallback(async () => {
+    if (!isOnline || typeof indexedDB === 'undefined') return;
+    try {
+      const queued = await getQueue().list();
+      setPendingChanges(queued);
+      if (queued.length === 0) return;
+      if (sendChange) {
+        setPendingChanges(await getQueue().drain(sendChange));
+        return;
+      }
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.ready as ServiceWorkerRegistration & {
+          sync?: { register(tag: string): Promise<void> };
+        };
+        await registration.sync?.register('sync-spreadsheet');
+      }
+    } catch (error) {
+      console.error('Sync failed:', error);
+      await refreshChanges();
+    }
+  }, [getQueue, isOnline, refreshChanges, sendChange]);
 
   useEffect(() => {
     const handleOnline = () => {
       setIsOnline(true);
-      syncChanges();
     };
 
     const handleOffline = () => {
@@ -119,47 +163,42 @@ export function useOfflineSync() {
 
     window.addEventListener('online', handleOnline);
     window.addEventListener('offline', handleOffline);
+    void refreshChanges();
 
     return () => {
       window.removeEventListener('online', handleOnline);
       window.removeEventListener('offline', handleOffline);
     };
-  }, []);
+  }, [refreshChanges]);
 
-  const addPendingChange = (change: any) => {
-    setPendingChanges((prev) => [...prev, change]);
-    // Also store in IndexedDB for persistence
-    storeChange(change);
-  };
+  useEffect(() => {
+    if (isOnline) void syncChanges();
+  }, [isOnline, syncChanges]);
 
-  const syncChanges = useCallback(async () => {
-    if (pendingChanges.length === 0) return;
+  const addPendingChange = useCallback(async (change: T) => {
+    if (typeof indexedDB === 'undefined') return;
+    await getQueue().enqueue(change);
+    await refreshChanges();
+    if (isOnline) await syncChanges();
+  }, [getQueue, isOnline, refreshChanges, syncChanges]);
 
-    try {
-      // Request background sync
-      if ('serviceWorker' in navigator && 'sync' in (window as any).SyncManager) {
-        const reg = await navigator.serviceWorker.ready;
-        await (reg as any).sync.register('sync-spreadsheet');
-      } else {
-        // Fallback: sync immediately
-        // await Promise.all(pendingChanges.map(sendChange));
-        setPendingChanges([]);
-      }
-    } catch (error) {
-      console.error('Sync failed:', error);
-    }
-  }, [pendingChanges]);
+  const retryConflict = useCallback(async (id: string) => {
+    await getQueue().retryConflict(id);
+    await refreshChanges();
+    if (isOnline) await syncChanges();
+  }, [getQueue, isOnline, refreshChanges, syncChanges]);
 
-  const storeChange = async (change: any) => {
-    // Store in IndexedDB
-    // TODO: Implement IndexedDB storage
-    console.log('Storing change:', change);
-  };
+  const discardChange = useCallback(async (id: string) => {
+    await getQueue().discard(id);
+    await refreshChanges();
+  }, [getQueue, refreshChanges]);
 
   return {
     isOnline,
     pendingChanges,
     addPendingChange,
     syncChanges,
+    retryConflict,
+    discardChange,
   };
 }
