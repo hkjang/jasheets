@@ -13,6 +13,7 @@ import { PermissionRole, Prisma } from '@prisma/client';
 import { EventsService, CellChangeEvent } from '../events/events.service';
 import { createHash } from 'crypto';
 import { rewriteSheetReferences } from './sheet-reference.util';
+import { rewriteConditionalRanges } from './conditional-range.util';
 
 @Injectable()
 export class SheetsService {
@@ -742,6 +743,7 @@ export class SheetsService {
       } else {
         await this.shiftColumns(tx, sheetId, change.type, change.index);
       }
+      await this.shiftConditionalRuleRanges(tx, sheetId, change);
 
       return tx.sheet.findUniqueOrThrow({ where: { id: sheetId } });
     });
@@ -752,6 +754,37 @@ export class SheetsService {
       rowCount: updatedSheet.rowCount,
       colCount: updatedSheet.colCount,
     };
+  }
+
+  private async shiftConditionalRuleRanges(
+    tx: Prisma.TransactionClient,
+    sheetId: string,
+    change: {
+      axis: 'row' | 'column';
+      type: 'insert' | 'delete';
+      index: number;
+    },
+  ) {
+    const rules = await tx.conditionalRule.findMany({
+      where: { sheetId },
+      select: { id: true, ranges: true },
+    });
+    await Promise.all(rules.map(({ id, ranges }) => {
+      const rewritten = rewriteConditionalRanges(ranges, change);
+      if (rewritten.length === 0) {
+        return tx.conditionalRule.delete({ where: { id } });
+      }
+      if (
+        rewritten.length === ranges.length &&
+        rewritten.every((range, index) => range === ranges[index])
+      ) {
+        return Promise.resolve();
+      }
+      return tx.conditionalRule.update({
+        where: { id },
+        data: { ranges: rewritten },
+      });
+    }));
   }
 
   private async shiftRows(

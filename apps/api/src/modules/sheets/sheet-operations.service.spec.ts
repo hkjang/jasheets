@@ -27,7 +27,12 @@ describe('SheetsService sheet operations', () => {
     colMeta: { deleteMany: jest.fn(), createMany: jest.fn() },
     chart: { createMany: jest.fn() },
     pivotTable: { createMany: jest.fn() },
-    conditionalRule: { createMany: jest.fn() },
+    conditionalRule: {
+      createMany: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
     comment: { deleteMany: jest.fn() },
     $executeRaw: jest.fn(),
   };
@@ -103,6 +108,9 @@ describe('SheetsService sheet operations', () => {
     tx.chart.createMany.mockResolvedValue({ count: 0 });
     tx.pivotTable.createMany.mockResolvedValue({ count: 0 });
     tx.conditionalRule.createMany.mockResolvedValue({ count: 0 });
+    tx.conditionalRule.findMany.mockResolvedValue([]);
+    tx.conditionalRule.update.mockResolvedValue({});
+    tx.conditionalRule.delete.mockResolvedValue({});
     tx.comment.deleteMany.mockResolvedValue({ count: 0 });
     tx.$executeRaw.mockResolvedValue(0);
   });
@@ -262,6 +270,26 @@ describe('SheetsService sheet operations', () => {
       version: 4,
       rowCount: 1001,
       colCount: 26,
+    });
+  });
+
+  it('moves conditional formatting ranges with structural changes', async () => {
+    tx.conditionalRule.findMany.mockResolvedValueOnce([
+      { id: 'rule-1', ranges: ['A2:C4'] },
+      { id: 'rule-2', ranges: ['D5:D5'] },
+    ]);
+
+    await service.changeStructure('user-1', 'sheet-1', {
+      axis: 'row', type: 'insert', index: 1,
+    });
+
+    expect(tx.conditionalRule.update).toHaveBeenCalledWith({
+      where: { id: 'rule-1' },
+      data: { ranges: ['A3:C5'] },
+    });
+    expect(tx.conditionalRule.update).toHaveBeenCalledWith({
+      where: { id: 'rule-2' },
+      data: { ranges: ['D6:D6'] },
     });
   });
 
