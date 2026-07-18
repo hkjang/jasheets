@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { boundedFetch } from '@/lib/api-client';
 import styles from './FilterProfilesDropdown.module.css';
 
@@ -19,26 +19,30 @@ interface FilterProfilesDropdownProps {
     sheetId: string;
     onApplyProfile: (profile: FilterProfile) => void;
     onClearFilters: () => void;
+    getProfileSnapshot?: () => Pick<FilterProfile, 'hiddenRows' | 'hiddenCols' | 'sortings'>;
 }
 
 export default function FilterProfilesDropdown({
     sheetId,
     onApplyProfile,
     onClearFilters,
+    getProfileSnapshot,
 }: FilterProfilesDropdownProps) {
     const [profiles, setProfiles] = useState<FilterProfile[]>([]);
     const [isOpen, setIsOpen] = useState(false);
     const [showEditor, setShowEditor] = useState(false);
     const [newName, setNewName] = useState('');
+    const [filterColumn, setFilterColumn] = useState('1');
+    const [filterOperator, setFilterOperator] = useState('contains');
+    const [filterValue, setFilterValue] = useState('');
     const [activeProfile, setActiveProfile] = useState<string | null>(null);
+    const onApplyProfileRef = useRef(onApplyProfile);
 
     useEffect(() => {
-        if (sheetId) {
-            fetchProfiles();
-        }
-    }, [sheetId]);
+        onApplyProfileRef.current = onApplyProfile;
+    }, [onApplyProfile]);
 
-    const fetchProfiles = async () => {
+    const fetchProfiles = useCallback(async () => {
         try {
             const token = localStorage.getItem('auth_token');
             const res = await boundedFetch(`/api/sheets/${sheetId}/filter-profiles`, {
@@ -50,12 +54,23 @@ export default function FilterProfilesDropdown({
                 const defaultProfile = data.find((p: FilterProfile) => p.isDefault);
                 if (defaultProfile) {
                     setActiveProfile(defaultProfile.id);
+                    onApplyProfileRef.current(defaultProfile);
+                } else {
+                    setActiveProfile(null);
                 }
             }
         } catch (err) {
             console.error('Failed to fetch profiles:', err);
         }
-    };
+    }, [sheetId]);
+
+    useEffect(() => {
+        if (sheetId) {
+            // Loading a new sheet intentionally synchronizes remote profiles into local UI state.
+            // eslint-disable-next-line react-hooks/set-state-in-effect
+            void fetchProfiles();
+        }
+    }, [fetchProfiles, sheetId]);
 
     const handleApply = (profile: FilterProfile) => {
         setActiveProfile(profile.id);
@@ -72,21 +87,38 @@ export default function FilterProfilesDropdown({
     const handleSaveNew = async () => {
         if (!newName.trim()) return;
 
+        const parsedColumn = Number.parseInt(filterColumn, 10) - 1;
+        if (!Number.isInteger(parsedColumn) || parsedColumn < 0) return;
+
+        const filters = filterOperator === 'isEmpty' || filterOperator === 'isNotEmpty'
+            ? [{ column: parsedColumn, operator: filterOperator, value: '' }]
+            : filterValue.trim()
+                ? [{ column: parsedColumn, operator: filterOperator, value: filterValue }]
+                : [];
+        const snapshot = getProfileSnapshot?.() ?? {};
+
         try {
             const token = localStorage.getItem('auth_token');
-            await boundedFetch(`/api/sheets/${sheetId}/filter-profiles`, {
+            const response = await boundedFetch(`/api/sheets/${sheetId}/filter-profiles`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     Authorization: `Bearer ${token}`,
                 },
                 body: JSON.stringify({
-                    name: newName,
-                    filters: [],
+                    name: newName.trim(),
+                    filters,
+                    ...snapshot,
                     isDefault: false,
                 }),
             });
+            if (!response.ok) {
+                throw new Error(`Failed to save filter profile (${response.status})`);
+            }
             setNewName('');
+            setFilterColumn('1');
+            setFilterOperator('contains');
+            setFilterValue('');
             setShowEditor(false);
             fetchProfiles();
         } catch (err) {
@@ -159,6 +191,44 @@ export default function FilterProfilesDropdown({
                                 placeholder="프로필 이름"
                                 className={styles.input}
                             />
+                            <div className={styles.filterRow}>
+                                <label>
+                                    열
+                                    <input
+                                        aria-label="필터 열"
+                                        type="number"
+                                        min="1"
+                                        value={filterColumn}
+                                        onChange={e => setFilterColumn(e.target.value)}
+                                    />
+                                </label>
+                                <select
+                                    aria-label="필터 연산자"
+                                    value={filterOperator}
+                                    onChange={e => setFilterOperator(e.target.value)}
+                                >
+                                    <option value="contains">포함</option>
+                                    <option value="notContains">포함하지 않음</option>
+                                    <option value="equals">같음</option>
+                                    <option value="notEquals">같지 않음</option>
+                                    <option value="greaterThan">초과</option>
+                                    <option value="greaterThanOrEqual">이상</option>
+                                    <option value="lessThan">미만</option>
+                                    <option value="lessThanOrEqual">이하</option>
+                                    <option value="isEmpty">비어 있음</option>
+                                    <option value="isNotEmpty">비어 있지 않음</option>
+                                </select>
+                            </div>
+                            {filterOperator !== 'isEmpty' && filterOperator !== 'isNotEmpty' && (
+                                <input
+                                    aria-label="필터 값"
+                                    type="text"
+                                    value={filterValue}
+                                    onChange={e => setFilterValue(e.target.value)}
+                                    placeholder="필터 값 (선택 사항)"
+                                    className={styles.input}
+                                />
+                            )}
                             <button onClick={handleSaveNew} className={styles.saveBtn}>
                                 저장
                             </button>

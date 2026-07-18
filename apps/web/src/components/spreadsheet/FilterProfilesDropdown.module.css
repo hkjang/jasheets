@@ -72,9 +72,38 @@
 
 .editor {
     display: flex;
+    flex-direction: column;
     gap: 8px;
     padding: 12px;
     border-bottom: 1px solid #eee;
+}
+
+.filterRow {
+    display: grid;
+    grid-template-columns: 72px 1fr;
+    gap: 8px;
+}
+
+.filterRow label {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #666;
+}
+
+.filterRow input,
+.filterRow select {
+    min-width: 0;
+    padding: 5px 6px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 12px;
+    background: white;
+}
+
+.filterRow input {
+    width: 44px;
 }
 
 .input {
