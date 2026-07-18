@@ -67,6 +67,77 @@ describe('array formulas', () => {
     expect(evaluateFormula('=SEQUENCE(0)', data)).toBe('#NUM!');
     expect(evaluateFormula('={1,NOPE}', data)).toBe('#VALUE!');
   });
+
+  const arrayData: SheetData = {
+    0: { 0: { value: 'East' }, 1: { value: 120 }, 2: { value: true } },
+    1: { 0: { value: 'West' }, 1: { value: 80 }, 2: { value: false } },
+    2: { 0: { value: 'East' }, 1: { value: 200 }, 2: { value: true } },
+    3: { 0: { value: 'North' }, 1: { value: 120 }, 2: { value: true } },
+  };
+
+  it('returns stable unique rows and values that occur exactly once', () => {
+    expect(evaluateFormula('=UNIQUE(A1:A4)', arrayData)).toEqual([
+      ['East'],
+      ['West'],
+      ['North'],
+    ]);
+    expect(evaluateFormula('=UNIQUE(B1:B4,FALSE,TRUE)', arrayData)).toEqual([
+      [80],
+      [200],
+    ]);
+  });
+
+  it('supports column-oriented uniqueness', () => {
+    const columns: SheetData = {
+      0: { 0: { value: 1 }, 1: { value: 1 }, 2: { value: 3 } },
+      1: { 0: { value: 2 }, 1: { value: 2 }, 2: { value: 4 } },
+    };
+    expect(evaluateFormula('=UNIQUE(A1:C2,TRUE)', columns)).toEqual([
+      [1, 3],
+      [2, 4],
+    ]);
+  });
+
+  it('sorts complete rows by one or more columns', () => {
+    expect(evaluateFormula('=SORT(A1:B4,2,FALSE,1,TRUE)', arrayData)).toEqual([
+      ['East', 200],
+      ['East', 120],
+      ['North', 120],
+      ['West', 80],
+    ]);
+  });
+
+  it('filters rows with comparisons, booleans, and multiple conditions', () => {
+    expect(evaluateFormula('=FILTER(A1:B4,B1:B4>=120,C1:C4)', arrayData)).toEqual([
+      ['East', 120],
+      ['East', 200],
+      ['North', 120],
+    ]);
+    expect(evaluateFormula('=FILTER(A1:B4,A1:A4="East",B1:B4>150)', arrayData)).toEqual([
+      ['East', 200],
+    ]);
+  });
+
+  it('uses named and cross-sheet ranges and validates array dimensions', () => {
+    const namedRanges = {
+      SALES: { start: { row: 0, col: 0 }, end: { row: 3, col: 1 } },
+    };
+    const workbook = { Summary: {}, Sales: arrayData };
+    expect(evaluateFormula('=SORT(SALES,2,TRUE)', arrayData, namedRanges)).toEqual([
+      ['West', 80],
+      ['East', 120],
+      ['North', 120],
+      ['East', 200],
+    ]);
+    expect(evaluateFormula('=UNIQUE(Sales!A1:A4)', {}, {}, 'en-US', workbook)).toEqual([
+      ['East'],
+      ['West'],
+      ['North'],
+    ]);
+    expect(evaluateFormula('=FILTER(A1:B4,A1:B2="East")', arrayData)).toBe('#VALUE!');
+    expect(evaluateFormula('=FILTER(A1:B4,A1:A4="Missing")', arrayData)).toBe('#N/A');
+    expect(evaluateFormula('=SORT(A1:B4,3,TRUE)', arrayData)).toBe('#VALUE!');
+  });
 });
 
 describe('lookup formulas', () => {

@@ -19,7 +19,7 @@ export interface Token {
 
 const OPERATORS = ['+', '-', '*', '/', '^', '%', '&', '=', '<', '>'];
 const FUNCTIONS = [
-  'SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'SEQUENCE',
+  'SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'SEQUENCE', 'UNIQUE', 'SORT', 'FILTER',
   'SUMIF', 'SUMIFS', 'COUNTIF', 'COUNTIFS', 'AVERAGEIF', 'AVERAGEIFS',
   'DATE', 'TIME', 'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND', 'TODAY', 'NOW',
   'VLOOKUP', 'HLOOKUP', 'INDEX', 'MATCH', 'XLOOKUP',
@@ -678,6 +678,127 @@ function evaluateConditionalAggregate(
     return numbers.reduce((sum, value) => sum + value, 0);
 }
 
+function matrixKey(values: MatrixValue[]): string {
+    return JSON.stringify(values.map((value) => [typeof value, value]));
+}
+
+function transposeMatrix(matrix: MatrixValue[][]): MatrixValue[][] {
+    return Array.from(
+        { length: matrix[0]?.length ?? 0 },
+        (_, column) => matrix.map((row) => row[column] ?? null),
+    );
+}
+
+function dynamicArrayResult(matrix: MatrixValue[][]): FormulaResult {
+    if (matrix.length * (matrix[0]?.length ?? 0) > 10000) return '#NUM!';
+    // The spreadsheet spill path currently types arrays as numeric even though cell
+    // values support text and booleans. Preserve the public type until that path is
+    // widened while returning the same heterogeneous values at runtime.
+    return matrix as number[][];
+}
+
+function evaluateDynamicArrayFormula(
+    formula: string,
+    data: SheetData,
+    namedRanges: NamedRanges,
+    locale: string,
+    workbook?: FormulaWorkbook,
+): FormulaResult | undefined {
+    const match = formula.match(/^=(UNIQUE|SORT|FILTER)\(([\s\S]*)\)$/i);
+    if (!match) return undefined;
+
+    const name = match[1].toUpperCase();
+    const args = splitFunctionArgs(match[2]);
+    const source = resolveRangeMatrix(args[0] ?? '', data, namedRanges, workbook);
+    if (!source) return '#REF!';
+    if (!source.length || !source[0]?.length) return '#CALC!';
+    if (source.some((row) => row.length !== source[0].length)) return '#VALUE!';
+
+    if (name === 'UNIQUE') {
+        if (args.length > 3) return '#VALUE!';
+        const byColumn = args[1]
+            ? evaluateArgument(args[1], data, namedRanges, locale, workbook)
+            : false;
+        const exactlyOnce = args[2]
+            ? evaluateArgument(args[2], data, namedRanges, locale, workbook)
+            : false;
+        if (isFormulaError(byColumn)) return byColumn;
+        if (isFormulaError(exactlyOnce)) return exactlyOnce;
+        if (Array.isArray(byColumn) || Array.isArray(exactlyOnce)) return '#VALUE!';
+
+        const input = byColumn ? transposeMatrix(source) : source;
+        const counts = new Map<string, number>();
+        input.forEach((row) => counts.set(matrixKey(row), (counts.get(matrixKey(row)) ?? 0) + 1));
+        const seen = new Set<string>();
+        const unique = input.filter((row) => {
+            const key = matrixKey(row);
+            if (exactlyOnce) return counts.get(key) === 1;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+        const result = byColumn ? transposeMatrix(unique) : unique;
+        return result.length && result[0]?.length ? dynamicArrayResult(result) : '#CALC!';
+    }
+
+    if (name === 'SORT') {
+        if (args.length > 1 && (args.length - 1) % 2 !== 0) return '#VALUE!';
+        const specifications: Array<{ column: number; ascending: boolean }> = [];
+        for (let index = 1; index < args.length; index += 2) {
+            const columnValue = evaluateArgument(args[index], data, namedRanges, locale, workbook);
+            const ascendingValue = evaluateArgument(args[index + 1], data, namedRanges, locale, workbook);
+            if (isFormulaError(columnValue)) return columnValue;
+            if (isFormulaError(ascendingValue)) return ascendingValue;
+            if (Array.isArray(columnValue) || Array.isArray(ascendingValue)) return '#VALUE!';
+            const column = Number(columnValue);
+            if (!Number.isInteger(column) || column < 1 || column > source[0].length) return '#VALUE!';
+            specifications.push({ column: column - 1, ascending: Boolean(ascendingValue) });
+        }
+        if (!specifications.length) specifications.push({ column: 0, ascending: true });
+
+        const sorted = source.map((row, index) => ({ row, index })).sort((left, right) => {
+            for (const specification of specifications) {
+                const comparison = compareValues(
+                    left.row[specification.column],
+                    '<',
+                    right.row[specification.column],
+                ) ? -1 : compareValues(
+                    left.row[specification.column],
+                    '>',
+                    right.row[specification.column],
+                ) ? 1 : 0;
+                if (comparison) return specification.ascending ? comparison : -comparison;
+            }
+            return left.index - right.index;
+        }).map(({ row }) => row);
+        return dynamicArrayResult(sorted);
+    }
+
+    if (args.length < 2) return '#VALUE!';
+    const selected = source.map(() => true);
+    for (const conditionArgument of args.slice(1)) {
+        const comparison = findTopLevelComparison(conditionArgument);
+        const rangeArgument = comparison?.left ?? conditionArgument;
+        const condition = resolveRangeMatrix(rangeArgument, data, namedRanges, workbook);
+        if (!condition) return '#REF!';
+        if (condition.length !== source.length || condition.some((row) => row.length !== 1)) return '#VALUE!';
+
+        let expected: FormulaResult = true;
+        if (comparison) {
+            expected = evaluateArgument(comparison.right, data, namedRanges, locale, workbook);
+            if (isFormulaError(expected)) return expected;
+            if (Array.isArray(expected)) return '#VALUE!';
+        }
+        condition.forEach((row, index) => {
+            selected[index] = selected[index] && (comparison
+                ? compareValues(row[0], comparison.operator, expected as MatrixValue)
+                : Boolean(row[0]));
+        });
+    }
+    const filtered = source.filter((_, index) => selected[index]);
+    return filtered.length ? dynamicArrayResult(filtered) : '#N/A';
+}
+
 export function evaluateFormula(
     formula: string,
     data: SheetData,
@@ -753,6 +874,9 @@ export function evaluateFormula(
 
         const conditionalAggregate = evaluateConditionalAggregate(formula, data, namedRanges, locale, workbook);
         if (conditionalAggregate !== undefined) return conditionalAggregate;
+
+        const dynamicArray = evaluateDynamicArrayFormula(formula, data, namedRanges, locale, workbook);
+        if (dynamicArray !== undefined) return dynamicArray;
 
         const sequence = formula.match(/^=SEQUENCE\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?(?:,\s*(-?\d+(?:\.\d+)?)\s*)?(?:,\s*(-?\d+(?:\.\d+)?)\s*)?\)$/i);
         if (sequence) {
