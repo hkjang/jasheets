@@ -14,6 +14,7 @@ import { EventsService, CellChangeEvent } from '../events/events.service';
 import { createHash } from 'crypto';
 import { rewriteSheetReferences } from './sheet-reference.util';
 import { rewriteConditionalRanges } from './conditional-range.util';
+import { rewriteMergedRange } from './merged-range.util';
 
 @Injectable()
 export class SheetsService {
@@ -228,6 +229,9 @@ export class SheetsService {
             charts: true,
             pivotTables: true,
             conditionalRules: { orderBy: { priority: 'asc' } },
+            mergedRanges: {
+              orderBy: [{ startRow: 'asc' }, { startCol: 'asc' }],
+            },
           },
         },
         owner: {
@@ -442,6 +446,7 @@ export class SheetsService {
             charts: true,
             pivotTables: true,
             conditionalRules: true,
+            mergedRanges: true,
           },
         });
         if (!source || source.spreadsheetId !== sheet.spreadsheetId) {
@@ -485,6 +490,7 @@ export class SheetsService {
             charts: true,
             pivotTables: true,
             conditionalRules: { orderBy: { priority: 'asc' } },
+            mergedRanges: true,
           },
         });
       },
@@ -506,6 +512,7 @@ export class SheetsService {
         charts: true;
         pivotTables: true;
         conditionalRules: true;
+        mergedRanges: true;
       };
     }>,
     targetSheetId: string,
@@ -586,6 +593,18 @@ export class SheetsService {
             conditions: conditions as Prisma.InputJsonValue,
             format: format as Prisma.InputJsonValue,
             active,
+          }),
+        ),
+      });
+    if (source.mergedRanges.length)
+      await tx.mergedRange.createMany({
+        data: source.mergedRanges.map(
+          ({ startRow, startCol, endRow, endCol }) => ({
+            sheetId: targetSheetId,
+            startRow,
+            startCol,
+            endRow,
+            endCol,
           }),
         ),
       });
@@ -744,6 +763,7 @@ export class SheetsService {
         await this.shiftColumns(tx, sheetId, change.type, change.index);
       }
       await this.shiftConditionalRuleRanges(tx, sheetId, change);
+      await this.shiftMergedRanges(tx, sheetId, change);
 
       return tx.sheet.findUniqueOrThrow({ where: { id: sheetId } });
     });
@@ -754,6 +774,171 @@ export class SheetsService {
       rowCount: updatedSheet.rowCount,
       colCount: updatedSheet.colCount,
     };
+  }
+
+  async listMergedRanges(userId: string, sheetId: string) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+      select: { spreadsheetId: true },
+    });
+    if (!sheet) throw new NotFoundException('Sheet not found');
+    if (!(await this.checkAccess(userId, sheet.spreadsheetId))) {
+      throw new ForbiddenException(
+        'You do not have access to this spreadsheet',
+      );
+    }
+    return this.prisma.mergedRange.findMany({
+      where: { sheetId },
+      orderBy: [{ startRow: 'asc' }, { startCol: 'asc' }],
+    });
+  }
+
+  async mergeCells(
+    userId: string,
+    sheetId: string,
+    range: {
+      startRow: number;
+      startCol: number;
+      endRow: number;
+      endCol: number;
+      expectedVersion?: number;
+    },
+  ) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+    });
+    if (!sheet) throw new NotFoundException('Sheet not found');
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+    this.validateMergedRange(range, sheet.rowCount, sheet.colCount);
+
+    const versionToMatch = range.expectedVersion ?? sheet.version;
+    return this.prisma.$transaction(async (tx) => {
+      const versionUpdate = await tx.sheet.updateMany({
+        where: { id: sheetId, version: versionToMatch },
+        data: { version: { increment: 1 } },
+      });
+      if (versionUpdate.count !== 1) {
+        throw new ConflictException(
+          'Sheet was modified by another user. Reload before merging cells.',
+        );
+      }
+
+      const overlap = await tx.mergedRange.findFirst({
+        where: {
+          sheetId,
+          startRow: { lte: range.endRow },
+          endRow: { gte: range.startRow },
+          startCol: { lte: range.endCol },
+          endCol: { gte: range.startCol },
+        },
+        select: { id: true },
+      });
+      if (overlap) {
+        throw new ConflictException('The range overlaps already merged cells');
+      }
+
+      const mergedRange = await tx.mergedRange.create({
+        data: {
+          sheetId,
+          startRow: range.startRow,
+          startCol: range.startCol,
+          endRow: range.endRow,
+          endCol: range.endCol,
+        },
+      });
+      await tx.cell.deleteMany({
+        where: {
+          sheetId,
+          row: { gte: range.startRow, lte: range.endRow },
+          col: { gte: range.startCol, lte: range.endCol },
+          NOT: { row: range.startRow, col: range.startCol },
+        },
+      });
+      return { mergedRange, version: versionToMatch + 1 };
+    });
+  }
+
+  async unmergeCells(
+    userId: string,
+    sheetId: string,
+    range: {
+      startRow: number;
+      startCol: number;
+      endRow: number;
+      endCol: number;
+      expectedVersion?: number;
+    },
+  ) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+    });
+    if (!sheet) throw new NotFoundException('Sheet not found');
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+    this.validateMergedRange(range, sheet.rowCount, sheet.colCount);
+    const versionToMatch = range.expectedVersion ?? sheet.version;
+
+    return this.prisma.$transaction(async (tx) => {
+      const versionUpdate = await tx.sheet.updateMany({
+        where: { id: sheetId, version: versionToMatch },
+        data: { version: { increment: 1 } },
+      });
+      if (versionUpdate.count !== 1) {
+        throw new ConflictException(
+          'Sheet was modified by another user. Reload before unmerging cells.',
+        );
+      }
+      const removed = await tx.mergedRange.deleteMany({
+        where: {
+          sheetId,
+          startRow: range.startRow,
+          startCol: range.startCol,
+          endRow: range.endRow,
+          endCol: range.endCol,
+        },
+      });
+      if (removed.count !== 1) {
+        throw new NotFoundException('Merged range not found');
+      }
+      return { version: versionToMatch + 1 };
+    });
+  }
+
+  private validateMergedRange(
+    range: {
+      startRow: number;
+      startCol: number;
+      endRow: number;
+      endCol: number;
+    },
+    rowCount: number,
+    colCount: number,
+  ) {
+    const coordinates = [
+      range.startRow,
+      range.startCol,
+      range.endRow,
+      range.endCol,
+    ];
+    if (coordinates.some((coordinate) => !Number.isInteger(coordinate))) {
+      throw new BadRequestException(
+        'Merged range coordinates must be integers',
+      );
+    }
+    if (
+      range.startRow < 0 ||
+      range.startCol < 0 ||
+      range.endRow < range.startRow ||
+      range.endCol < range.startCol ||
+      range.endRow >= rowCount ||
+      range.endCol >= colCount
+    ) {
+      throw new BadRequestException('Merged range is outside the sheet bounds');
+    }
+    if (range.startRow === range.endRow && range.startCol === range.endCol) {
+      throw new BadRequestException(
+        'A merged range must contain multiple cells',
+      );
+    }
   }
 
   private async shiftConditionalRuleRanges(
@@ -769,22 +954,74 @@ export class SheetsService {
       where: { sheetId },
       select: { id: true, ranges: true },
     });
-    await Promise.all(rules.map(({ id, ranges }) => {
-      const rewritten = rewriteConditionalRanges(ranges, change);
-      if (rewritten.length === 0) {
-        return tx.conditionalRule.delete({ where: { id } });
+    await Promise.all(
+      rules.map(({ id, ranges }) => {
+        const rewritten = rewriteConditionalRanges(ranges, change);
+        if (rewritten.length === 0) {
+          return tx.conditionalRule.delete({ where: { id } });
+        }
+        if (
+          rewritten.length === ranges.length &&
+          rewritten.every((range, index) => range === ranges[index])
+        ) {
+          return Promise.resolve();
+        }
+        return tx.conditionalRule.update({
+          where: { id },
+          data: { ranges: rewritten },
+        });
+      }),
+    );
+  }
+
+  private async shiftMergedRanges(
+    tx: Prisma.TransactionClient,
+    sheetId: string,
+    change: {
+      axis: 'row' | 'column';
+      type: 'insert' | 'delete';
+      index: number;
+    },
+  ) {
+    const ranges = await tx.mergedRange.findMany({
+      where: { sheetId },
+      select: {
+        id: true,
+        startRow: true,
+        startCol: true,
+        endRow: true,
+        endCol: true,
+      },
+    });
+    // Preserve range ids and avoid transient coordinate uniqueness collisions:
+    // insertions move the furthest ranges first, deletions the nearest first.
+    ranges.sort((left, right) => {
+      const leftStart = change.axis === 'row' ? left.startRow : left.startCol;
+      const rightStart =
+        change.axis === 'row' ? right.startRow : right.startCol;
+      return change.type === 'insert'
+        ? rightStart - leftStart
+        : leftStart - rightStart;
+    });
+    for (const { id, ...range } of ranges) {
+      const rewritten = rewriteMergedRange(range, change);
+      if (!rewritten) {
+        await tx.mergedRange.delete({ where: { id } });
+        continue;
       }
       if (
-        rewritten.length === ranges.length &&
-        rewritten.every((range, index) => range === ranges[index])
+        rewritten.startRow === range.startRow &&
+        rewritten.startCol === range.startCol &&
+        rewritten.endRow === range.endRow &&
+        rewritten.endCol === range.endCol
       ) {
-        return Promise.resolve();
+        continue;
       }
-      return tx.conditionalRule.update({
+      await tx.mergedRange.update({
         where: { id },
-        data: { ranges: rewritten },
+        data: rewritten,
       });
-    }));
+    }
   }
 
   private async shiftRows(
@@ -946,6 +1183,7 @@ export class SheetsService {
     await this.checkEditAccess(userId, sheet.spreadsheetId);
 
     this.validateCellCoordinates(row, col, sheet.rowCount, sheet.colCount);
+    await this.assertMergedCellWriteAllowed(sheetId, [{ row, col }]);
     const normalizedData = this.normalizeCellUpdate(data);
 
     return this.prisma.cell.upsert({
@@ -1019,6 +1257,8 @@ export class SheetsService {
       seenCoordinates.add(coordinate);
       return { ...update, ...this.normalizeCellUpdate(update) };
     });
+
+    await this.assertMergedCellWriteAllowed(sheetId, normalizedUpdates);
 
     const versionToMatch = expectedVersion ?? sheet.version;
     const requestHash = createHash('sha256')
@@ -1200,6 +1440,31 @@ export class SheetsService {
       `[updateCells] Completed, returning ${transactionResult.cells.length} updated cells`,
     );
     return { cells: transactionResult.cells, version: versionToMatch + 1 };
+  }
+
+  private async assertMergedCellWriteAllowed(
+    sheetId: string,
+    coordinates: Array<{ row: number; col: number }>,
+  ): Promise<void> {
+    const containingRange = await this.prisma.mergedRange.findFirst({
+      where: {
+        sheetId,
+        OR: coordinates.map(({ row, col }) => ({
+          startRow: { lte: row },
+          endRow: { gte: row },
+          startCol: { lte: col },
+          endCol: { gte: col },
+          NOT: { startRow: row, startCol: col },
+        })),
+      },
+      select: { startRow: true, startCol: true, endRow: true, endCol: true },
+    });
+
+    if (containingRange) {
+      throw new BadRequestException(
+        'Cannot write to a non-anchor cell inside a merged range',
+      );
+    }
   }
 
   private validateCellCoordinates(

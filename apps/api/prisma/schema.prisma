@@ -148,6 +148,7 @@ model Sheet {
   charts        Chart[]
   pivotTables   PivotTable[]
   cellMutations CellMutation[]
+  mergedRanges  MergedRange[]
 
   // Phase 1: Advanced Features
   sheetPermissions        SheetPermission[]
@@ -163,6 +164,21 @@ model Sheet {
 
   @@unique([spreadsheetId, index])
   @@map("sheets")
+}
+
+model MergedRange {
+  id        String   @id @default(uuid())
+  sheetId   String
+  sheet     Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  startRow  Int
+  startCol  Int
+  endRow    Int
+  endCol    Int
+  createdAt DateTime @default(now())
+
+  @@unique([sheetId, startRow, startCol, endRow, endCol])
+  @@index([sheetId])
+  @@map("merged_ranges")
 }
 
 // Durable record used to make retried cell batches safe and auditable.

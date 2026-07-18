@@ -33,6 +33,12 @@ describe('SheetsService sheet operations', () => {
       update: jest.fn(),
       delete: jest.fn(),
     },
+    mergedRange: {
+      createMany: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
     comment: { deleteMany: jest.fn() },
     $executeRaw: jest.fn(),
   };
@@ -88,6 +94,7 @@ describe('SheetsService sheet operations', () => {
       charts: [],
       pivotTables: [],
       conditionalRules: [],
+      mergedRanges: [],
     });
     tx.sheet.findMany.mockResolvedValue([]);
     tx.sheet.findUniqueOrThrow.mockResolvedValue({
@@ -111,6 +118,10 @@ describe('SheetsService sheet operations', () => {
     tx.conditionalRule.findMany.mockResolvedValue([]);
     tx.conditionalRule.update.mockResolvedValue({});
     tx.conditionalRule.delete.mockResolvedValue({});
+    tx.mergedRange.createMany.mockResolvedValue({ count: 0 });
+    tx.mergedRange.findMany.mockResolvedValue([]);
+    tx.mergedRange.update.mockResolvedValue({});
+    tx.mergedRange.delete.mockResolvedValue({});
     tx.comment.deleteMany.mockResolvedValue({ count: 0 });
     tx.$executeRaw.mockResolvedValue(0);
   });
@@ -181,6 +192,9 @@ describe('SheetsService sheet operations', () => {
         charts: [],
         pivotTables: [],
         conditionalRules: [],
+        mergedRanges: [
+          { id: 'merge-1', startRow: 0, startCol: 0, endRow: 0, endCol: 1 },
+        ],
       })
       .mockResolvedValueOnce({ id: 'sheet-copy', name: 'Copy of Revenue' });
     tx.sheet.findMany.mockResolvedValueOnce([
@@ -213,6 +227,17 @@ describe('SheetsService sheet operations', () => {
       ],
     });
     expect(tx.rowMeta.createMany).toHaveBeenCalled();
+    expect(tx.mergedRange.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          sheetId: 'sheet-copy',
+          startRow: 0,
+          startCol: 0,
+          endRow: 0,
+          endCol: 1,
+        },
+      ],
+    });
     expect(result).toEqual({ id: 'sheet-copy', name: 'Copy of Revenue' });
   });
 
@@ -290,6 +315,37 @@ describe('SheetsService sheet operations', () => {
     expect(tx.conditionalRule.update).toHaveBeenCalledWith({
       where: { id: 'rule-2' },
       data: { ranges: ['D6:D6'] },
+    });
+  });
+
+  it('rewrites merged ranges with structural changes', async () => {
+    tx.mergedRange.findMany.mockResolvedValueOnce([
+      {
+        id: 'merge-1',
+        startRow: 2,
+        startCol: 1,
+        endRow: 3,
+        endCol: 2,
+      },
+      {
+        id: 'merge-2',
+        startRow: 1,
+        startCol: 5,
+        endRow: 1,
+        endCol: 6,
+      },
+    ]);
+
+    await service.changeStructure('user-1', 'sheet-1', {
+      axis: 'row', type: 'delete', index: 1,
+    });
+
+    expect(tx.mergedRange.update).toHaveBeenCalledWith({
+      where: { id: 'merge-1' },
+      data: { startRow: 1, startCol: 1, endRow: 2, endCol: 2 },
+    });
+    expect(tx.mergedRange.delete).toHaveBeenCalledWith({
+      where: { id: 'merge-2' },
     });
   });
 

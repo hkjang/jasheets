@@ -40,6 +40,8 @@ interface MenuBarProps {
   onInsertPivot?: () => void;
   onConditionalFormat?: () => void;
   onInsertLink?: () => void;
+  onMergeCells?: () => void;
+  onUnmergeCells?: () => void;
   onUnfreeze?: () => void;
   onZoomChange?: (zoom: number) => void;
   onTrimWhitespace?: () => void;
@@ -98,6 +100,8 @@ export default function MenuBar({
   onInsertPivot,
   onConditionalFormat,
   onInsertLink,
+  onMergeCells,
+  onUnmergeCells,
   onUnfreeze,
   onZoomChange,
   onTrimWhitespace,
@@ -320,6 +324,9 @@ export default function MenuBar({
               <Separator />
               <MenuItem label="테이블 서식" onClick={onTableFormat} />
               <MenuItem label="조건부 서식" onClick={onConditionalFormat} />
+              <Separator />
+              <MenuItem label="셀 병합" onClick={onMergeCells} />
+              <MenuItem label="셀 병합 해제" onClick={onUnmergeCells} />
             </div>
           )}
         </div>

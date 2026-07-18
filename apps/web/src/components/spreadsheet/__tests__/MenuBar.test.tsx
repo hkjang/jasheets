@@ -32,6 +32,8 @@ describe('MenuBar data sorting', () => {
     onDownloadPDF: jest.fn(),
     onMakeCopy: jest.fn(),
     onEmail: jest.fn(),
+    onMergeCells: jest.fn(),
+    onUnmergeCells: jest.fn(),
   };
 
   beforeEach(() => {
@@ -50,5 +52,17 @@ describe('MenuBar data sorting', () => {
     fireEvent.click(screen.getByText('시트 정렬 (Z-A)'));
     expect(callbacks.onSortDesc).toHaveBeenCalledTimes(1);
     expect(callbacks.onSortAsc).toHaveBeenCalledTimes(1);
+  });
+
+  it('dispatches merge and unmerge formatting actions', () => {
+    render(<MenuBar {...callbacks} />);
+
+    fireEvent.click(screen.getByRole('button', { name: '서식' }));
+    fireEvent.click(screen.getByText('셀 병합'));
+    expect(callbacks.onMergeCells).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: '서식' }));
+    fireEvent.click(screen.getByText('셀 병합 해제'));
+    expect(callbacks.onUnmergeCells).toHaveBeenCalledTimes(1);
   });
 });

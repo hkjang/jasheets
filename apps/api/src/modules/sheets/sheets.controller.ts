@@ -23,6 +23,7 @@ import {
 } from './dto/sheet.dto';
 import { StructuralChangeDto } from './dto/structural-change.dto';
 import { SheetViewDto } from './dto/sheet-view.dto';
+import { MergeCellsDto, UnmergeCellsDto } from './dto/merged-range.dto';
 
 @Controller('sheets')
 @UseGuards(JwtAuthGuard)
@@ -197,6 +198,29 @@ export class SheetsController {
     @Body() dto: SheetViewDto,
   ) {
     return this.sheetsService.saveView(req.user.id, sheetId, dto);
+  }
+
+  @Get('sheet/:sheetId/merged-ranges')
+  listMergedRanges(@Request() req: any, @Param('sheetId') sheetId: string) {
+    return this.sheetsService.listMergedRanges(req.user.id, sheetId);
+  }
+
+  @Post('sheet/:sheetId/merged-ranges')
+  mergeCells(
+    @Request() req: any,
+    @Param('sheetId') sheetId: string,
+    @Body() dto: MergeCellsDto,
+  ) {
+    return this.sheetsService.mergeCells(req.user.id, sheetId, dto);
+  }
+
+  @Delete('sheet/:sheetId/merged-ranges')
+  unmergeCells(
+    @Request() req: any,
+    @Param('sheetId') sheetId: string,
+    @Body() dto: UnmergeCellsDto,
+  ) {
+    return this.sheetsService.unmergeCells(req.user.id, sheetId, dto);
   }
 
   // Cell operations

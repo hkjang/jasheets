@@ -1,6 +1,11 @@
 import { API_URL, apiClient } from "./api-client";
 import type { CellValue } from "@/types/spreadsheet";
 import type { PersistedConditionalRule } from "@/utils/conditionalRulePersistence";
+import type { MergedRange } from "@/utils/mergedRanges";
+
+export interface PersistedMergedRange extends MergedRange {
+  id: string;
+}
 
 export interface SpreadsheetSummary {
   id: string;
@@ -39,6 +44,7 @@ export interface SpreadsheetSheet {
   }>;
   charts?: unknown[];
   conditionalRules?: PersistedConditionalRule[];
+  mergedRanges?: PersistedMergedRange[];
 }
 
 export interface SpreadsheetVersion {
@@ -252,6 +258,30 @@ export const api = {
         body: JSON.stringify(change),
       });
     },
+    mergeCells: async (
+      sheetId: string,
+      range: MergedRange,
+      expectedVersion: number,
+    ) => apiClient.request<{ mergedRange: PersistedMergedRange; version: number }>(
+      `/sheets/sheet/${sheetId}/merged-ranges`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...range, expectedVersion }),
+      },
+    ),
+    unmergeCells: async (
+      sheetId: string,
+      range: MergedRange,
+      expectedVersion: number,
+    ) => apiClient.request<{ version: number }>(
+      `/sheets/sheet/${sheetId}/merged-ranges`,
+      {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...range, expectedVersion }),
+      },
+    ),
     saveView: async (
       sheetId: string,
       view: {

@@ -83,6 +83,15 @@ import CommandPalette from "./CommandPalette";
 import type { PersistedCellUpdate } from "@/utils/cellPersistence";
 import SheetTabs, { type SheetTab } from "./SheetTabs";
 import type { FormulaWorkbook } from "@/utils/FormulaEngine";
+import type { PersistedMergedRange } from "@/lib/api";
+import {
+  findMergedRange,
+  normalizeMergedRange,
+  rejectNonAnchorMergedUpdates,
+  resolveMergedCell,
+  resolveMergedNavigationTarget,
+  shiftMergedRanges,
+} from "@/utils/mergedRanges";
 import {
   deserializeConditionalRule,
   serializeConditionalRule,
@@ -92,6 +101,7 @@ interface SpreadsheetProps {
   initialData?: SheetData;
   initialCharts?: any[];
   initialConditionalRules?: ConditionalRule[];
+  initialMergedRanges?: PersistedMergedRange[];
   onDataChange?: (data: SheetData) => void;
   spreadsheetId?: string;
   activeSheetId?: string | null;
@@ -118,12 +128,17 @@ interface SpreadsheetProps {
     sheetId: string,
     dimensions: { rowCount: number; colCount: number },
   ) => void;
+  onMergedRangesChange?: (
+    sheetId: string,
+    mergedRanges: PersistedMergedRange[],
+  ) => void;
 }
 
 export default function Spreadsheet({
   initialData = {},
   initialCharts = [],
   initialConditionalRules = [],
+  initialMergedRanges = [],
   onDataChange,
   spreadsheetId,
   activeSheetId,
@@ -147,6 +162,7 @@ export default function Spreadsheet({
   onVersionChange,
   onChartsChange,
   onStructureChange,
+  onMergedRangesChange,
 }: SpreadsheetProps) {
   const [sheetTitle, setSheetTitle] = useState(title);
   const [sheetVersion, setSheetVersion] = useState(initialVersion);
@@ -157,6 +173,7 @@ export default function Spreadsheet({
     (updates: PersistedCellUpdate[]) => void
   >(() => undefined);
   const viewFlushRef = useRef<() => Promise<void>>(async () => undefined);
+  const mergedRangesRef = useRef<PersistedMergedRange[]>(initialMergedRanges);
   const handleAutosaveSaved = useCallback(
     (version: number) => {
       setSheetVersion(version);
@@ -291,6 +308,8 @@ export default function Spreadsheet({
     const updates: { row: number; col: number; value: string }[] = [];
     for (let r = selection.start.row; r <= selection.end.row; r++) {
       for (let c = selection.start.col; c <= selection.end.col; c++) {
+        const anchor = resolveMergedCell(mergedRangesRef.current, r, c).position;
+        if (anchor.row !== r || anchor.col !== c) continue;
         updates.push({ row: r, col: c, value: "" });
       }
     }
@@ -304,9 +323,19 @@ export default function Spreadsheet({
       const text = await navigator.clipboard.readText();
       if (!text) return;
 
-      const updates = createPasteUpdates(text, selectedCell);
+      const origin = resolveMergedCell(
+        mergedRangesRef.current,
+        selectedCell.row,
+        selectedCell.col,
+      ).position;
+      const updates = rejectNonAnchorMergedUpdates(
+        createPasteUpdates(text, origin),
+        mergedRangesRef.current,
+      );
 
-      if (updates.length > 0) {
+      if (!updates) {
+        setToastMessage("병합된 셀의 일부에는 붙여넣을 수 없습니다.");
+      } else if (updates.length > 0) {
         updateCells(updates);
       }
     } catch (err) {
@@ -350,8 +379,20 @@ export default function Spreadsheet({
         // Refactoring parsing to separate function is cleaner but for now let's just duplicate the parsing logic
         // or updates logic.
 
-        const updates = createPasteUpdates(text, selectedCell);
-        if (updates.length > 0) updateCells(updates);
+        const origin = resolveMergedCell(
+          mergedRangesRef.current,
+          selectedCell.row,
+          selectedCell.col,
+        ).position;
+        const updates = rejectNonAnchorMergedUpdates(
+          createPasteUpdates(text, origin),
+          mergedRangesRef.current,
+        );
+        if (!updates) {
+          setToastMessage("병합된 셀의 일부에는 붙여넣을 수 없습니다.");
+        } else if (updates.length > 0) {
+          updateCells(updates);
+        }
       }
     };
 
@@ -646,6 +687,18 @@ export default function Spreadsheet({
           totalRows: result.rowCount,
           totalCols: result.colCount,
         }));
+        setMergedRanges((current) => {
+          const shifted = current.flatMap((range) => {
+            const next = shiftMergedRanges([range], {
+              axis: axis === "column" ? "col" : "row",
+              type,
+              index,
+            })[0];
+            return next ? [{ ...range, ...next }] : [];
+          });
+          onMergedRangesChange?.(activeSheetId, shifted);
+          return shifted;
+        });
 
         if (axis === "row") {
           setRows((current) => {
@@ -697,6 +750,7 @@ export default function Spreadsheet({
       insertColumn,
       insertRow,
       onStructureChange,
+      onMergedRangesChange,
       onVersionChange,
       persistActiveSheet,
       setColumns,
@@ -903,11 +957,30 @@ export default function Spreadsheet({
     onCancel: cancelEditing,
     onStartEdit: (val) => selectedCell && startEditing(selectedCell, val),
     onNavigate: (row, col, extend, anchor) => {
-      handleCellSelect({ row, col });
+      const resolved = selectedCell
+        ? resolveMergedNavigationTarget(
+            mergedRangesRef.current,
+            selectedCell,
+            { row, col },
+          )
+        : resolveMergedCell(mergedRangesRef.current, row, col);
+      const target = resolved.position;
+      handleCellSelect(target);
       setSelection(
         extend
-          ? parseSelection(anchor, { row, col })
-          : { start: { row, col }, end: { row, col } },
+          ? parseSelection(anchor, target)
+          : resolved.range
+            ? {
+                start: {
+                  row: resolved.range.startRow,
+                  col: resolved.range.startCol,
+                },
+                end: {
+                  row: resolved.range.endRow,
+                  col: resolved.range.endCol,
+                },
+              }
+            : { start: target, end: target },
       );
     },
     onClearSelection: () => {
@@ -932,6 +1005,12 @@ export default function Spreadsheet({
   const [conditionalRules, setConditionalRules] = useState<ConditionalRule[]>(
     initialConditionalRules,
   );
+  const [mergedRanges, setMergedRanges] = useState<PersistedMergedRange[]>(
+    initialMergedRanges,
+  );
+  useEffect(() => {
+    mergedRangesRef.current = mergedRanges;
+  }, [mergedRanges]);
   const [isConditionalDialogOpen, setIsConditionalDialogOpen] = useState(false);
 
   // Pivot Table state
@@ -1373,6 +1452,93 @@ export default function Spreadsheet({
     [data, updateData],
   );
 
+  const handleMergeCells = useCallback(async () => {
+    if (!activeSheetId || !selection) {
+      setToastMessage("병합할 범위를 먼저 선택해주세요.");
+      return;
+    }
+    const range = normalizeMergedRange({
+      startRow: selection.start.row,
+      endRow: selection.end.row,
+      startCol: selection.start.col,
+      endCol: selection.end.col,
+    });
+    if (range.startRow === range.endRow && range.startCol === range.endCol) {
+      setToastMessage("두 개 이상의 셀을 선택해주세요.");
+      return;
+    }
+    const hiddenValues = Object.keys(data).some((rowKey) => {
+      const row = Number(rowKey);
+      if (row < range.startRow || row > range.endRow) return false;
+      return Object.keys(data[row] ?? {}).some((colKey) => {
+        const col = Number(colKey);
+        if (row === range.startRow && col === range.startCol) return false;
+        return col >= range.startCol && col <= range.endCol &&
+          data[row]?.[col]?.value !== null && data[row]?.[col]?.value !== "";
+      });
+    });
+    if (hiddenValues && !window.confirm(
+      "병합하면 왼쪽 위 셀을 제외한 값이 삭제됩니다. 계속하시겠습니까?",
+    )) return;
+
+    try {
+      const result = await api.spreadsheets.mergeCells(
+        activeSheetId,
+        range,
+        sheetVersion,
+      );
+      setMergedRanges((current) => {
+        const next = [...current, result.mergedRange];
+        onMergedRangesChange?.(activeSheetId, next);
+        return next;
+      });
+      setSheetVersion(result.version);
+      onVersionChange?.(activeSheetId, result.version);
+      setData((current) => {
+        const next = { ...current };
+        for (let row = range.startRow; row <= range.endRow; row++) {
+          if (!next[row]) continue;
+          next[row] = { ...next[row] };
+          for (let col = range.startCol; col <= range.endCol; col++) {
+            if (row !== range.startRow || col !== range.startCol) delete next[row][col];
+          }
+        }
+        return next;
+      });
+      setToastMessage("셀을 병합했습니다.");
+    } catch (error) {
+      setToastMessage(error instanceof Error ? error.message : "셀 병합에 실패했습니다.");
+    }
+  }, [activeSheetId, data, onMergedRangesChange, onVersionChange, selection, setData, sheetVersion]);
+
+  const handleUnmergeCells = useCallback(async () => {
+    if (!activeSheetId || !selectedCell) return;
+    const range = findMergedRange(mergedRanges, selectedCell.row, selectedCell.col) as
+      | PersistedMergedRange
+      | undefined;
+    if (!range) {
+      setToastMessage("선택한 셀은 병합되어 있지 않습니다.");
+      return;
+    }
+    try {
+      const result = await api.spreadsheets.unmergeCells(
+        activeSheetId,
+        range,
+        sheetVersion,
+      );
+      setMergedRanges((current) => {
+        const next = current.filter(({ id }) => id !== range.id);
+        onMergedRangesChange?.(activeSheetId, next);
+        return next;
+      });
+      setSheetVersion(result.version);
+      onVersionChange?.(activeSheetId, result.version);
+      setToastMessage("셀 병합을 해제했습니다.");
+    } catch (error) {
+      setToastMessage(error instanceof Error ? error.message : "병합 해제에 실패했습니다.");
+    }
+  }, [activeSheetId, mergedRanges, onMergedRangesChange, onVersionChange, selectedCell, sheetVersion]);
+
   if (loading || !user) {
     return (
       <div
@@ -1537,6 +1703,8 @@ export default function Spreadsheet({
           if (selectedCell) setIsLinkDialogOpen(true);
           else alert("링크를 삽입할 셀을 선택해주세요.");
         }}
+        onMergeCells={() => void handleMergeCells()}
+        onUnmergeCells={() => void handleUnmergeCells()}
         onUnfreeze={handleUnfreeze}
         onZoomChange={handleZoomChange}
         onTrimWhitespace={handleTrimWhitespace}
@@ -1805,6 +1973,7 @@ export default function Spreadsheet({
           onSelectionChange={handleSelectionChange}
           onCellEdit={(pos) => startEditing(pos)}
           conditionalRules={conditionalRules}
+          mergedRanges={mergedRanges}
           onColumnResize={(index, width) => {
             handleColumnResize(index, width);
             queueViewSave();
@@ -1817,9 +1986,17 @@ export default function Spreadsheet({
           onHeaderContextMenu={handleHeaderContextMenu}
           onCellContextMenu={(x, y) => setCellContextMenu({ x, y })}
           isEditing={isEditing}
-          onFillRange={(source, target) =>
-            updateCells(createFillUpdates(data, source, target))
-          }
+          onFillRange={(source, target) => {
+            const updates = rejectNonAnchorMergedUpdates(
+              createFillUpdates(data, source, target),
+              mergedRanges,
+            );
+            if (!updates) {
+              setToastMessage("병합된 셀의 일부에는 자동 채우기를 적용할 수 없습니다.");
+              return;
+            }
+            updateCells(updates);
+          }}
         />
 
         {isEditing && selectedCell && (

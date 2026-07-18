@@ -23,6 +23,14 @@ import styles from './SpreadsheetCanvas.module.css';
 import { describeSpreadsheetCell } from '@/utils/spreadsheetAccessibility';
 import { isDoubleTap, isTap, PointerSample } from '@/utils/mobileGestures';
 import { normalizeHyperlinkUrl } from '@/utils/hyperlink';
+import {
+  findMergedRange,
+  getMergedRangeRect,
+  mergedRangeIntersects,
+  normalizeMergedRange,
+  resolveMergedCell,
+  type MergedRange,
+} from '@/utils/mergedRanges';
 
 interface SpreadsheetCanvasProps {
   data: SheetData;
@@ -42,6 +50,7 @@ interface SpreadsheetCanvasProps {
   showGridlines?: boolean;
   isEditing?: boolean;
   onFillRange?: (source: CellRange, target: CellRange) => void;
+  mergedRanges?: readonly MergedRange[];
 }
 
 export default function SpreadsheetCanvas({
@@ -62,6 +71,7 @@ export default function SpreadsheetCanvas({
   showGridlines = true,
   isEditing = false,
   onFillRange,
+  mergedRanges = [],
 }: SpreadsheetCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -141,11 +151,11 @@ export default function SpreadsheetCanvas({
       const row = findAxisIndex(rowGeometry, y - config.headerHeight + scrollY);
 
       if (col >= 0 && row >= 0) {
-        return { row, col };
+        return resolveMergedCell(mergedRanges, row, col).position;
       }
       return null;
     },
-    [viewport, columnGeometry, rowGeometry, config.headerHeight, config.headerWidth]
+    [viewport, columnGeometry, rowGeometry, config.headerHeight, config.headerWidth, mergedRanges]
   );
 
   // Draw the canvas
@@ -197,6 +207,10 @@ export default function SpreadsheetCanvas({
       for (let col = startCol; col <= endCol; col++) {
         if (columns[col]?.hidden) continue;
         const colWidth = columns[col]?.width ?? config.defaultColWidth;
+        if (findMergedRange(mergedRanges, row, col)) {
+          currentX += colWidth;
+          continue;
+        }
         const cellData = data[row]?.[col];
 
         // Check if cell is in selection
@@ -272,12 +286,79 @@ export default function SpreadsheetCanvas({
       currentY += rowHeight;
     }
 
+    // Merged cells are painted after regular cells so their background removes
+    // interior gridlines. Intersecting ranges are included even if the anchor
+    // itself is outside the visible window.
+    for (const rawRange of mergedRanges) {
+      if (!mergedRangeIntersects(rawRange, startRow, endRow, startCol, endCol)) continue;
+      const range = normalizeMergedRange(rawRange);
+      const rect = getMergedRangeRect(
+        range,
+        columnGeometry,
+        rowGeometry,
+        config.headerWidth - scrollX,
+        config.headerHeight - scrollY,
+      );
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      const cellData = data[range.startRow]?.[range.startCol];
+      const conditionalStyle = resolveConditionalStyle(
+        conditionalRules,
+        range.startRow,
+        range.startCol,
+        cellData?.value ?? null,
+      );
+      const isInSelection = selection &&
+        range.endRow >= selection.start.row && range.startRow <= selection.end.row &&
+        range.endCol >= selection.start.col && range.startCol <= selection.end.col;
+
+      ctx.fillStyle = cellData?.style?.backgroundColor || '#fff';
+      ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+      if (isInSelection) {
+        ctx.fillStyle = 'rgba(26, 115, 232, 0.1)';
+        ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+      }
+      if (conditionalStyle.backgroundColor) {
+        ctx.fillStyle = conditionalStyle.backgroundColor;
+        ctx.fillRect(rect.x, rect.y, rect.width, rect.height);
+      }
+      if (showGridlines) {
+        ctx.strokeStyle = '#e2e2e2';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.width, rect.height);
+      }
+      if (cellData) {
+        const displayValue = cellData.error || cellData.displayValue || String(cellData.value ?? '');
+        ctx.fillStyle = conditionalStyle.color ||
+          (cellData.error ? '#ea4335' : (cellData.style?.color || '#202124'));
+        const fontWeight = conditionalStyle.fontWeight || cellData.style?.fontWeight;
+        const fontStyle = conditionalStyle.fontStyle || cellData.style?.fontStyle;
+        ctx.font = `${fontWeight === 'bold' ? 'bold ' : ''}${fontStyle === 'italic' ? 'italic ' : ''}${cellData.style?.fontSize || 13}px ${cellData.style?.fontFamily || 'Arial'}`;
+        const textX = cellData.style?.textAlign === 'center'
+          ? rect.x + rect.width / 2
+          : cellData.style?.textAlign === 'right'
+            ? rect.x + rect.width - 4
+            : rect.x + 4;
+        ctx.textAlign = (cellData.style?.textAlign as CanvasTextAlign) || 'left';
+        ctx.textBaseline = 'middle';
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(rect.x + 2, rect.y + 2, Math.max(0, rect.width - 4), Math.max(0, rect.height - 4));
+        ctx.clip();
+        ctx.fillText(displayValue, textX, rect.y + rect.height / 2);
+        ctx.restore();
+      }
+    }
+
     // Draw selected cell border (skip when editing - CellEditor shows its own border)
-    if (!isEditing && selectedCell && selectedCell.row >= startRow && selectedCell.row <= endRow && selectedCell.col >= startCol && selectedCell.col <= endCol) {
-      const cellX = getColX(selectedCell.col) - scrollX;
-      const cellY = getRowY(selectedCell.row) - scrollY;
-      const cellWidth = columns[selectedCell.col]?.width ?? config.defaultColWidth;
-      const cellHeight = rows[selectedCell.row]?.height ?? config.defaultRowHeight;
+    if (!isEditing && selectedCell) {
+      const selectedMerge = findMergedRange(mergedRanges, selectedCell.row, selectedCell.col);
+      const selectedRect = selectedMerge
+        ? getMergedRangeRect(selectedMerge, columnGeometry, rowGeometry, config.headerWidth - scrollX, config.headerHeight - scrollY)
+        : null;
+      const cellX = selectedRect?.x ?? getColX(selectedCell.col) - scrollX;
+      const cellY = selectedRect?.y ?? getRowY(selectedCell.row) - scrollY;
+      const cellWidth = selectedRect?.width ?? columns[selectedCell.col]?.width ?? config.defaultColWidth;
+      const cellHeight = selectedRect?.height ?? rows[selectedCell.row]?.height ?? config.defaultRowHeight;
 
       ctx.strokeStyle = '#1a73e8';
       ctx.lineWidth = 2;
@@ -386,6 +467,7 @@ export default function SpreadsheetCanvas({
     isEditing,
     columnGeometry,
     rowGeometry,
+    mergedRanges,
   ]);
 
   // Handle resize
@@ -512,10 +594,18 @@ export default function SpreadsheetCanvas({
         }
 
         // Left-click or right-click outside selection: start new selection
+        const merged = findMergedRange(mergedRanges, cell.row, cell.col);
+        const normalizedMerge = merged ? normalizeMergedRange(merged) : null;
+        const initialSelection = normalizedMerge
+          ? {
+              start: { row: normalizedMerge.startRow, col: normalizedMerge.startCol },
+              end: { row: normalizedMerge.endRow, col: normalizedMerge.endCol },
+            }
+          : { start: cell, end: cell };
         setIsSelecting(true);
-        setSelectionStart(cell);
+        setSelectionStart(initialSelection.start);
         onCellSelect(cell);
-        onSelectionChange({ start: cell, end: cell });
+        onSelectionChange(initialSelection);
       } else if (y < config.headerHeight && x > config.headerWidth) {
         // Click on Col Header -> Select Col
         let col = -1;
@@ -553,7 +643,7 @@ export default function SpreadsheetCanvas({
         }
       }
     },
-    [data, getCellFromPoint, getColX, getRowY, onCellSelect, onSelectionChange, config, columns, rows, viewport, canvasSize, selection]
+    [data, getCellFromPoint, getColX, getRowY, onCellSelect, onSelectionChange, config, columns, rows, viewport, canvasSize, selection, mergedRanges]
   );
 
   // Handle mouse move
@@ -636,7 +726,15 @@ export default function SpreadsheetCanvas({
 
       const cell = getCellFromPoint(x, y);
       if (cell) {
-        onSelectionChange({ start: selectionStart, end: cell });
+        const merged = findMergedRange(mergedRanges, cell.row, cell.col);
+        const normalizedMerge = merged ? normalizeMergedRange(merged) : null;
+        const end = normalizedMerge
+          ? {
+              row: cell.row >= selectionStart.row ? normalizedMerge.endRow : normalizedMerge.startRow,
+              col: cell.col >= selectionStart.col ? normalizedMerge.endCol : normalizedMerge.startCol,
+            }
+          : cell;
+        onSelectionChange({ start: selectionStart, end });
       }
     },
     [
@@ -651,6 +749,7 @@ export default function SpreadsheetCanvas({
       rows,
       selectionStart,
       viewport,
+      mergedRanges,
     ]
   );
 
@@ -686,12 +785,19 @@ export default function SpreadsheetCanvas({
     const rect = canvas.getBoundingClientRect();
     const cell = getCellFromPoint(event.clientX - rect.left, event.clientY - rect.top);
     if (cell) {
+      const merged = findMergedRange(mergedRanges, cell.row, cell.col);
+      const normalizedMerge = merged ? normalizeMergedRange(merged) : null;
       onCellSelect(cell);
-      onSelectionChange({ start: cell, end: cell });
+      onSelectionChange(normalizedMerge
+        ? {
+            start: { row: normalizedMerge.startRow, col: normalizedMerge.startCol },
+            end: { row: normalizedMerge.endRow, col: normalizedMerge.endCol },
+          }
+        : { start: cell, end: cell });
       if (isDoubleTap(lastTapRef.current, sample)) onCellEdit(cell);
     }
     lastTapRef.current = sample;
-  }, [getCellFromPoint, handleMouseUp, onCellEdit, onCellSelect, onSelectionChange]);
+  }, [getCellFromPoint, handleMouseUp, mergedRanges, onCellEdit, onCellSelect, onSelectionChange]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     e.preventDefault();

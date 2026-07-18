@@ -318,6 +318,15 @@ export default function SpreadsheetPage() {
     [],
   );
 
+  const handleMergedRangesChange = useCallback(
+    (sheetId: string, mergedRanges: SpreadsheetSheet["mergedRanges"]) => {
+      setSheets((current) => current.map((sheet) =>
+        sheet.id === sheetId ? { ...sheet, mergedRanges } : sheet,
+      ));
+    },
+    [],
+  );
+
   const activeSheet = useMemo(
     () => sheets.find(({ id: sheetId }) => sheetId === activeSheetId),
     [activeSheetId, sheets],
@@ -413,6 +422,7 @@ export default function SpreadsheetPage() {
       initialData={data}
       initialCharts={initialCharts}
       initialConditionalRules={initialConditionalRules}
+      initialMergedRanges={activeSheet?.mergedRanges ?? []}
       onDataChange={handleDataChange}
       spreadsheetId={id}
       activeSheetId={activeSheetId}
@@ -436,6 +446,7 @@ export default function SpreadsheetPage() {
       onVersionChange={handleVersionChange}
       onChartsChange={handleChartsChange}
       onStructureChange={handleStructureChange}
+      onMergedRangesChange={handleMergedRangesChange}
     />
   );
 }

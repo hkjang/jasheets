@@ -10,6 +10,27 @@ export interface CellPosition {
   col: number;
 }
 
+export interface MergedCellUpdate extends CellPosition {
+  value: string;
+}
+
+export interface GridAxisGeometry {
+  offsets: readonly number[];
+  sizes: readonly number[];
+}
+
+export interface MergedCellResolution {
+  position: CellPosition;
+  range?: MergedRange;
+}
+
+export interface MergedRangeRect {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export interface MergedRangeStructureChange {
   axis: 'row' | 'col';
   type: 'insert' | 'delete';
@@ -90,6 +111,112 @@ export function findMergedRangeAnchor(
   if (!range) return undefined;
   const normalized = normalizeMergedRange(range);
   return { row: normalized.startRow, col: normalized.startCol };
+}
+
+/** Resolves any cell inside a merge to its top-left, editable anchor. */
+export function resolveMergedCell(
+  ranges: readonly MergedRange[],
+  row: number,
+  col: number,
+): MergedCellResolution {
+  const range = findMergedRange(ranges, row, col);
+  if (!range) return { position: { row, col } };
+  const normalized = normalizeMergedRange(range);
+  return {
+    position: { row: normalized.startRow, col: normalized.startCol },
+    range: normalized,
+  };
+}
+
+/**
+ * Normalizes a single-cell edit to the editable anchor of a merged range.
+ * This is intended for direct edits whose target is unambiguous (for example,
+ * typing after clicking any part of a merged cell).
+ */
+export function normalizeMergedCellUpdate<T extends MergedCellUpdate>(
+  update: T,
+  ranges: readonly MergedRange[],
+): T {
+  const { position } = resolveMergedCell(ranges, update.row, update.col);
+  return position.row === update.row && position.col === update.col
+    ? update
+    : { ...update, ...position };
+}
+
+/**
+ * Rejects a rectangular/batch write when it would address a non-anchor cell.
+ * Silently collapsing those writes onto an anchor can overwrite earlier values
+ * in the same paste or fill operation, so callers must treat undefined as an
+ * atomic rejection of the whole operation.
+ */
+export function rejectNonAnchorMergedUpdates<T extends CellPosition>(
+  updates: readonly T[],
+  ranges: readonly MergedRange[],
+): T[] | undefined {
+  for (const update of updates) {
+    const anchor = findMergedRangeAnchor(ranges, update.row, update.col);
+    if (anchor && (anchor.row !== update.row || anchor.col !== update.col)) {
+      return undefined;
+    }
+  }
+  return [...updates];
+}
+
+/** Skips across the current merge, then anchors a merge at the destination. */
+export function resolveMergedNavigationTarget(
+  ranges: readonly MergedRange[],
+  current: CellPosition,
+  requested: CellPosition,
+): MergedCellResolution {
+  const currentRange = findMergedRange(ranges, current.row, current.col);
+  let target = requested;
+  if (currentRange && containsMergedCell(currentRange, requested.row, requested.col)) {
+    const normalized = normalizeMergedRange(currentRange);
+    const rowDelta = requested.row - current.row;
+    const colDelta = requested.col - current.col;
+    if (rowDelta > 0) target = { row: normalized.endRow + 1, col: current.col };
+    else if (rowDelta < 0) target = { row: normalized.startRow - 1, col: current.col };
+    else if (colDelta > 0) target = { row: current.row, col: normalized.endCol + 1 };
+    else if (colDelta < 0) target = { row: current.row, col: normalized.startCol - 1 };
+  }
+  return resolveMergedCell(ranges, target.row, target.col);
+}
+
+/** Returns the full pixel rectangle, including a merge whose anchor is offscreen. */
+export function getMergedRangeRect(
+  range: MergedRange,
+  columns: GridAxisGeometry,
+  rows: GridAxisGeometry,
+  originX = 0,
+  originY = 0,
+): MergedRangeRect {
+  const normalized = normalizeMergedRange(range);
+  const left = columns.offsets[normalized.startCol];
+  const right = columns.offsets[normalized.endCol + 1];
+  const top = rows.offsets[normalized.startRow];
+  const bottom = rows.offsets[normalized.endRow + 1];
+  return {
+    x: originX + left,
+    y: originY + top,
+    width: right - left,
+    height: bottom - top,
+  };
+}
+
+export function mergedRangeIntersects(
+  range: MergedRange,
+  startRow: number,
+  endRow: number,
+  startCol: number,
+  endCol: number,
+): boolean {
+  const normalized = normalizeMergedRange(range);
+  return !(
+    normalized.endRow < startRow ||
+    normalized.startRow > endRow ||
+    normalized.endCol < startCol ||
+    normalized.startCol > endCol
+  );
 }
 
 function shiftInterval(

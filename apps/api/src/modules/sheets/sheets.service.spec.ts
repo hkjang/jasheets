@@ -17,6 +17,7 @@ interface CellMutationCreateInput {
 
 interface PrismaMock {
   sheet: { findUnique: jest.Mock; updateMany: jest.Mock };
+  mergedRange: { findFirst: jest.Mock };
   cellMutation: {
     findUnique: jest.Mock;
     create: jest.Mock<Promise<unknown>, [CellMutationCreateInput]>;
@@ -50,6 +51,9 @@ describe('SheetsService cell updates', () => {
       sheet: {
         findUnique: jest.fn().mockResolvedValue(sheet),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+      mergedRange: {
+        findFirst: jest.fn().mockResolvedValue(null),
       },
       cell: {
         findMany: jest.fn().mockResolvedValue([]),
@@ -106,6 +110,63 @@ describe('SheetsService cell updates', () => {
 
     expect(prisma.cell.findMany).not.toHaveBeenCalled();
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('rejects a batch write to a non-anchor cell inside a merged range', async () => {
+    prisma.mergedRange.findFirst.mockResolvedValueOnce({
+      startRow: 2,
+      startCol: 3,
+      endRow: 4,
+      endCol: 5,
+    });
+
+    await expect(
+      service.updateCells('user-1', sheet.id, [
+        { row: 3, col: 4, value: 'hidden value' },
+      ]),
+    ).rejects.toThrow('non-anchor cell inside a merged range');
+
+    expect(prisma.mergedRange.findFirst).toHaveBeenCalledWith({
+      where: {
+        sheetId: sheet.id,
+        OR: [
+          {
+            startRow: { lte: 3 },
+            endRow: { gte: 3 },
+            startCol: { lte: 4 },
+            endCol: { gte: 4 },
+            NOT: { startRow: 3, startCol: 4 },
+          },
+        ],
+      },
+      select: { startRow: true, startCol: true, endRow: true, endCol: true },
+    });
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+    expect(prisma.cell.upsert).not.toHaveBeenCalled();
+  });
+
+  it('allows a batch write to the anchor cell of a merged range', async () => {
+    await service.updateCells('user-1', sheet.id, [
+      { row: 2, col: 3, value: 'anchor value' },
+    ]);
+
+    expect(prisma.mergedRange.findFirst).toHaveBeenCalled();
+    expect(prisma.cell.upsert).toHaveBeenCalled();
+  });
+
+  it('rejects a single-cell write to a non-anchor merged coordinate', async () => {
+    prisma.mergedRange.findFirst.mockResolvedValueOnce({
+      startRow: 2,
+      startCol: 3,
+      endRow: 4,
+      endCol: 5,
+    });
+
+    await expect(
+      service.updateCell('user-1', sheet.id, 4, 5, { value: 'hidden value' }),
+    ).rejects.toThrow('non-anchor cell inside a merged range');
+
+    expect(prisma.cell.upsert).not.toHaveBeenCalled();
   });
 
   it.each([
