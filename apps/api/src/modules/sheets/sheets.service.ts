@@ -463,7 +463,10 @@ export class SheetsService {
     const requestHash = createHash('sha256')
       .update(
         JSON.stringify({
-          expectedVersion: versionToMatch,
+          // Hash the request as the client sent it. Using the current sheet
+          // version here makes a retry without expectedVersion change identity
+          // after the first successful write increments the version.
+          expectedVersion: expectedVersion ?? null,
           updates: normalizedUpdates.map(
             ({ row, col, value, formula, format }) => ({
               row,

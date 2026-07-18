@@ -8,9 +8,19 @@ interface UpsertInput {
   update: { value?: unknown; formula?: string | null; format?: unknown };
 }
 
+interface CellMutationCreateInput {
+  data: {
+    requestHash: string;
+    version: number;
+  };
+}
+
 interface PrismaMock {
   sheet: { findUnique: jest.Mock; updateMany: jest.Mock };
-  cellMutation: { findUnique: jest.Mock; create: jest.Mock };
+  cellMutation: {
+    findUnique: jest.Mock;
+    create: jest.Mock<Promise<unknown>, [CellMutationCreateInput]>;
+  };
   cell: {
     findMany: jest.Mock;
     upsert: jest.Mock<Promise<unknown>, [UpsertInput]>;
@@ -51,7 +61,9 @@ describe('SheetsService cell updates', () => {
       },
       cellMutation: {
         findUnique: jest.fn().mockResolvedValue(null),
-        create: jest.fn().mockResolvedValue({ id: 'mutation-1' }),
+        create: jest
+          .fn<Promise<unknown>, [CellMutationCreateInput]>()
+          .mockResolvedValue({ id: 'mutation-1' }),
       },
       $transaction: jest
         .fn()
@@ -157,6 +169,37 @@ describe('SheetsService cell updates', () => {
     expect(result).toEqual({ cells: [], version: 4, replayed: true });
     expect(prisma.$transaction).not.toHaveBeenCalled();
     expect(eventsService.detectCellChange).not.toHaveBeenCalled();
+  });
+
+  it('replays an idempotent request when expectedVersion was omitted', async () => {
+    const updates = [{ row: 1, col: 1, value: 'same without version' }];
+    const firstResult = await service.updateCells(
+      'user-1',
+      sheet.id,
+      updates,
+      undefined,
+      'versionless-retry',
+    );
+    const mutation = prisma.cellMutation.create.mock.calls[0][0].data;
+
+    prisma.sheet.findUnique.mockResolvedValueOnce({ ...sheet, version: 1 });
+    prisma.cellMutation.findUnique.mockResolvedValueOnce({
+      requestHash: mutation.requestHash,
+      version: mutation.version,
+    });
+
+    const replay = await service.updateCells(
+      'user-1',
+      sheet.id,
+      updates,
+      undefined,
+      'versionless-retry',
+    );
+
+    expect(firstResult).toMatchObject({ version: 1 });
+    expect(replay).toEqual({ cells: [], version: 1, replayed: true });
+    expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(eventsService.detectCellChange).toHaveBeenCalledTimes(1);
   });
 
   it('rejects an idempotency key reused for different content', async () => {
