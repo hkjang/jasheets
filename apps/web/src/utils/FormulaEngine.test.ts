@@ -117,3 +117,32 @@ describe('formula error propagation', () => {
     expect(evaluateFormula('=IFNA(10/0,99)', {})).toBe('#DIV/0!');
   });
 });
+
+describe('comparisons and conditional formulas', () => {
+  const conditionalData: SheetData = {
+    0: {
+      0: { value: 10 },
+      1: { value: 'Paid' },
+      2: { value: '#REF!' },
+    },
+  };
+
+  it('evaluates numeric, text, and equality comparisons', () => {
+    expect(evaluateFormula('=A1>5', conditionalData)).toBe(true);
+    expect(evaluateFormula('=A1<=10', conditionalData)).toBe(true);
+    expect(evaluateFormula('=B1="paid"', conditionalData)).toBe(true);
+    expect(evaluateFormula('=B1<>"draft"', conditionalData)).toBe(true);
+    expect(evaluateFormula('=1+2=3', conditionalData)).toBe(true);
+  });
+
+  it('evaluates only the selected IF branch', () => {
+    expect(evaluateFormula('=IF(A1>=10,"ready","waiting")', conditionalData)).toBe('ready');
+    expect(evaluateFormula('=IF(FALSE,C1,42)', conditionalData)).toBe(42);
+    expect(evaluateFormula('=IF(TRUE,1+2,1/0)', conditionalData)).toBe(3);
+    expect(evaluateFormula('=IF(FALSE,1)', conditionalData)).toBe(false);
+  });
+
+  it('propagates an error used as the IF condition', () => {
+    expect(evaluateFormula('=IF(C1,"yes","no")', conditionalData)).toBe('#REF!');
+  });
+});

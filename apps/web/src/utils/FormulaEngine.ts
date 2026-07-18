@@ -17,12 +17,12 @@ export interface Token {
   value: string;
 }
 
-const OPERATORS = ['+', '-', '*', '/'];
+const OPERATORS = ['+', '-', '*', '/', '=', '<', '>'];
 const FUNCTIONS = [
   'SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'SEQUENCE',
   'DATE', 'TIME', 'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND', 'TODAY', 'NOW',
   'VLOOKUP', 'HLOOKUP', 'INDEX', 'MATCH', 'XLOOKUP',
-  'IFERROR', 'IFNA',
+  'IF', 'IFERROR', 'IFNA',
 ];
 
 export type FormulaResult = string | number | boolean | number[][];
@@ -53,7 +53,15 @@ export function tokenize(formula: string): Token[] {
     }
 
     if (OPERATORS.includes(char)) {
-      tokens.push({ type: 'OPERATOR', value: char });
+      let operator = char;
+      if ((char === '<' || char === '>') && formula[i + 1] === '=') {
+        operator += formula[i + 1];
+        i++;
+      } else if (char === '<' && formula[i + 1] === '>') {
+        operator += formula[i + 1];
+        i++;
+      }
+      tokens.push({ type: 'OPERATOR', value: operator });
       i++;
       continue;
     }
@@ -259,6 +267,71 @@ function isFormulaError(value: unknown): value is string {
     return typeof value === 'string' && /^#[A-Z0-9/?!]+/.test(value);
 }
 
+function findTopLevelComparison(input: string): { left: string; operator: string; right: string } | null {
+    let depth = 0;
+    let quote: string | null = null;
+    for (let i = 0; i < input.length; i++) {
+        const char = input[i];
+        if (quote) {
+            if (char === quote && input[i - 1] !== '\\') quote = null;
+            continue;
+        }
+        if (char === '"' || char === "'") {
+            quote = char;
+            continue;
+        }
+        if (char === '(') {
+            depth++;
+            continue;
+        }
+        if (char === ')') {
+            depth--;
+            continue;
+        }
+        if (depth !== 0 || !['=', '<', '>'].includes(char)) continue;
+        const twoCharacter = input.slice(i, i + 2);
+        const operator = ['<=', '>=', '<>'].includes(twoCharacter) ? twoCharacter : char;
+        return {
+            left: input.slice(0, i).trim(),
+            operator,
+            right: input.slice(i + operator.length).trim(),
+        };
+    }
+    return null;
+}
+
+function compareValues(left: string | number | boolean | null, operator: string, right: string | number | boolean | null): boolean {
+    if (operator === '=') return valuesEqual(left, right);
+    if (operator === '<>') return !valuesEqual(left, right);
+
+    const leftNumber = Number(left);
+    const rightNumber = Number(right);
+    const numeric = left !== '' && left !== null && right !== '' && right !== null
+        && !Number.isNaN(leftNumber) && !Number.isNaN(rightNumber);
+    const comparison = numeric
+        ? leftNumber - rightNumber
+        : String(left ?? '').localeCompare(String(right ?? ''), undefined, { sensitivity: 'accent' });
+    if (operator === '<') return comparison < 0;
+    if (operator === '<=') return comparison <= 0;
+    if (operator === '>') return comparison > 0;
+    return comparison >= 0;
+}
+
+function evaluateArgument(
+    argument: string,
+    data: SheetData,
+    namedRanges: NamedRanges,
+    locale: string,
+): FormulaResult {
+    const trimmed = argument.trim();
+    if (/^(?:["']).*(?:["'])$/.test(trimmed) || /^(?:TRUE|FALSE)$/i.test(trimmed) || !Number.isNaN(Number(trimmed))) {
+        return lookupValue(trimmed, data) ?? '';
+    }
+    const ref = parseCellRef(trimmed.toUpperCase());
+    if (ref) return data[ref.row]?.[ref.col]?.value ?? 0;
+    return evaluateFormula(`=${trimmed}`, data, namedRanges, locale);
+}
+
 function evaluateLookupFormula(formula: string, data: SheetData, namedRanges: NamedRanges): FormulaResult | undefined {
     const match = formula.match(/^=(VLOOKUP|HLOOKUP|INDEX|MATCH|XLOOKUP)\((.*)\)$/i);
     if (!match) return undefined;
@@ -319,6 +392,16 @@ export function evaluateFormula(
         if (!formula.startsWith('=')) return formula;
         formula = normalizeLocalizedFormula(formula, locale);
 
+        const conditional = formula.match(/^=IF\((.*)\)$/i);
+        if (conditional) {
+            const args = splitFunctionArgs(conditional[1]);
+            if (args.length < 2 || args.length > 3) return '#VALUE!';
+            const condition = evaluateArgument(args[0], data, namedRanges, locale);
+            if (isFormulaError(condition)) return condition;
+            const branch = condition ? args[1] : args[2];
+            return branch === undefined ? false : evaluateArgument(branch, data, namedRanges, locale);
+        }
+
         const errorHandler = formula.match(/^=(IFERROR|IFNA)\((.*)\)$/i);
         if (errorHandler) {
             const args = splitFunctionArgs(errorHandler[2]);
@@ -330,6 +413,16 @@ export function evaluateFormula(
             if (!recover) return result;
             const fallback = lookupValue(args[1], data);
             return fallback ?? '';
+        }
+
+        const comparison = findTopLevelComparison(formula.slice(1));
+        if (comparison) {
+            const left = evaluateArgument(comparison.left, data, namedRanges, locale);
+            if (isFormulaError(left)) return left;
+            const right = evaluateArgument(comparison.right, data, namedRanges, locale);
+            if (isFormulaError(right)) return right;
+            if (Array.isArray(left) || Array.isArray(right)) return '#VALUE!';
+            return compareValues(left, comparison.operator, right);
         }
 
         const lookupResult = evaluateLookupFormula(formula, data, namedRanges);
