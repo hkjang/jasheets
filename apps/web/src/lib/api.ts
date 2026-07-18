@@ -1,5 +1,5 @@
-import { API_URL, apiClient } from './api-client';
-import type { CellValue } from '@/types/spreadsheet';
+import { API_URL, apiClient } from "./api-client";
+import type { CellValue } from "@/types/spreadsheet";
 
 export interface SpreadsheetSummary {
   id: string;
@@ -67,24 +67,32 @@ export const api = {
   },
   versions: {
     list: async (spreadsheetId: string): Promise<SpreadsheetVersion[]> => {
-      const res = await fetch(`${API_URL}/versions/spreadsheet/${spreadsheetId}`);
-      if (!res.ok) throw new Error('버전 기록을 불러오지 못했습니다.');
+      const res = await fetch(
+        `${API_URL}/versions/spreadsheet/${spreadsheetId}`,
+      );
+      if (!res.ok) throw new Error("버전 기록을 불러오지 못했습니다.");
       return res.json();
     },
-    create: async (spreadsheetId: string, name?: string): Promise<SpreadsheetVersion> => {
-      const res = await fetch(`${API_URL}/versions/spreadsheet/${spreadsheetId}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      });
-      if (!res.ok) throw new Error('버전을 생성하지 못했습니다.');
+    create: async (
+      spreadsheetId: string,
+      name?: string,
+    ): Promise<SpreadsheetVersion> => {
+      const res = await fetch(
+        `${API_URL}/versions/spreadsheet/${spreadsheetId}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        },
+      );
+      if (!res.ok) throw new Error("버전을 생성하지 못했습니다.");
       return res.json();
     },
     restore: async (versionId: string): Promise<void> => {
       const res = await fetch(`${API_URL}/versions/${versionId}/restore`, {
-        method: 'POST',
+        method: "POST",
       });
-      if (!res.ok) throw new Error('버전을 복원하지 못했습니다.');
+      if (!res.ok) throw new Error("버전을 복원하지 못했습니다.");
     },
   },
   users: {
@@ -159,38 +167,59 @@ export const api = {
       if (filter) params.append("filter", filter);
       if (search) params.append("search", search);
       const query = params.toString();
-      return apiClient.request<SpreadsheetSummary[]>(`/sheets${query ? `?${query}` : ''}`, { signal });
+      return apiClient.request<SpreadsheetSummary[]>(
+        `/sheets${query ? `?${query}` : ""}`,
+        { signal },
+      );
     },
     get: async (id: string, signal?: AbortSignal) => {
       return apiClient.request<SpreadsheetDetail>(`/sheets/${id}`, { signal });
     },
     addSheet: async (spreadsheetId: string, name: string) => {
-      return apiClient.request<SpreadsheetSheet>(`/sheets/${spreadsheetId}/sheets`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name }),
-      });
+      return apiClient.request<SpreadsheetSheet>(
+        `/sheets/${spreadsheetId}/sheets`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name }),
+        },
+      );
     },
     renameSheet: async (sheetId: string, name: string) => {
       return apiClient.request<SpreadsheetSheet>(`/sheets/sheet/${sheetId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
       });
     },
     deleteSheet: async (sheetId: string) => {
-      await apiClient.request(`/sheets/sheet/${sheetId}`, { method: 'DELETE' });
+      await apiClient.request(`/sheets/sheet/${sheetId}`, { method: "DELETE" });
+    },
+    duplicateSheet: async (sheetId: string) => {
+      return apiClient.request<SpreadsheetSheet>(
+        `/sheets/sheet/${sheetId}/duplicate`,
+        {
+          method: "POST",
+        },
+      );
     },
     reorderSheet: async (sheetId: string, index: number) => {
-      return apiClient.request<SpreadsheetSheet[]>(`/sheets/sheet/${sheetId}/reorder`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ index }),
-      });
+      return apiClient.request<SpreadsheetSheet[]>(
+        `/sheets/sheet/${sheetId}/reorder`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ index }),
+        },
+      );
     },
     changeStructure: async (
       sheetId: string,
-      change: { axis: 'row' | 'column'; type: 'insert' | 'delete'; index: number },
+      change: {
+        axis: "row" | "column";
+        type: "insert" | "delete";
+        index: number;
+      },
     ) => {
       return apiClient.request<{
         id: string;
@@ -198,8 +227,8 @@ export const api = {
         rowCount: number;
         colCount: number;
       }>(`/sheets/sheet/${sheetId}/structure`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(change),
       });
     },
@@ -215,8 +244,8 @@ export const api = {
       return apiClient.request<{ id: string; version: number }>(
         `/sheets/sheet/${sheetId}/view`,
         {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
           body: JSON.stringify(view),
         },
       );

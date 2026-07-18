@@ -14,11 +14,20 @@ describe('SheetsService sheet operations', () => {
       updateMany: jest.fn(),
       update: jest.fn(),
       delete: jest.fn(),
+      findUnique: jest.fn(),
       findUniqueOrThrow: jest.fn(),
     },
-    cell: { deleteMany: jest.fn(), findMany: jest.fn(), update: jest.fn() },
+    cell: {
+      deleteMany: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+      createMany: jest.fn(),
+    },
     rowMeta: { deleteMany: jest.fn(), createMany: jest.fn() },
     colMeta: { deleteMany: jest.fn(), createMany: jest.fn() },
+    chart: { createMany: jest.fn() },
+    pivotTable: { createMany: jest.fn() },
+    conditionalRule: { createMany: jest.fn() },
     comment: { deleteMany: jest.fn() },
     $executeRaw: jest.fn(),
   };
@@ -57,6 +66,24 @@ describe('SheetsService sheet operations', () => {
     });
     tx.sheet.updateMany.mockResolvedValue({ count: 1 });
     tx.sheet.update.mockResolvedValue({ id: 'sheet-1', version: 4 });
+    tx.sheet.findUnique.mockResolvedValue({
+      id: 'sheet-1',
+      spreadsheetId,
+      name: 'Revenue',
+      index: 0,
+      rowCount: 1000,
+      colCount: 26,
+      frozenRows: 1,
+      frozenCols: 2,
+      defaultRowHeight: 25,
+      defaultColWidth: 100,
+      cells: [],
+      rowMeta: [],
+      colMeta: [],
+      charts: [],
+      pivotTables: [],
+      conditionalRules: [],
+    });
     tx.sheet.findMany.mockResolvedValue([]);
     tx.sheet.findUniqueOrThrow.mockResolvedValue({
       id: 'sheet-1',
@@ -67,11 +94,15 @@ describe('SheetsService sheet operations', () => {
     tx.cell.deleteMany.mockResolvedValue({ count: 0 });
     tx.cell.findMany.mockResolvedValue([]);
     tx.cell.update.mockResolvedValue({});
+    tx.cell.createMany.mockResolvedValue({ count: 0 });
     tx.sheet.delete.mockResolvedValue({ id: 'sheet-1' });
     tx.rowMeta.deleteMany.mockResolvedValue({ count: 0 });
     tx.rowMeta.createMany.mockResolvedValue({ count: 1 });
     tx.colMeta.deleteMany.mockResolvedValue({ count: 0 });
     tx.colMeta.createMany.mockResolvedValue({ count: 1 });
+    tx.chart.createMany.mockResolvedValue({ count: 0 });
+    tx.pivotTable.createMany.mockResolvedValue({ count: 0 });
+    tx.conditionalRule.createMany.mockResolvedValue({ count: 0 });
     tx.comment.deleteMany.mockResolvedValue({ count: 0 });
     tx.$executeRaw.mockResolvedValue(0);
   });
@@ -119,6 +150,62 @@ describe('SheetsService sheet operations', () => {
       service.updateSheet('user-1', 'sheet-1', { name: 'revenue' }),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(tx.sheet.update).not.toHaveBeenCalled();
+  });
+
+  it('duplicates sheet content and presentation state into a unique tab', async () => {
+    tx.sheet.count.mockResolvedValueOnce(2);
+    tx.sheet.findUnique
+      .mockResolvedValueOnce({
+        id: 'sheet-1',
+        spreadsheetId,
+        name: 'Revenue',
+        rowCount: 500,
+        colCount: 12,
+        frozenRows: 1,
+        frozenCols: 2,
+        defaultRowHeight: 24,
+        defaultColWidth: 90,
+        cells: [
+          { row: 0, col: 0, value: 10, formula: null, format: { bold: true } },
+        ],
+        rowMeta: [{ row: 0, height: 30, hidden: false }],
+        colMeta: [],
+        charts: [],
+        pivotTables: [],
+        conditionalRules: [],
+      })
+      .mockResolvedValueOnce({ id: 'sheet-copy', name: 'Copy of Revenue' });
+    tx.sheet.findMany.mockResolvedValueOnce([
+      { name: 'Revenue' },
+      { name: 'Copy of Revenue' },
+    ]);
+    tx.sheet.create.mockResolvedValueOnce({ id: 'sheet-copy' });
+
+    const result = await service.duplicateSheet('user-1', 'sheet-1');
+
+    expect(tx.sheet.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        spreadsheetId,
+        name: 'Copy of Revenue (2)',
+        index: 2,
+        rowCount: 500,
+        frozenCols: 2,
+      }),
+    });
+    expect(tx.cell.createMany).toHaveBeenCalledWith({
+      data: [
+        {
+          sheetId: 'sheet-copy',
+          row: 0,
+          col: 0,
+          value: 10,
+          formula: null,
+          format: { bold: true },
+        },
+      ],
+    });
+    expect(tx.rowMeta.createMany).toHaveBeenCalled();
+    expect(result).toEqual({ id: 'sheet-copy', name: 'Copy of Revenue' });
   });
 
   it('reorders tabs atomically without unique index collisions', async () => {

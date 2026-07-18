@@ -71,7 +71,9 @@ import DocumentationDialog from "./DocumentationDialog";
 import SheetPermissionsDialog from "./SheetPermissionsDialog";
 import HistoryTimelinePanel from "./HistoryTimelinePanel";
 import SheetAutomationDialog from "./SheetAutomationDialog";
-import FilterProfilesDropdown, { FilterProfile } from "./FilterProfilesDropdown";
+import FilterProfilesDropdown, {
+  FilterProfile,
+} from "./FilterProfilesDropdown";
 import { getHiddenRowsForFilterView } from "@/utils/filterViews";
 import { createFillUpdates } from "@/utils/fillHandle";
 import { createPasteUpdates, serializeRangeToTsv } from "@/utils/clipboard";
@@ -103,6 +105,7 @@ interface SpreadsheetProps {
   onSheetRename?: (sheetId: string, name: string) => Promise<void> | void;
   onSheetDelete?: (sheetId: string) => Promise<void> | void;
   onSheetReorder?: (sheetId: string, index: number) => Promise<void> | void;
+  onSheetDuplicate?: (sheetId: string) => Promise<void> | void;
   onVersionChange?: (sheetId: string, version: number) => void;
   onChartsChange?: (sheetId: string, charts: unknown[]) => void;
   onStructureChange?: (
@@ -133,6 +136,7 @@ export default function Spreadsheet({
   onSheetRename,
   onSheetDelete,
   onSheetReorder,
+  onSheetDuplicate,
   onVersionChange,
   onChartsChange,
   onStructureChange,
@@ -146,15 +150,23 @@ export default function Spreadsheet({
     (updates: PersistedCellUpdate[]) => void
   >(() => undefined);
   const viewFlushRef = useRef<() => Promise<void>>(async () => undefined);
-  const handleAutosaveSaved = useCallback((version: number) => {
-    setSheetVersion(version);
-    if (activeSheetId) onVersionChange?.(activeSheetId, version);
-  }, [activeSheetId, onVersionChange]);
-  const handleAutosaveBroadcast = useCallback((updates: PersistedCellUpdate[]) => {
-    collaborationBroadcastRef.current(updates);
-  }, []);
+  const handleAutosaveSaved = useCallback(
+    (version: number) => {
+      setSheetVersion(version);
+      if (activeSheetId) onVersionChange?.(activeSheetId, version);
+    },
+    [activeSheetId, onVersionChange],
+  );
+  const handleAutosaveBroadcast = useCallback(
+    (updates: PersistedCellUpdate[]) => {
+      collaborationBroadcastRef.current(updates);
+    },
+    [],
+  );
   const handleAutosaveError = useCallback(() => {
-    setToastMessage("자동 저장에 실패했습니다. 연결이 복구되면 다시 시도합니다.");
+    setToastMessage(
+      "자동 저장에 실패했습니다. 연결이 복구되면 다시 시도합니다.",
+    );
   }, []);
   const {
     status: autosaveStatus,
@@ -438,23 +450,30 @@ export default function Spreadsheet({
     }
   }, [persistActiveSheet]);
 
-  const runSheetAction = useCallback(async (
-    action: () => Promise<void> | void,
-    options: { saveFirst?: boolean; successMessage?: string } = {},
-  ) => {
-    if (sheetActionPending) return;
-    setSheetActionPending(true);
-    try {
-      if (options.saveFirst) await persistActiveSheet();
-      await action();
-      if (options.successMessage) setToastMessage(options.successMessage);
-    } catch (error) {
-      console.error("Sheet action failed", error);
-      setToastMessage(error instanceof Error ? error.message : "시트 작업을 완료하지 못했습니다.");
-    } finally {
-      setSheetActionPending(false);
-    }
-  }, [persistActiveSheet, sheetActionPending]);
+  const runSheetAction = useCallback(
+    async (
+      action: () => Promise<void> | void,
+      options: { saveFirst?: boolean; successMessage?: string } = {},
+    ) => {
+      if (sheetActionPending) return;
+      setSheetActionPending(true);
+      try {
+        if (options.saveFirst) await persistActiveSheet();
+        await action();
+        if (options.successMessage) setToastMessage(options.successMessage);
+      } catch (error) {
+        console.error("Sheet action failed", error);
+        setToastMessage(
+          error instanceof Error
+            ? error.message
+            : "시트 작업을 완료하지 못했습니다.",
+        );
+      } finally {
+        setSheetActionPending(false);
+      }
+    },
+    [persistActiveSheet, sheetActionPending],
+  );
 
   // Keyboard shortcut for save
   useEffect(() => {
@@ -526,16 +545,22 @@ export default function Spreadsheet({
       const result = await api.spreadsheets.saveView(activeSheetId, {
         frozenRows: snapshot.config.frozenRows,
         frozenCols: snapshot.config.frozenCols,
-        rowMeta: snapshot.rows.flatMap((row, index) => (
+        rowMeta: snapshot.rows.flatMap((row, index) =>
           row.hidden || row.height !== snapshot.config.defaultRowHeight
             ? [{ row: index, height: row.height, hidden: Boolean(row.hidden) }]
-            : []
-        )),
-        colMeta: snapshot.columns.flatMap((column, index) => (
+            : [],
+        ),
+        colMeta: snapshot.columns.flatMap((column, index) =>
           column.hidden || column.width !== snapshot.config.defaultColWidth
-            ? [{ col: index, width: column.width, hidden: Boolean(column.hidden) }]
-            : []
-        )),
+            ? [
+                {
+                  col: index,
+                  width: column.width,
+                  hidden: Boolean(column.hidden),
+                },
+              ]
+            : [],
+        ),
       });
       setSheetVersion(result.version);
       onVersionChange?.(activeSheetId, result.version);
@@ -548,18 +573,22 @@ export default function Spreadsheet({
   useEffect(() => {
     viewFlushRef.current = flushViewState;
     return () => {
-      if (viewSaveTimerRef.current !== null) window.clearTimeout(viewSaveTimerRef.current);
+      if (viewSaveTimerRef.current !== null)
+        window.clearTimeout(viewSaveTimerRef.current);
       void flushViewState().catch(() => undefined);
     };
   }, [flushViewState]);
 
   const queueViewSave = useCallback(() => {
     viewDirtyRef.current = true;
-    if (viewSaveTimerRef.current !== null) window.clearTimeout(viewSaveTimerRef.current);
+    if (viewSaveTimerRef.current !== null)
+      window.clearTimeout(viewSaveTimerRef.current);
     viewSaveTimerRef.current = window.setTimeout(() => {
       void flushViewState().catch((error: unknown) => {
         console.error("View autosave failed", error);
-        setToastMessage("행·열 보기 설정을 저장하지 못했습니다. 다시 시도합니다.");
+        setToastMessage(
+          "행·열 보기 설정을 저장하지 못했습니다. 다시 시도합니다.",
+        );
       });
     }, 700);
   }, [flushViewState]);
@@ -579,80 +608,91 @@ export default function Spreadsheet({
     [],
   );
 
-  const runStructuralChange = useCallback(async (
-    axis: "row" | "column",
-    type: "insert" | "delete",
-    index: number,
-  ) => {
-    if (!activeSheetId || sheetActionPending) return;
-    setSheetActionPending(true);
-    try {
-      await persistActiveSheet();
-      const result = await api.spreadsheets.changeStructure(activeSheetId, {
-        axis,
-        type,
-        index,
-      });
-      setSheetVersion(result.version);
-      onVersionChange?.(activeSheetId, result.version);
-      onStructureChange?.(activeSheetId, {
-        rowCount: result.rowCount,
-        colCount: result.colCount,
-      });
-      setConfig((current) => ({
-        ...current,
-        totalRows: result.rowCount,
-        totalCols: result.colCount,
-      }));
+  const runStructuralChange = useCallback(
+    async (
+      axis: "row" | "column",
+      type: "insert" | "delete",
+      index: number,
+    ) => {
+      if (!activeSheetId || sheetActionPending) return;
+      setSheetActionPending(true);
+      try {
+        await persistActiveSheet();
+        const result = await api.spreadsheets.changeStructure(activeSheetId, {
+          axis,
+          type,
+          index,
+        });
+        setSheetVersion(result.version);
+        onVersionChange?.(activeSheetId, result.version);
+        onStructureChange?.(activeSheetId, {
+          rowCount: result.rowCount,
+          colCount: result.colCount,
+        });
+        setConfig((current) => ({
+          ...current,
+          totalRows: result.rowCount,
+          totalCols: result.colCount,
+        }));
 
-      if (axis === "row") {
-        setRows((current) => {
-          const next = [...current];
-          if (type === "insert") {
-            next.splice(index, 0, { height: DEFAULT_CONFIG.defaultRowHeight });
-          } else {
-            next.splice(index, 1);
-            next.push({ height: DEFAULT_CONFIG.defaultRowHeight });
-          }
-          return next;
-        });
-        if (type === "insert") insertRow(index);
-        else deleteRow(index);
-      } else {
-        setColumns((current) => {
-          const next = [...current];
-          if (type === "insert") {
-            next.splice(index, 0, { width: DEFAULT_CONFIG.defaultColWidth });
-          } else {
-            next.splice(index, 1);
-            next.push({ width: DEFAULT_CONFIG.defaultColWidth });
-          }
-          return next;
-        });
-        if (type === "insert") insertColumn(index);
-        else deleteColumn(index);
+        if (axis === "row") {
+          setRows((current) => {
+            const next = [...current];
+            if (type === "insert") {
+              next.splice(index, 0, {
+                height: DEFAULT_CONFIG.defaultRowHeight,
+              });
+            } else {
+              next.splice(index, 1);
+              next.push({ height: DEFAULT_CONFIG.defaultRowHeight });
+            }
+            return next;
+          });
+          if (type === "insert") insertRow(index);
+          else deleteRow(index);
+        } else {
+          setColumns((current) => {
+            const next = [...current];
+            if (type === "insert") {
+              next.splice(index, 0, { width: DEFAULT_CONFIG.defaultColWidth });
+            } else {
+              next.splice(index, 1);
+              next.push({ width: DEFAULT_CONFIG.defaultColWidth });
+            }
+            return next;
+          });
+          if (type === "insert") insertColumn(index);
+          else deleteColumn(index);
+        }
+        setToastMessage(
+          `${axis === "row" ? "행" : "열"}을 ${type === "insert" ? "삽입" : "삭제"}했습니다.`,
+        );
+      } catch (error) {
+        console.error("Structural change failed", error);
+        setToastMessage(
+          error instanceof Error
+            ? error.message
+            : "행·열 변경을 완료하지 못했습니다.",
+        );
+      } finally {
+        setSheetActionPending(false);
       }
-      setToastMessage(`${axis === "row" ? "행" : "열"}을 ${type === "insert" ? "삽입" : "삭제"}했습니다.`);
-    } catch (error) {
-      console.error("Structural change failed", error);
-      setToastMessage(error instanceof Error ? error.message : "행·열 변경을 완료하지 못했습니다.");
-    } finally {
-      setSheetActionPending(false);
-    }
-  }, [
-    activeSheetId,
-    deleteColumn,
-    deleteRow,
-    insertColumn,
-    insertRow,
-    onStructureChange,
-    onVersionChange,
-    persistActiveSheet,
-    setColumns,
-    setConfig,
-    setRows,
-    sheetActionPending,
-  ]);
+    },
+    [
+      activeSheetId,
+      deleteColumn,
+      deleteRow,
+      insertColumn,
+      insertRow,
+      onStructureChange,
+      onVersionChange,
+      persistActiveSheet,
+      setColumns,
+      setConfig,
+      setRows,
+      sheetActionPending,
+    ],
+  );
 
   const handleInsertRowBefore = useCallback(() => {
     if (!contextMenu || contextMenu.type !== "row") return;
@@ -852,9 +892,11 @@ export default function Spreadsheet({
     onStartEdit: (val) => selectedCell && startEditing(selectedCell, val),
     onNavigate: (row, col, extend, anchor) => {
       handleCellSelect({ row, col });
-      setSelection(extend
-        ? parseSelection(anchor, { row, col })
-        : { start: { row, col }, end: { row, col } });
+      setSelection(
+        extend
+          ? parseSelection(anchor, { row, col })
+          : { start: { row, col }, end: { row, col } },
+      );
     },
     onClearSelection: () => {
       if (!selection) return;
@@ -1392,16 +1434,20 @@ export default function Spreadsheet({
         onShowShortcuts={() => setIsShortcutsOpen(true)}
         onVersionHistory={() => setIsHistoryOpen(true)}
         onInsertRow={() => {
-          if (selectedCell) void runStructuralChange("row", "insert", selectedCell.row);
+          if (selectedCell)
+            void runStructuralChange("row", "insert", selectedCell.row);
         }}
         onInsertCol={() => {
-          if (selectedCell) void runStructuralChange("column", "insert", selectedCell.col);
+          if (selectedCell)
+            void runStructuralChange("column", "insert", selectedCell.col);
         }}
         onDeleteRow={() => {
-          if (selectedCell) void runStructuralChange("row", "delete", selectedCell.row);
+          if (selectedCell)
+            void runStructuralChange("row", "delete", selectedCell.row);
         }}
         onDeleteCol={() => {
-          if (selectedCell) void runStructuralChange("column", "delete", selectedCell.col);
+          if (selectedCell)
+            void runStructuralChange("column", "delete", selectedCell.col);
         }}
         onFreezeRow={() => {
           if (selectedCell) {
@@ -1472,14 +1518,22 @@ export default function Spreadsheet({
             alert("유효성 검사를 설정할 범위를 먼저 선택해주세요.");
             return;
           }
-          const values = prompt("허용할 값을 쉼표로 구분해 입력하세요. (예: 대기,진행,완료)");
+          const values = prompt(
+            "허용할 값을 쉼표로 구분해 입력하세요. (예: 대기,진행,완료)",
+          );
           if (values === null) return;
-          const allowedValues = values.split(",").map((value) => value.trim()).filter(Boolean);
+          const allowedValues = values
+            .split(",")
+            .map((value) => value.trim())
+            .filter(Boolean);
           if (allowedValues.length === 0) {
             alert("하나 이상의 허용 값을 입력해주세요.");
             return;
           }
-          updateCellValidation(selection, { type: "list", values: allowedValues });
+          updateCellValidation(selection, {
+            type: "list",
+            values: allowedValues,
+          });
           setToastMessage("데이터 유효성 검사 규칙이 적용되었습니다.");
         }}
         onNamedRanges={() => {
@@ -1491,9 +1545,15 @@ export default function Spreadsheet({
           if (!name) return;
           try {
             defineNamedRange(name, selection);
-            setToastMessage(`이름 범위 ${name.trim().toUpperCase()}가 등록되었습니다.`);
+            setToastMessage(
+              `이름 범위 ${name.trim().toUpperCase()}가 등록되었습니다.`,
+            );
           } catch (error) {
-            alert(error instanceof Error ? error.message : "이름 범위를 등록하지 못했습니다.");
+            alert(
+              error instanceof Error
+                ? error.message
+                : "이름 범위를 등록하지 못했습니다.",
+            );
           }
         }}
         onProtectedRanges={() => {
@@ -1505,7 +1565,11 @@ export default function Spreadsheet({
             addProtectedRange(selection);
             setToastMessage("선택 범위가 보호되었습니다.");
           } catch (error) {
-            alert(error instanceof Error ? error.message : "범위를 보호하지 못했습니다.");
+            alert(
+              error instanceof Error
+                ? error.message
+                : "범위를 보호하지 못했습니다.",
+            );
           }
         }}
         showFormulaBar={showFormulaBar}
@@ -1599,14 +1663,48 @@ export default function Spreadsheet({
               ...getHiddenRowsForFilterView(data, profile.filters),
               ...(profile.hiddenRows ?? []),
             ]);
-            setRows((current) => current.map((row, index) => ({ ...row, hidden: hiddenRows.has(index) })));
+            setRows((current) =>
+              current.map((row, index) => ({
+                ...row,
+                hidden: hiddenRows.has(index),
+              })),
+            );
           }}
-          onClearFilters={() => setRows((current) => current.map((row) => ({ ...row, hidden: false })))}
+          onClearFilters={() =>
+            setRows((current) =>
+              current.map((row) => ({ ...row, hidden: false })),
+            )
+          }
         />
       )}
-      <div role="status" aria-live="polite" style={{ padding: "2px 8px", fontSize: "12px", color: autosaveStatus === "error" || syncStatus !== "connected" ? "#b06000" : "#188038" }}>
-        동기화: {syncStatus === "connected" ? "연결됨" : syncStatus === "reconnecting" ? "재연결 중" : syncStatus === "connecting" ? "연결 중" : "연결 끊김"}
-        {" · "}저장: {autosaveStatus === "saved" ? "완료" : autosaveStatus === "saving" ? "저장 중" : autosaveStatus === "unsaved" ? "변경 대기" : "재시도 필요"}
+      <div
+        role="status"
+        aria-live="polite"
+        style={{
+          padding: "2px 8px",
+          fontSize: "12px",
+          color:
+            autosaveStatus === "error" || syncStatus !== "connected"
+              ? "#b06000"
+              : "#188038",
+        }}
+      >
+        동기화:{" "}
+        {syncStatus === "connected"
+          ? "연결됨"
+          : syncStatus === "reconnecting"
+            ? "재연결 중"
+            : syncStatus === "connecting"
+              ? "연결 중"
+              : "연결 끊김"}
+        {" · "}저장:{" "}
+        {autosaveStatus === "saved"
+          ? "완료"
+          : autosaveStatus === "saving"
+            ? "저장 중"
+            : autosaveStatus === "unsaved"
+              ? "변경 대기"
+              : "재시도 필요"}
         {" · "}버전 {sheetVersion}
       </div>
 
@@ -1645,7 +1743,9 @@ export default function Spreadsheet({
           onHeaderContextMenu={handleHeaderContextMenu}
           onCellContextMenu={(x, y) => setCellContextMenu({ x, y })}
           isEditing={isEditing}
-          onFillRange={(source, target) => updateCells(createFillUpdates(data, source, target))}
+          onFillRange={(source, target) =>
+            updateCells(createFillUpdates(data, source, target))
+          }
         />
 
         {isEditing && selectedCell && (
@@ -1679,34 +1779,61 @@ export default function Spreadsheet({
         />
       </div>
 
-      {sheets.length > 0 && onSheetSelect && onSheetAdd && onSheetRename && onSheetDelete && onSheetReorder && (
-        <SheetTabs
-          sheets={sheets}
-          activeSheetId={activeSheetId ?? null}
-          disabled={sheetActionPending}
-          onSelect={(sheetId) => {
-            if (sheetId === activeSheetId) return;
-            return runSheetAction(() => onSheetSelect(sheetId), { saveFirst: true });
-          }}
-          onAdd={() => runSheetAction(onSheetAdd, { saveFirst: true, successMessage: "새 시트를 추가했습니다." })}
-          onRename={(sheetId, name) => runSheetAction(
-            () => onSheetRename(sheetId, name),
-            { successMessage: "시트 이름을 변경했습니다." },
-          )}
-          onDelete={(sheetId) => {
-            const sheet = sheets.find(({ id }) => id === sheetId);
-            if (!confirm(`'${sheet?.name ?? "시트"}' 시트를 삭제할까요? 이 작업은 되돌릴 수 없습니다.`)) return;
-            return runSheetAction(() => onSheetDelete(sheetId), {
-              saveFirst: true,
-              successMessage: "시트를 삭제했습니다.",
-            });
-          }}
-          onReorder={(sheetId, index) => runSheetAction(
-            () => onSheetReorder(sheetId, index),
-            { saveFirst: true, successMessage: "시트 순서를 변경했습니다." },
-          )}
-        />
-      )}
+      {sheets.length > 0 &&
+        onSheetSelect &&
+        onSheetAdd &&
+        onSheetRename &&
+        onSheetDelete &&
+        onSheetReorder &&
+        onSheetDuplicate && (
+          <SheetTabs
+            sheets={sheets}
+            activeSheetId={activeSheetId ?? null}
+            disabled={sheetActionPending}
+            onSelect={(sheetId) => {
+              if (sheetId === activeSheetId) return;
+              return runSheetAction(() => onSheetSelect(sheetId), {
+                saveFirst: true,
+              });
+            }}
+            onAdd={() =>
+              runSheetAction(onSheetAdd, {
+                saveFirst: true,
+                successMessage: "새 시트를 추가했습니다.",
+              })
+            }
+            onRename={(sheetId, name) =>
+              runSheetAction(() => onSheetRename(sheetId, name), {
+                successMessage: "시트 이름을 변경했습니다.",
+              })
+            }
+            onDelete={(sheetId) => {
+              const sheet = sheets.find(({ id }) => id === sheetId);
+              if (
+                !confirm(
+                  `'${sheet?.name ?? "시트"}' 시트를 삭제할까요? 이 작업은 되돌릴 수 없습니다.`,
+                )
+              )
+                return;
+              return runSheetAction(() => onSheetDelete(sheetId), {
+                saveFirst: true,
+                successMessage: "시트를 삭제했습니다.",
+              });
+            }}
+            onReorder={(sheetId, index) =>
+              runSheetAction(() => onSheetReorder(sheetId, index), {
+                saveFirst: true,
+                successMessage: "시트 순서를 변경했습니다.",
+              })
+            }
+            onDuplicate={(sheetId) =>
+              runSheetAction(() => onSheetDuplicate(sheetId), {
+                saveFirst: true,
+                successMessage: "시트를 복제했습니다.",
+              })
+            }
+          />
+        )}
 
       <ChatPanel
         currentUserId={userId}

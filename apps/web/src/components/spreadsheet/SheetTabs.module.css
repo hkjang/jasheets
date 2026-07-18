@@ -40,6 +40,7 @@
 
 .tabButton,
 .addButton,
+.duplicateButton,
 .deleteButton {
   border: 0;
   color: var(--text-secondary);
@@ -74,14 +75,22 @@
   font-size: 18px;
 }
 
+.duplicateButton {
+  width: 28px;
+  flex: 0 0 28px;
+  font-size: 16px;
+}
+
 .tabButton:hover,
 .addButton:hover,
+.duplicateButton:hover,
 .deleteButton:hover {
   background: var(--bg-tertiary);
 }
 
 .tabButton:focus-visible,
 .addButton:focus-visible,
+.duplicateButton:focus-visible,
 .deleteButton:focus-visible,
 .renameInput:focus-visible {
   outline: 2px solid var(--color-primary);
@@ -90,6 +99,7 @@
 
 .tabButton:disabled,
 .addButton:disabled,
+.duplicateButton:disabled,
 .deleteButton:disabled {
   cursor: wait;
   opacity: 0.55;

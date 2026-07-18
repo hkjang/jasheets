@@ -40,24 +40,43 @@ function rewriteWorkbookSheetReferences(
   sheetName: string,
   replacement?: string,
 ): Record<string, SheetData> {
-  return Object.fromEntries(Object.entries(workbookData).map(([sheetId, data]) => [
-    sheetId,
-    Object.fromEntries((Object.entries(data) as [string, RowData][]).map(([row, rowData]) => [
-      row,
-      Object.fromEntries((Object.entries(rowData) as [string, CellData][]).map(([col, cell]) => {
-        if (!cell.formula) return [col, cell];
-        const formula = rewriteSheetNameReferences(cell.formula, sheetName, replacement);
-        if (formula === cell.formula) return [col, cell];
-        return [col, {
-          ...cell,
-          formula,
-          ...(replacement === undefined
-            ? { value: '#REF!' as const, displayValue: '#REF!', error: '#REF!' }
-            : {}),
-        }];
-      })),
-    ])),
-  ]));
+  return Object.fromEntries(
+    Object.entries(workbookData).map(([sheetId, data]) => [
+      sheetId,
+      Object.fromEntries(
+        (Object.entries(data) as [string, RowData][]).map(([row, rowData]) => [
+          row,
+          Object.fromEntries(
+            (Object.entries(rowData) as [string, CellData][]).map(
+              ([col, cell]) => {
+                if (!cell.formula) return [col, cell];
+                const formula = rewriteSheetNameReferences(
+                  cell.formula,
+                  sheetName,
+                  replacement,
+                );
+                if (formula === cell.formula) return [col, cell];
+                return [
+                  col,
+                  {
+                    ...cell,
+                    formula,
+                    ...(replacement === undefined
+                      ? {
+                          value: "#REF!" as const,
+                          displayValue: "#REF!",
+                          error: "#REF!",
+                        }
+                      : {}),
+                  },
+                ];
+              },
+            ),
+          ),
+        ]),
+      ),
+    ]),
+  );
 }
 
 export default function SpreadsheetPage() {
@@ -102,7 +121,11 @@ export default function SpreadsheetPage() {
       setTitle(res.name || "Untitled Spreadsheet");
       const sheets = res.sheets || [];
       setSheets(sheets);
-      setSheetData(Object.fromEntries(sheets.map((sheet) => [sheet.id, deserializeSheetData(sheet)])));
+      setSheetData(
+        Object.fromEntries(
+          sheets.map((sheet) => [sheet.id, deserializeSheetData(sheet)]),
+        ),
+      );
       if (sheets.length > 0) {
         const firstSheet = sheets[0];
         setActiveSheetId(firstSheet.id);
@@ -117,39 +140,56 @@ export default function SpreadsheetPage() {
         setActiveSheetId(null);
         setInitialCharts([]);
       }
-      } catch (err) {
-        if (controller.signal.aborted || (err instanceof DOMException && err.name === "AbortError")) return;
-        console.error("Failed to load spreadsheet:", err);
-        if (err instanceof ApiError && err.status === 401) {
-          clearAuthSession();
-          router.replace("/login");
-        } else if (err instanceof ApiError && err.status === 403) {
-          setError("이 문서를 열 권한이 없습니다. 소유자에게 접근 권한을 요청해 주세요.");
-        } else if (err instanceof ApiError && err.status === 404) {
-          setError("문서가 삭제되었거나 주소가 올바르지 않습니다.");
-        } else if (err instanceof DOMException && err.name === "TimeoutError") {
-          setError("서버 응답이 지연되고 있습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.");
-        } else {
-          setError("문서를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
-        }
-      } finally {
-        if (requestId === requestRef.current && !controller.signal.aborted) setLoading(false);
+    } catch (err) {
+      if (
+        controller.signal.aborted ||
+        (err instanceof DOMException && err.name === "AbortError")
+      )
+        return;
+      console.error("Failed to load spreadsheet:", err);
+      if (err instanceof ApiError && err.status === 401) {
+        clearAuthSession();
+        router.replace("/login");
+      } else if (err instanceof ApiError && err.status === 403) {
+        setError(
+          "이 문서를 열 권한이 없습니다. 소유자에게 접근 권한을 요청해 주세요.",
+        );
+      } else if (err instanceof ApiError && err.status === 404) {
+        setError("문서가 삭제되었거나 주소가 올바르지 않습니다.");
+      } else if (err instanceof DOMException && err.name === "TimeoutError") {
+        setError(
+          "서버 응답이 지연되고 있습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.",
+        );
+      } else {
+        setError("문서를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
       }
+    } finally {
+      if (requestId === requestRef.current && !controller.signal.aborted)
+        setLoading(false);
+    }
   }, [id, router]);
 
-  const selectSheet = useCallback((sheetId: string) => {
-    const sheet = sheets.find(({ id: candidateId }) => candidateId === sheetId);
-    if (!sheet) return;
-    setActiveSheetId(sheet.id);
-    setActiveSheetVersion(sheet.version ?? 0);
-    setData(sheetData[sheet.id] ?? deserializeSheetData(sheet));
-    setInitialCharts(Array.isArray(sheet.charts) ? sheet.charts : []);
-  }, [sheetData, sheets]);
+  const selectSheet = useCallback(
+    (sheetId: string) => {
+      const sheet = sheets.find(
+        ({ id: candidateId }) => candidateId === sheetId,
+      );
+      if (!sheet) return;
+      setActiveSheetId(sheet.id);
+      setActiveSheetVersion(sheet.version ?? 0);
+      setData(sheetData[sheet.id] ?? deserializeSheetData(sheet));
+      setInitialCharts(Array.isArray(sheet.charts) ? sheet.charts : []);
+    },
+    [sheetData, sheets],
+  );
 
   const addSheet = useCallback(async () => {
-    const existingNames = new Set(sheets.map(({ name }) => name.toLocaleLowerCase()));
+    const existingNames = new Set(
+      sheets.map(({ name }) => name.toLocaleLowerCase()),
+    );
     let suffix = sheets.length + 1;
-    while (existingNames.has(`sheet ${suffix}`.toLocaleLowerCase())) suffix += 1;
+    while (existingNames.has(`sheet ${suffix}`.toLocaleLowerCase()))
+      suffix += 1;
     const created = await api.spreadsheets.addSheet(id, `Sheet ${suffix}`);
     const newSheet = { ...created, cells: [], charts: [] };
     setSheets((current) => [...current, newSheet]);
@@ -160,74 +200,122 @@ export default function SpreadsheetPage() {
     setInitialCharts([]);
   }, [id, sheets]);
 
-  const renameSheet = useCallback(async (sheetId: string, name: string) => {
-    const previousName = sheets.find(({ id: candidateId }) => candidateId === sheetId)?.name;
-    const updated = await api.spreadsheets.renameSheet(sheetId, name);
-    if (previousName) {
-      setSheetData((current) => rewriteWorkbookSheetReferences(current, previousName, updated.name));
-    }
-    setSheets((current) => current.map((sheet) => (
-      sheet.id === sheetId ? { ...sheet, name: updated.name } : sheet
-    )));
-  }, [sheets]);
+  const renameSheet = useCallback(
+    async (sheetId: string, name: string) => {
+      const previousName = sheets.find(
+        ({ id: candidateId }) => candidateId === sheetId,
+      )?.name;
+      const updated = await api.spreadsheets.renameSheet(sheetId, name);
+      if (previousName) {
+        setSheetData((current) =>
+          rewriteWorkbookSheetReferences(current, previousName, updated.name),
+        );
+      }
+      setSheets((current) =>
+        current.map((sheet) =>
+          sheet.id === sheetId ? { ...sheet, name: updated.name } : sheet,
+        ),
+      );
+    },
+    [sheets],
+  );
 
-  const deleteSheet = useCallback(async (sheetId: string) => {
-    const deletedIndex = sheets.findIndex(({ id: candidateId }) => candidateId === sheetId);
-    if (deletedIndex < 0 || sheets.length <= 1) return;
-    const deletedName = sheets[deletedIndex].name;
-    await api.spreadsheets.deleteSheet(sheetId);
-    const remaining = sheets.filter(({ id: candidateId }) => candidateId !== sheetId);
-    const nextSheet = remaining[Math.min(deletedIndex, remaining.length - 1)];
-    setSheets(remaining);
-    setSheetData((current) => {
-      const next = rewriteWorkbookSheetReferences(current, deletedName);
-      delete next[sheetId];
-      return next;
-    });
-    setActiveSheetId(nextSheet.id);
-    setActiveSheetVersion(nextSheet.version ?? 0);
-    setData(sheetData[nextSheet.id] ?? deserializeSheetData(nextSheet));
-    setInitialCharts(Array.isArray(nextSheet.charts) ? nextSheet.charts : []);
-  }, [sheetData, sheets]);
+  const deleteSheet = useCallback(
+    async (sheetId: string) => {
+      const deletedIndex = sheets.findIndex(
+        ({ id: candidateId }) => candidateId === sheetId,
+      );
+      if (deletedIndex < 0 || sheets.length <= 1) return;
+      const deletedName = sheets[deletedIndex].name;
+      await api.spreadsheets.deleteSheet(sheetId);
+      const remaining = sheets.filter(
+        ({ id: candidateId }) => candidateId !== sheetId,
+      );
+      const nextSheet = remaining[Math.min(deletedIndex, remaining.length - 1)];
+      setSheets(remaining);
+      setSheetData((current) => {
+        const next = rewriteWorkbookSheetReferences(current, deletedName);
+        delete next[sheetId];
+        return next;
+      });
+      setActiveSheetId(nextSheet.id);
+      setActiveSheetVersion(nextSheet.version ?? 0);
+      setData(sheetData[nextSheet.id] ?? deserializeSheetData(nextSheet));
+      setInitialCharts(Array.isArray(nextSheet.charts) ? nextSheet.charts : []);
+    },
+    [sheetData, sheets],
+  );
 
-  const reorderSheet = useCallback(async (sheetId: string, targetIndex: number) => {
-    await api.spreadsheets.reorderSheet(sheetId, targetIndex);
-    setSheets((current) => {
-      const sourceIndex = current.findIndex(({ id: candidateId }) => candidateId === sheetId);
-      if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= current.length) return current;
-      const reordered = [...current];
-      const [moved] = reordered.splice(sourceIndex, 1);
-      reordered.splice(targetIndex, 0, moved);
-      return reordered.map((sheet, index) => ({ ...sheet, index }));
-    });
+  const reorderSheet = useCallback(
+    async (sheetId: string, targetIndex: number) => {
+      await api.spreadsheets.reorderSheet(sheetId, targetIndex);
+      setSheets((current) => {
+        const sourceIndex = current.findIndex(
+          ({ id: candidateId }) => candidateId === sheetId,
+        );
+        if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= current.length)
+          return current;
+        const reordered = [...current];
+        const [moved] = reordered.splice(sourceIndex, 1);
+        reordered.splice(targetIndex, 0, moved);
+        return reordered.map((sheet, index) => ({ ...sheet, index }));
+      });
+    },
+    [],
+  );
+
+  const duplicateSheet = useCallback(async (sheetId: string) => {
+    const created = await api.spreadsheets.duplicateSheet(sheetId);
+    const duplicatedData = deserializeSheetData(created);
+    setSheets((current) => [...current, created]);
+    setSheetData((current) => ({ ...current, [created.id]: duplicatedData }));
+    setActiveSheetId(created.id);
+    setActiveSheetVersion(created.version ?? 0);
+    setData(duplicatedData);
+    setInitialCharts(Array.isArray(created.charts) ? created.charts : []);
   }, []);
 
-  const handleDataChange = useCallback((nextData: SheetData) => {
-    if (!activeSheetId) return;
-    setData(nextData);
-    setSheetData((current) => ({ ...current, [activeSheetId]: nextData }));
-  }, [activeSheetId]);
+  const handleDataChange = useCallback(
+    (nextData: SheetData) => {
+      if (!activeSheetId) return;
+      setData(nextData);
+      setSheetData((current) => ({ ...current, [activeSheetId]: nextData }));
+    },
+    [activeSheetId],
+  );
 
-  const handleVersionChange = useCallback((sheetId: string, version: number) => {
-    setSheets((current) => current.map((sheet) => (
-      sheet.id === sheetId ? { ...sheet, version } : sheet
-    )));
-  }, []);
+  const handleVersionChange = useCallback(
+    (sheetId: string, version: number) => {
+      setSheets((current) =>
+        current.map((sheet) =>
+          sheet.id === sheetId ? { ...sheet, version } : sheet,
+        ),
+      );
+    },
+    [],
+  );
 
-  const handleChartsChange = useCallback((sheetId: string, charts: unknown[]) => {
-    setSheets((current) => current.map((sheet) => (
-      sheet.id === sheetId ? { ...sheet, charts } : sheet
-    )));
-  }, []);
+  const handleChartsChange = useCallback(
+    (sheetId: string, charts: unknown[]) => {
+      setSheets((current) =>
+        current.map((sheet) =>
+          sheet.id === sheetId ? { ...sheet, charts } : sheet,
+        ),
+      );
+    },
+    [],
+  );
 
-  const handleStructureChange = useCallback((
-    sheetId: string,
-    dimensions: { rowCount: number; colCount: number },
-  ) => {
-    setSheets((current) => current.map((sheet) => (
-      sheet.id === sheetId ? { ...sheet, ...dimensions } : sheet
-    )));
-  }, []);
+  const handleStructureChange = useCallback(
+    (sheetId: string, dimensions: { rowCount: number; colCount: number }) => {
+      setSheets((current) =>
+        current.map((sheet) =>
+          sheet.id === sheetId ? { ...sheet, ...dimensions } : sheet,
+        ),
+      );
+    },
+    [],
+  );
 
   const activeSheet = useMemo(
     () => sheets.find(({ id: sheetId }) => sheetId === activeSheetId),
@@ -237,12 +325,17 @@ export default function SpreadsheetPage() {
     if (!activeSheet) return undefined;
     const nextRows: RowDef[] = Array.from(
       { length: activeSheet.rowCount ?? DEFAULT_CONFIG.totalRows },
-      () => ({ height: activeSheet.defaultRowHeight ?? DEFAULT_CONFIG.defaultRowHeight }),
+      () => ({
+        height: activeSheet.defaultRowHeight ?? DEFAULT_CONFIG.defaultRowHeight,
+      }),
     );
     activeSheet.rowMeta?.forEach((meta) => {
       if (!nextRows[meta.row]) return;
       nextRows[meta.row] = {
-        height: meta.height ?? activeSheet.defaultRowHeight ?? DEFAULT_CONFIG.defaultRowHeight,
+        height:
+          meta.height ??
+          activeSheet.defaultRowHeight ??
+          DEFAULT_CONFIG.defaultRowHeight,
         hidden: meta.hidden,
       };
     });
@@ -252,20 +345,32 @@ export default function SpreadsheetPage() {
     if (!activeSheet) return undefined;
     const nextCols: ColumnDef[] = Array.from(
       { length: activeSheet.colCount ?? DEFAULT_CONFIG.totalCols },
-      () => ({ width: activeSheet.defaultColWidth ?? DEFAULT_CONFIG.defaultColWidth }),
+      () => ({
+        width: activeSheet.defaultColWidth ?? DEFAULT_CONFIG.defaultColWidth,
+      }),
     );
     activeSheet.colMeta?.forEach((meta) => {
       if (!nextCols[meta.col]) return;
       nextCols[meta.col] = {
-        width: meta.width ?? activeSheet.defaultColWidth ?? DEFAULT_CONFIG.defaultColWidth,
+        width:
+          meta.width ??
+          activeSheet.defaultColWidth ??
+          DEFAULT_CONFIG.defaultColWidth,
         hidden: meta.hidden,
       };
     });
     return nextCols;
   }, [activeSheet]);
-  const workbook = useMemo(() => Object.fromEntries(
-    sheets.map((sheet) => [sheet.name, sheetData[sheet.id] ?? deserializeSheetData(sheet)]),
-  ), [sheetData, sheets]);
+  const workbook = useMemo(
+    () =>
+      Object.fromEntries(
+        sheets.map((sheet) => [
+          sheet.name,
+          sheetData[sheet.id] ?? deserializeSheetData(sheet),
+        ]),
+      ),
+    [sheetData, sheets],
+  );
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -275,16 +380,12 @@ export default function SpreadsheetPage() {
 
   // Show loading while checking auth
   if (authLoading) {
-    return (
-      <SpreadsheetLoadingState />
-    );
+    return <SpreadsheetLoadingState />;
   }
 
   // Don't render anything if not authenticated (will redirect)
   if (!user) {
-    return (
-      <SpreadsheetLoadingState />
-    );
+    return <SpreadsheetLoadingState />;
   }
 
   if (loading) return <SpreadsheetLoadingState />;
@@ -322,6 +423,7 @@ export default function SpreadsheetPage() {
       onSheetRename={renameSheet}
       onSheetDelete={deleteSheet}
       onSheetReorder={reorderSheet}
+      onSheetDuplicate={duplicateSheet}
       onVersionChange={handleVersionChange}
       onChartsChange={handleChartsChange}
       onStructureChange={handleStructureChange}

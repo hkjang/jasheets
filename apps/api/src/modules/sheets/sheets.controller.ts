@@ -167,6 +167,11 @@ export class SheetsController {
     return this.sheetsService.deleteSheet(req.user.id, sheetId);
   }
 
+  @Post('sheet/:sheetId/duplicate')
+  duplicateSheet(@Request() req: any, @Param('sheetId') sheetId: string) {
+    return this.sheetsService.duplicateSheet(req.user.id, sheetId);
+  }
+
   @Put('sheet/:sheetId/reorder')
   reorderSheet(
     @Request() req: any,

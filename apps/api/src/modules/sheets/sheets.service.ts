@@ -336,7 +336,11 @@ export class SheetsService {
           },
         });
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 60_000,
+      },
     );
   }
 
@@ -369,7 +373,11 @@ export class SheetsService {
         );
         return tx.sheet.update({ where: { id: sheetId }, data });
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 60_000,
+      },
     );
   }
 
@@ -403,6 +411,181 @@ export class SheetsService {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+  }
+
+  async duplicateSheet(userId: string, sheetId: string) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+      select: { id: true, spreadsheetId: true },
+    });
+    if (!sheet) throw new NotFoundException('Sheet not found');
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+
+    return this.prisma.$transaction(
+      async (tx) => {
+        const sheetCount = await tx.sheet.count({
+          where: { spreadsheetId: sheet.spreadsheetId },
+        });
+        if (sheetCount >= this.maxSheetsPerSpreadsheet) {
+          throw new BadRequestException(
+            `A spreadsheet can contain at most ${this.maxSheetsPerSpreadsheet} sheets`,
+          );
+        }
+        const source = await tx.sheet.findUnique({
+          where: { id: sheetId },
+          include: {
+            cells: true,
+            rowMeta: true,
+            colMeta: true,
+            charts: true,
+            pivotTables: true,
+            conditionalRules: true,
+          },
+        });
+        if (!source || source.spreadsheetId !== sheet.spreadsheetId) {
+          throw new NotFoundException('Sheet not found');
+        }
+        const existingNames = await tx.sheet.findMany({
+          where: { spreadsheetId: sheet.spreadsheetId },
+          select: { name: true },
+        });
+        const names = new Set(
+          existingNames.map(({ name }) => name.toLocaleLowerCase()),
+        );
+        const baseName = `Copy of ${source.name}`.slice(0, 100);
+        let name = baseName;
+        let suffix = 2;
+        while (names.has(name.toLocaleLowerCase())) {
+          const ending = ` (${suffix++})`;
+          name = `${baseName.slice(0, 100 - ending.length)}${ending}`;
+        }
+
+        const created = await tx.sheet.create({
+          data: {
+            spreadsheetId: source.spreadsheetId,
+            name,
+            index: sheetCount,
+            rowCount: source.rowCount,
+            colCount: source.colCount,
+            frozenRows: source.frozenRows,
+            frozenCols: source.frozenCols,
+            defaultRowHeight: source.defaultRowHeight,
+            defaultColWidth: source.defaultColWidth,
+          },
+        });
+        await this.copySheetContent(tx, source, created.id);
+        return tx.sheet.findUnique({
+          where: { id: created.id },
+          include: {
+            cells: true,
+            rowMeta: true,
+            colMeta: true,
+            charts: true,
+            pivotTables: true,
+          },
+        });
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 60_000,
+      },
+    );
+  }
+
+  private async copySheetContent(
+    tx: Prisma.TransactionClient,
+    source: Prisma.SheetGetPayload<{
+      include: {
+        cells: true;
+        rowMeta: true;
+        colMeta: true;
+        charts: true;
+        pivotTables: true;
+        conditionalRules: true;
+      };
+    }>,
+    targetSheetId: string,
+  ) {
+    const batchSize = 1_000;
+    const cells = source.cells.map(({ row, col, value, formula, format }) => ({
+      sheetId: targetSheetId,
+      row,
+      col,
+      ...(value === null ? {} : { value: value as Prisma.InputJsonValue }),
+      formula,
+      ...(format === null ? {} : { format: format as Prisma.InputJsonValue }),
+    }));
+    for (let offset = 0; offset < cells.length; offset += batchSize) {
+      await tx.cell.createMany({
+        data: cells.slice(offset, offset + batchSize),
+      });
+    }
+    const rowMeta = source.rowMeta.map(({ row, height, hidden }) => ({
+      sheetId: targetSheetId,
+      row,
+      height,
+      hidden,
+    }));
+    for (let offset = 0; offset < rowMeta.length; offset += batchSize) {
+      await tx.rowMeta.createMany({
+        data: rowMeta.slice(offset, offset + batchSize),
+      });
+    }
+    const colMeta = source.colMeta.map(({ col, width, hidden }) => ({
+      sheetId: targetSheetId,
+      col,
+      width,
+      hidden,
+    }));
+    for (let offset = 0; offset < colMeta.length; offset += batchSize) {
+      await tx.colMeta.createMany({
+        data: colMeta.slice(offset, offset + batchSize),
+      });
+    }
+    if (source.charts.length)
+      await tx.chart.createMany({
+        data: source.charts.map(
+          ({ type, x, y, width, height, data, options }) => ({
+            sheetId: targetSheetId,
+            type,
+            x,
+            y,
+            width,
+            height,
+            data: data as Prisma.InputJsonValue,
+            ...(options === null
+              ? {}
+              : { options: options as Prisma.InputJsonValue }),
+          }),
+        ),
+      });
+    if (source.pivotTables.length)
+      await tx.pivotTable.createMany({
+        data: source.pivotTables.map(
+          ({ name, config, sourceRange, targetCell }) => ({
+            sheetId: targetSheetId,
+            name,
+            config: config as Prisma.InputJsonValue,
+            sourceRange,
+            targetCell,
+          }),
+        ),
+      });
+    if (source.conditionalRules.length)
+      await tx.conditionalRule.createMany({
+        data: source.conditionalRules.map(
+          ({ name, priority, ranges, conditions, format, active }) => ({
+            sheetId: targetSheetId,
+            name,
+            priority,
+            ranges,
+            conditions: conditions as Prisma.InputJsonValue,
+            format: format as Prisma.InputJsonValue,
+            active,
+          }),
+        ),
+      });
   }
 
   async reorderSheet(userId: string, sheetId: string, targetIndex: number) {
