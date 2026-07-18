@@ -16,6 +16,7 @@ import { createHash } from 'crypto';
 @Injectable()
 export class SheetsService {
   private readonly logger = new Logger(SheetsService.name);
+  private readonly maxSheetsPerSpreadsheet = 200;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -310,21 +311,30 @@ export class SheetsService {
   async addSheet(userId: string, spreadsheetId: string, name: string) {
     await this.checkEditAccess(userId, spreadsheetId);
 
-    const lastSheet = await this.prisma.sheet.findFirst({
-      where: { spreadsheetId },
-      orderBy: { index: 'desc' },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const sheetCount = await tx.sheet.count({ where: { spreadsheetId } });
+      if (sheetCount >= this.maxSheetsPerSpreadsheet) {
+        throw new BadRequestException(
+          `A spreadsheet can contain at most ${this.maxSheetsPerSpreadsheet} sheets`,
+        );
+      }
 
-    return this.prisma.sheet.create({
-      data: {
-        spreadsheetId,
-        name,
-        index: (lastSheet?.index ?? -1) + 1,
-      },
+      const lastSheet = await tx.sheet.findFirst({
+        where: { spreadsheetId },
+        orderBy: { index: 'desc' },
+      });
+
+      return tx.sheet.create({
+        data: {
+          spreadsheetId,
+          name,
+          index: (lastSheet?.index ?? -1) + 1,
+        },
+      });
     });
   }
 
-  async updateSheet(userId: string, sheetId: string, data: { name?: string }) {
+  async updateSheet(userId: string, sheetId: string, data: { name: string }) {
     const sheet = await this.prisma.sheet.findUnique({
       where: { id: sheetId },
     });

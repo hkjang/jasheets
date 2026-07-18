@@ -13,18 +13,22 @@ export interface SpreadsheetSummary {
 export interface SpreadsheetDetail {
   id: string;
   name?: string;
-  sheets?: Array<{
-    id: string;
-    version?: number;
-    cells?: Array<{
-      row: number;
-      col: number;
-      value: CellValue;
-      formula?: string | null;
-      format?: unknown;
-    }>;
-    charts?: unknown[];
+  sheets?: SpreadsheetSheet[];
+}
+
+export interface SpreadsheetSheet {
+  id: string;
+  name: string;
+  index: number;
+  version?: number;
+  cells?: Array<{
+    row: number;
+    col: number;
+    value: CellValue;
+    formula?: string | null;
+    format?: unknown;
   }>;
+  charts?: unknown[];
 }
 
 export interface SpreadsheetVersion {
@@ -151,6 +155,23 @@ export const api = {
     },
     get: async (id: string, signal?: AbortSignal) => {
       return apiClient.request<SpreadsheetDetail>(`/sheets/${id}`, { signal });
+    },
+    addSheet: async (spreadsheetId: string, name: string) => {
+      return apiClient.request<SpreadsheetSheet>(`/sheets/${spreadsheetId}/sheets`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+    },
+    renameSheet: async (sheetId: string, name: string) => {
+      return apiClient.request<SpreadsheetSheet>(`/sheets/sheet/${sheetId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+    },
+    deleteSheet: async (sheetId: string) => {
+      await apiClient.request(`/sheets/sheet/${sheetId}`, { method: 'DELETE' });
     },
     update: async (id: string, data: { name?: string }) => {
       const token = localStorage.getItem("auth_token");

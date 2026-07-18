@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { clearAuthSession } from "@/lib/auth-session";
 import Spreadsheet from "@/components/spreadsheet/Spreadsheet";
-import { api } from "@/lib/api";
+import { api, type SpreadsheetSheet } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/lib/api-client";
 import {
@@ -13,6 +13,19 @@ import {
 } from "@/components/ui/PageLoadState";
 import type { SheetData } from "@/types/spreadsheet";
 import { deserializeCellFormat } from "@/utils/cellPersistence";
+
+function deserializeSheetData(sheet: SpreadsheetSheet): SheetData {
+  const sheetData: SheetData = {};
+  sheet.cells?.forEach((cell) => {
+    if (!sheetData[cell.row]) sheetData[cell.row] = {};
+    sheetData[cell.row][cell.col] = {
+      value: cell.value,
+      formula: cell.formula ?? undefined,
+      ...deserializeCellFormat(cell.format),
+    };
+  });
+  return sheetData;
+}
 
 export default function SpreadsheetPage() {
   const params = useParams();
@@ -25,6 +38,8 @@ export default function SpreadsheetPage() {
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const [activeSheetVersion, setActiveSheetVersion] = useState(0);
   const [title, setTitle] = useState("");
+  const [sheets, setSheets] = useState<SpreadsheetSheet[]>([]);
+  const [sheetData, setSheetData] = useState<Record<string, SheetData>>({});
 
   const requestRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -53,21 +68,13 @@ export default function SpreadsheetPage() {
       if (requestId !== requestRef.current) return;
       setTitle(res.name || "Untitled Spreadsheet");
       const sheets = res.sheets || [];
+      setSheets(sheets);
+      setSheetData(Object.fromEntries(sheets.map((sheet) => [sheet.id, deserializeSheetData(sheet)])));
       if (sheets.length > 0) {
         const firstSheet = sheets[0];
         setActiveSheetId(firstSheet.id);
         setActiveSheetVersion(firstSheet.version ?? 0);
-
-        const sheetData: SheetData = {};
-        firstSheet.cells?.forEach((cell) => {
-          if (!sheetData[cell.row]) sheetData[cell.row] = {};
-          sheetData[cell.row][cell.col] = {
-            value: cell.value,
-            formula: cell.formula ?? undefined,
-            ...deserializeCellFormat(cell.format),
-          };
-        });
-        setData(sheetData);
+        setData(deserializeSheetData(firstSheet));
 
         if (firstSheet.charts && Array.isArray(firstSheet.charts)) {
           setInitialCharts(firstSheet.charts);
@@ -96,6 +103,72 @@ export default function SpreadsheetPage() {
         if (requestId === requestRef.current && !controller.signal.aborted) setLoading(false);
       }
   }, [id, router]);
+
+  const selectSheet = useCallback((sheetId: string) => {
+    const sheet = sheets.find(({ id: candidateId }) => candidateId === sheetId);
+    if (!sheet) return;
+    setActiveSheetId(sheet.id);
+    setActiveSheetVersion(sheet.version ?? 0);
+    setData(sheetData[sheet.id] ?? deserializeSheetData(sheet));
+    setInitialCharts(Array.isArray(sheet.charts) ? sheet.charts : []);
+  }, [sheetData, sheets]);
+
+  const addSheet = useCallback(async () => {
+    const existingNames = new Set(sheets.map(({ name }) => name.toLocaleLowerCase()));
+    let suffix = sheets.length + 1;
+    while (existingNames.has(`sheet ${suffix}`.toLocaleLowerCase())) suffix += 1;
+    const created = await api.spreadsheets.addSheet(id, `Sheet ${suffix}`);
+    const newSheet = { ...created, cells: [], charts: [] };
+    setSheets((current) => [...current, newSheet]);
+    setSheetData((current) => ({ ...current, [newSheet.id]: {} }));
+    setActiveSheetId(newSheet.id);
+    setActiveSheetVersion(newSheet.version ?? 0);
+    setData({});
+    setInitialCharts([]);
+  }, [id, sheets]);
+
+  const renameSheet = useCallback(async (sheetId: string, name: string) => {
+    const updated = await api.spreadsheets.renameSheet(sheetId, name);
+    setSheets((current) => current.map((sheet) => (
+      sheet.id === sheetId ? { ...sheet, name: updated.name } : sheet
+    )));
+  }, []);
+
+  const deleteSheet = useCallback(async (sheetId: string) => {
+    const deletedIndex = sheets.findIndex(({ id: candidateId }) => candidateId === sheetId);
+    if (deletedIndex < 0 || sheets.length <= 1) return;
+    await api.spreadsheets.deleteSheet(sheetId);
+    const remaining = sheets.filter(({ id: candidateId }) => candidateId !== sheetId);
+    const nextSheet = remaining[Math.min(deletedIndex, remaining.length - 1)];
+    setSheets(remaining);
+    setSheetData((current) => {
+      const next = { ...current };
+      delete next[sheetId];
+      return next;
+    });
+    setActiveSheetId(nextSheet.id);
+    setActiveSheetVersion(nextSheet.version ?? 0);
+    setData(sheetData[nextSheet.id] ?? deserializeSheetData(nextSheet));
+    setInitialCharts(Array.isArray(nextSheet.charts) ? nextSheet.charts : []);
+  }, [sheetData, sheets]);
+
+  const handleDataChange = useCallback((nextData: SheetData) => {
+    if (!activeSheetId) return;
+    setData(nextData);
+    setSheetData((current) => ({ ...current, [activeSheetId]: nextData }));
+  }, [activeSheetId]);
+
+  const handleVersionChange = useCallback((sheetId: string, version: number) => {
+    setSheets((current) => current.map((sheet) => (
+      sheet.id === sheetId ? { ...sheet, version } : sheet
+    )));
+  }, []);
+
+  const handleChartsChange = useCallback((sheetId: string, charts: unknown[]) => {
+    setSheets((current) => current.map((sheet) => (
+      sheet.id === sheetId ? { ...sheet, charts } : sheet
+    )));
+  }, []);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -133,10 +206,18 @@ export default function SpreadsheetPage() {
       key={activeSheetId}
       initialData={data}
       initialCharts={initialCharts}
+      onDataChange={handleDataChange}
       spreadsheetId={id}
       activeSheetId={activeSheetId}
       initialVersion={activeSheetVersion}
       title={title}
+      sheets={sheets.map(({ id: sheetId, name }) => ({ id: sheetId, name }))}
+      onSheetSelect={selectSheet}
+      onSheetAdd={addSheet}
+      onSheetRename={renameSheet}
+      onSheetDelete={deleteSheet}
+      onVersionChange={handleVersionChange}
+      onChartsChange={handleChartsChange}
     />
   );
 }

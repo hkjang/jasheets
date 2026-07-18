@@ -16,6 +16,7 @@ import { CreateSpreadsheetDto } from './dto/create-spreadsheet.dto';
 import { UpdateSpreadsheetDto } from './dto/update-spreadsheet.dto';
 import { UpdateCellDto, UpdateCellsDto } from './dto/update-cell.dto';
 import { AdminGuard } from '../auth/guards/admin.guard';
+import { CreateSheetDto, UpdateSheetDto } from './dto/sheet.dto';
 
 @Controller('sheets')
 @UseGuards(JwtAuthGuard)
@@ -141,7 +142,7 @@ export class SheetsController {
   addSheet(
     @Request() req: any,
     @Param('id') spreadsheetId: string,
-    @Body() dto: { name: string },
+    @Body() dto: CreateSheetDto,
   ) {
     return this.sheetsService.addSheet(req.user.id, spreadsheetId, dto.name);
   }
@@ -150,7 +151,7 @@ export class SheetsController {
   updateSheet(
     @Request() req: any,
     @Param('sheetId') sheetId: string,
-    @Body() dto: { name?: string },
+    @Body() dto: UpdateSheetDto,
   ) {
     return this.sheetsService.updateSheet(req.user.id, sheetId, dto);
   }

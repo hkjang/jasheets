@@ -78,6 +78,7 @@ import { createPasteUpdates, serializeRangeToTsv } from "@/utils/clipboard";
 import SnapshotManagerPanel from "./SnapshotManagerPanel";
 import CommandPalette from "./CommandPalette";
 import type { PersistedCellUpdate } from "@/utils/cellPersistence";
+import SheetTabs, { type SheetTab } from "./SheetTabs";
 
 interface SpreadsheetProps {
   initialData?: SheetData;
@@ -87,6 +88,13 @@ interface SpreadsheetProps {
   activeSheetId?: string | null;
   initialVersion?: number;
   title?: string;
+  sheets?: SheetTab[];
+  onSheetSelect?: (sheetId: string) => Promise<void> | void;
+  onSheetAdd?: () => Promise<void> | void;
+  onSheetRename?: (sheetId: string, name: string) => Promise<void> | void;
+  onSheetDelete?: (sheetId: string) => Promise<void> | void;
+  onVersionChange?: (sheetId: string, version: number) => void;
+  onChartsChange?: (sheetId: string, charts: unknown[]) => void;
 }
 
 export default function Spreadsheet({
@@ -97,17 +105,26 @@ export default function Spreadsheet({
   activeSheetId,
   initialVersion = 0,
   title = "Untitled Spreadsheet",
+  sheets = [],
+  onSheetSelect,
+  onSheetAdd,
+  onSheetRename,
+  onSheetDelete,
+  onVersionChange,
+  onChartsChange,
 }: SpreadsheetProps) {
   const [sheetTitle, setSheetTitle] = useState(title);
   const [sheetVersion, setSheetVersion] = useState(initialVersion);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [sheetActionPending, setSheetActionPending] = useState(false);
   const { user, loading } = useAuth();
   const collaborationBroadcastRef = useRef<
     (updates: PersistedCellUpdate[]) => void
   >(() => undefined);
   const handleAutosaveSaved = useCallback((version: number) => {
     setSheetVersion(version);
-  }, []);
+    if (activeSheetId) onVersionChange?.(activeSheetId, version);
+  }, [activeSheetId, onVersionChange]);
   const handleAutosaveBroadcast = useCallback((updates: PersistedCellUpdate[]) => {
     collaborationBroadcastRef.current(updates);
   }, []);
@@ -368,20 +385,22 @@ export default function Spreadsheet({
     }
   }, [initialCharts, setCharts]);
 
+  useEffect(() => {
+    if (activeSheetId) onChartsChange?.(activeSheetId, charts);
+  }, [activeSheetId, charts, onChartsChange]);
+
   // Save handler - defined after charts to access chart state
-  const handleSave = useCallback(async () => {
+  const persistActiveSheet = useCallback(async () => {
     if (!activeSheetId) {
-      alert("저장할 시트가 없습니다.");
-      return;
+      throw new Error("저장할 시트가 없습니다.");
     }
+    await flushAutosave();
+    await api.spreadsheets.saveCharts(activeSheetId, charts);
+  }, [activeSheetId, charts, flushAutosave]);
+
+  const handleSave = useCallback(async () => {
     try {
-      await flushAutosave();
-
-      // Save charts
-      if (charts.length > 0) {
-        await api.spreadsheets.saveCharts(activeSheetId, charts);
-      }
-
+      await persistActiveSheet();
       setToastMessage("저장되었습니다.");
     } catch (e) {
       console.error(e);
@@ -389,7 +408,25 @@ export default function Spreadsheet({
         e instanceof Error ? e.message : "저장 중 오류가 발생했습니다.",
       );
     }
-  }, [activeSheetId, charts, flushAutosave]);
+  }, [persistActiveSheet]);
+
+  const runSheetAction = useCallback(async (
+    action: () => Promise<void> | void,
+    options: { saveFirst?: boolean; successMessage?: string } = {},
+  ) => {
+    if (sheetActionPending) return;
+    setSheetActionPending(true);
+    try {
+      if (options.saveFirst) await persistActiveSheet();
+      await action();
+      if (options.successMessage) setToastMessage(options.successMessage);
+    } catch (error) {
+      console.error("Sheet action failed", error);
+      setToastMessage(error instanceof Error ? error.message : "시트 작업을 완료하지 못했습니다.");
+    } finally {
+      setSheetActionPending(false);
+    }
+  }, [persistActiveSheet, sheetActionPending]);
 
   // Keyboard shortcut for save
   useEffect(() => {
@@ -1493,6 +1530,31 @@ export default function Spreadsheet({
           onRemoveChart={handleRemoveChart}
         />
       </div>
+
+      {sheets.length > 0 && onSheetSelect && onSheetAdd && onSheetRename && onSheetDelete && (
+        <SheetTabs
+          sheets={sheets}
+          activeSheetId={activeSheetId ?? null}
+          disabled={sheetActionPending}
+          onSelect={(sheetId) => {
+            if (sheetId === activeSheetId) return;
+            return runSheetAction(() => onSheetSelect(sheetId), { saveFirst: true });
+          }}
+          onAdd={() => runSheetAction(onSheetAdd, { saveFirst: true, successMessage: "새 시트를 추가했습니다." })}
+          onRename={(sheetId, name) => runSheetAction(
+            () => onSheetRename(sheetId, name),
+            { successMessage: "시트 이름을 변경했습니다." },
+          )}
+          onDelete={(sheetId) => {
+            const sheet = sheets.find(({ id }) => id === sheetId);
+            if (!confirm(`'${sheet?.name ?? "시트"}' 시트를 삭제할까요? 이 작업은 되돌릴 수 없습니다.`)) return;
+            return runSheetAction(() => onSheetDelete(sheetId), {
+              saveFirst: true,
+              successMessage: "시트를 삭제했습니다.",
+            });
+          }}
+        />
+      )}
 
       <ChatPanel
         currentUserId={userId}
