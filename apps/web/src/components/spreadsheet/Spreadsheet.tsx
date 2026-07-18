@@ -87,6 +87,8 @@ interface SpreadsheetProps {
   spreadsheetId?: string;
   activeSheetId?: string | null;
   initialVersion?: number;
+  initialRowCount?: number;
+  initialColCount?: number;
   title?: string;
   sheets?: SheetTab[];
   onSheetSelect?: (sheetId: string) => Promise<void> | void;
@@ -95,6 +97,10 @@ interface SpreadsheetProps {
   onSheetDelete?: (sheetId: string) => Promise<void> | void;
   onVersionChange?: (sheetId: string, version: number) => void;
   onChartsChange?: (sheetId: string, charts: unknown[]) => void;
+  onStructureChange?: (
+    sheetId: string,
+    dimensions: { rowCount: number; colCount: number },
+  ) => void;
 }
 
 export default function Spreadsheet({
@@ -104,6 +110,8 @@ export default function Spreadsheet({
   spreadsheetId,
   activeSheetId,
   initialVersion = 0,
+  initialRowCount = DEFAULT_CONFIG.totalRows,
+  initialColCount = DEFAULT_CONFIG.totalCols,
   title = "Untitled Spreadsheet",
   sheets = [],
   onSheetSelect,
@@ -112,6 +120,7 @@ export default function Spreadsheet({
   onSheetDelete,
   onVersionChange,
   onChartsChange,
+  onStructureChange,
 }: SpreadsheetProps) {
   const [sheetTitle, setSheetTitle] = useState(title);
   const [sheetVersion, setSheetVersion] = useState(initialVersion);
@@ -470,7 +479,7 @@ export default function Spreadsheet({
     unhideRow,
     hideColumn,
     unhideColumn,
-  } = useSpreadsheetView();
+  } = useSpreadsheetView({ initialRowCount, initialColCount });
 
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{
@@ -487,42 +496,101 @@ export default function Spreadsheet({
     [],
   );
 
+  const runStructuralChange = useCallback(async (
+    axis: "row" | "column",
+    type: "insert" | "delete",
+    index: number,
+  ) => {
+    if (!activeSheetId || sheetActionPending) return;
+    setSheetActionPending(true);
+    try {
+      await persistActiveSheet();
+      const result = await api.spreadsheets.changeStructure(activeSheetId, {
+        axis,
+        type,
+        index,
+      });
+      setSheetVersion(result.version);
+      onVersionChange?.(activeSheetId, result.version);
+      onStructureChange?.(activeSheetId, {
+        rowCount: result.rowCount,
+        colCount: result.colCount,
+      });
+      setConfig((current) => ({
+        ...current,
+        totalRows: result.rowCount,
+        totalCols: result.colCount,
+      }));
+
+      if (axis === "row") {
+        setRows((current) => {
+          const next = [...current];
+          if (type === "insert") {
+            next.splice(index, 0, { height: DEFAULT_CONFIG.defaultRowHeight });
+          } else {
+            next.splice(index, 1);
+            next.push({ height: DEFAULT_CONFIG.defaultRowHeight });
+          }
+          return next;
+        });
+        if (type === "insert") insertRow(index);
+        else deleteRow(index);
+      } else {
+        setColumns((current) => {
+          const next = [...current];
+          if (type === "insert") {
+            next.splice(index, 0, { width: DEFAULT_CONFIG.defaultColWidth });
+          } else {
+            next.splice(index, 1);
+            next.push({ width: DEFAULT_CONFIG.defaultColWidth });
+          }
+          return next;
+        });
+        if (type === "insert") insertColumn(index);
+        else deleteColumn(index);
+      }
+      setToastMessage(`${axis === "row" ? "행" : "열"}을 ${type === "insert" ? "삽입" : "삭제"}했습니다.`);
+    } catch (error) {
+      console.error("Structural change failed", error);
+      setToastMessage(error instanceof Error ? error.message : "행·열 변경을 완료하지 못했습니다.");
+    } finally {
+      setSheetActionPending(false);
+    }
+  }, [
+    activeSheetId,
+    deleteColumn,
+    deleteRow,
+    insertColumn,
+    insertRow,
+    onStructureChange,
+    onVersionChange,
+    persistActiveSheet,
+    setColumns,
+    setConfig,
+    setRows,
+    sheetActionPending,
+  ]);
+
   const handleInsertRowBefore = useCallback(() => {
     if (!contextMenu || contextMenu.type !== "row") return;
     const index = contextMenu.index;
-    setRows((prev) => {
-      const newRows = [...prev];
-      newRows.splice(index, 0, { height: DEFAULT_CONFIG.defaultRowHeight });
-      return newRows;
-    });
-    insertRow(index);
     setContextMenu(null);
-  }, [contextMenu, insertRow]);
+    void runStructuralChange("row", "insert", index);
+  }, [contextMenu, runStructuralChange]);
 
   const handleInsertRowAfter = useCallback(() => {
     if (!contextMenu || contextMenu.type !== "row") return;
     const index = contextMenu.index + 1;
-    setRows((prev) => {
-      const newRows = [...prev];
-      newRows.splice(index, 0, { height: DEFAULT_CONFIG.defaultRowHeight });
-      return newRows;
-    });
-    insertRow(index);
     setContextMenu(null);
-  }, [contextMenu, insertRow]);
+    void runStructuralChange("row", "insert", index);
+  }, [contextMenu, runStructuralChange]);
 
   const handleDeleteRow = useCallback(() => {
     if (!contextMenu || contextMenu.type !== "row") return;
     const index = contextMenu.index;
-    setRows((prev) => {
-      const newRows = [...prev];
-      newRows.splice(index, 1);
-      newRows.push({ height: DEFAULT_CONFIG.defaultRowHeight });
-      return newRows;
-    });
-    deleteRow(index);
     setContextMenu(null);
-  }, [contextMenu, deleteRow]);
+    void runStructuralChange("row", "delete", index);
+  }, [contextMenu, runStructuralChange]);
 
   const handleHideRow = useCallback(() => {
     if (!contextMenu || contextMenu.type !== "row") return;
@@ -579,39 +647,23 @@ export default function Spreadsheet({
   const handleInsertColBefore = useCallback(() => {
     if (!contextMenu || contextMenu.type !== "col") return;
     const index = contextMenu.index;
-    setColumns((prev) => {
-      const newCols = [...prev];
-      newCols.splice(index, 0, { width: DEFAULT_CONFIG.defaultColWidth });
-      return newCols;
-    });
-    insertColumn(index);
     setContextMenu(null);
-  }, [contextMenu, insertColumn]);
+    void runStructuralChange("column", "insert", index);
+  }, [contextMenu, runStructuralChange]);
 
   const handleInsertColAfter = useCallback(() => {
     if (!contextMenu || contextMenu.type !== "col") return;
     const index = contextMenu.index + 1;
-    setColumns((prev) => {
-      const newCols = [...prev];
-      newCols.splice(index, 0, { width: DEFAULT_CONFIG.defaultColWidth });
-      return newCols;
-    });
-    insertColumn(index);
     setContextMenu(null);
-  }, [contextMenu, insertColumn]);
+    void runStructuralChange("column", "insert", index);
+  }, [contextMenu, runStructuralChange]);
 
   const handleDeleteCol = useCallback(() => {
     if (!contextMenu || contextMenu.type !== "col") return;
     const index = contextMenu.index;
-    setColumns((prev) => {
-      const newCols = [...prev];
-      newCols.splice(index, 1);
-      newCols.push({ width: DEFAULT_CONFIG.defaultColWidth });
-      return newCols;
-    });
-    deleteColumn(index);
     setContextMenu(null);
-  }, [contextMenu, deleteColumn]);
+    void runStructuralChange("column", "delete", index);
+  }, [contextMenu, runStructuralChange]);
 
   const handleHideCol = useCallback(() => {
     if (!contextMenu || contextMenu.type !== "col") return;
@@ -1252,16 +1304,16 @@ export default function Spreadsheet({
         onShowShortcuts={() => setIsShortcutsOpen(true)}
         onVersionHistory={() => setIsHistoryOpen(true)}
         onInsertRow={() => {
-          if (selectedCell) insertRow(selectedCell.row);
+          if (selectedCell) void runStructuralChange("row", "insert", selectedCell.row);
         }}
         onInsertCol={() => {
-          if (selectedCell) insertColumn(selectedCell.col);
+          if (selectedCell) void runStructuralChange("column", "insert", selectedCell.col);
         }}
         onDeleteRow={() => {
-          if (selectedCell) deleteRow(selectedCell.row);
+          if (selectedCell) void runStructuralChange("row", "delete", selectedCell.row);
         }}
         onDeleteCol={() => {
-          if (selectedCell) deleteColumn(selectedCell.col);
+          if (selectedCell) void runStructuralChange("column", "delete", selectedCell.col);
         }}
         onFreezeRow={() => {
           if (selectedCell) {

@@ -10,9 +10,17 @@ describe('SheetsService sheet operations', () => {
       count: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
+      updateMany: jest.fn(),
+      findUniqueOrThrow: jest.fn(),
     },
+    cell: { deleteMany: jest.fn() },
+    rowMeta: { deleteMany: jest.fn() },
+    colMeta: { deleteMany: jest.fn() },
+    comment: { deleteMany: jest.fn() },
+    $executeRaw: jest.fn(),
   };
   const prisma = {
+    sheet: { findUnique: jest.fn() },
     $transaction: jest.fn(
       (operation: (client: typeof tx) => Promise<unknown>) => operation(tx),
     ),
@@ -33,6 +41,25 @@ describe('SheetsService sheet operations', () => {
       name: 'Forecast',
       index: 5,
     });
+    prisma.sheet.findUnique.mockResolvedValue({
+      id: 'sheet-1',
+      spreadsheetId,
+      rowCount: 1000,
+      colCount: 26,
+      version: 3,
+    });
+    tx.sheet.updateMany.mockResolvedValue({ count: 1 });
+    tx.sheet.findUniqueOrThrow.mockResolvedValue({
+      id: 'sheet-1',
+      rowCount: 1001,
+      colCount: 26,
+      version: 4,
+    });
+    tx.cell.deleteMany.mockResolvedValue({ count: 0 });
+    tx.rowMeta.deleteMany.mockResolvedValue({ count: 0 });
+    tx.colMeta.deleteMany.mockResolvedValue({ count: 0 });
+    tx.comment.deleteMany.mockResolvedValue({ count: 0 });
+    tx.$executeRaw.mockResolvedValue(0);
   });
 
   it('appends a new sheet after the highest existing index', async () => {
@@ -51,5 +78,65 @@ describe('SheetsService sheet operations', () => {
       service.addSheet('user-1', spreadsheetId, 'Too many'),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(tx.sheet.create).not.toHaveBeenCalled();
+  });
+
+  it('increments the row count and shifts rows for an insertion', async () => {
+    const result = await service.changeStructure('user-1', 'sheet-1', {
+      axis: 'row',
+      type: 'insert',
+      index: 4,
+    });
+
+    expect(tx.sheet.updateMany).toHaveBeenCalledWith({
+      where: { id: 'sheet-1', version: 3 },
+      data: { version: { increment: 1 }, rowCount: { increment: 1 } },
+    });
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(5);
+    expect(result).toEqual({
+      id: 'sheet-1',
+      version: 4,
+      rowCount: 1001,
+      colCount: 26,
+    });
+  });
+
+  it('deletes column contents without reducing the visible grid size', async () => {
+    tx.sheet.findUniqueOrThrow.mockResolvedValueOnce({
+      id: 'sheet-1',
+      rowCount: 1000,
+      colCount: 26,
+      version: 4,
+    });
+
+    await service.changeStructure('user-1', 'sheet-1', {
+      axis: 'column',
+      type: 'delete',
+      index: 2,
+    });
+
+    expect(tx.cell.deleteMany).toHaveBeenCalledWith({
+      where: { sheetId: 'sheet-1', col: 2 },
+    });
+    expect(tx.colMeta.deleteMany).toHaveBeenCalledWith({
+      where: { sheetId: 'sheet-1', col: 2 },
+    });
+    expect(tx.comment.deleteMany).toHaveBeenCalledWith({
+      where: { sheetId: 'sheet-1', col: 2 },
+    });
+    expect(tx.sheet.updateMany).toHaveBeenCalledWith({
+      where: { id: 'sheet-1', version: 3 },
+      data: { version: { increment: 1 } },
+    });
+  });
+
+  it('rejects out-of-range structural indexes before opening a transaction', async () => {
+    await expect(
+      service.changeStructure('user-1', 'sheet-1', {
+        axis: 'column',
+        type: 'delete',
+        index: 26,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
   });
 });

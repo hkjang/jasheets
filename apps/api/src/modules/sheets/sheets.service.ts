@@ -9,7 +9,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateSpreadsheetDto } from './dto/create-spreadsheet.dto';
 import { UpdateSpreadsheetDto } from './dto/update-spreadsheet.dto';
-import { PermissionRole } from '@prisma/client';
+import { PermissionRole, Prisma } from '@prisma/client';
 import { EventsService, CellChangeEvent } from '../events/events.service';
 import { createHash } from 'crypto';
 
@@ -374,6 +374,136 @@ export class SheetsService {
     return this.prisma.sheet.delete({
       where: { id: sheetId },
     });
+  }
+
+  async changeStructure(
+    userId: string,
+    sheetId: string,
+    change: {
+      axis: 'row' | 'column';
+      type: 'insert' | 'delete';
+      index: number;
+    },
+  ) {
+    const sheet = await this.prisma.sheet.findUnique({ where: { id: sheetId } });
+    if (!sheet) throw new NotFoundException('Sheet not found');
+
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+    const size = change.axis === 'row' ? sheet.rowCount : sheet.colCount;
+    const maxSize = change.axis === 'row' ? 1_000_000 : 18_278;
+    const maxIndex = change.type === 'insert' ? size : size - 1;
+    if (!Number.isInteger(change.index) || change.index < 0 || change.index > maxIndex) {
+      throw new BadRequestException(
+        `${change.axis} index must be between 0 and ${maxIndex}`,
+      );
+    }
+    if (change.type === 'insert' && size >= maxSize) {
+      throw new BadRequestException(`${change.axis} limit has been reached`);
+    }
+
+    const updatedSheet = await this.prisma.$transaction(async (tx) => {
+      const versionUpdate = await tx.sheet.updateMany({
+        where: { id: sheetId, version: sheet.version },
+        data: {
+          version: { increment: 1 },
+          ...(change.type === 'insert'
+            ? change.axis === 'row'
+              ? { rowCount: { increment: 1 } }
+              : { colCount: { increment: 1 } }
+            : {}),
+        },
+      });
+      if (versionUpdate.count !== 1) {
+        throw new ConflictException(
+          'Sheet was modified by another user. Reload before changing its structure.',
+        );
+      }
+
+      if (change.axis === 'row') {
+        await this.shiftRows(tx, sheetId, change.type, change.index);
+      } else {
+        await this.shiftColumns(tx, sheetId, change.type, change.index);
+      }
+
+      return tx.sheet.findUniqueOrThrow({ where: { id: sheetId } });
+    });
+
+    return {
+      id: updatedSheet.id,
+      version: updatedSheet.version,
+      rowCount: updatedSheet.rowCount,
+      colCount: updatedSheet.colCount,
+    };
+  }
+
+  private async shiftRows(
+    tx: Prisma.TransactionClient,
+    sheetId: string,
+    type: 'insert' | 'delete',
+    index: number,
+  ) {
+    if (type === 'delete') {
+      await tx.cell.deleteMany({ where: { sheetId, row: index } });
+      await tx.rowMeta.deleteMany({ where: { sheetId, row: index } });
+      await tx.comment.deleteMany({ where: { sheetId, row: index } });
+    }
+    const threshold = type === 'insert' ? index : index + 1;
+    const offset = type === 'insert' ? 1 : -1;
+    await tx.$executeRaw`
+      UPDATE "cells" SET "row" = -"row" - 1
+      WHERE "sheetId" = ${sheetId} AND "row" >= ${threshold}
+    `;
+    await tx.$executeRaw`
+      UPDATE "cells" SET "row" = -"row" - 1 + ${offset}
+      WHERE "sheetId" = ${sheetId} AND "row" < 0
+    `;
+    await tx.$executeRaw`
+      UPDATE "row_meta" SET "row" = -"row" - 1
+      WHERE "sheetId" = ${sheetId} AND "row" >= ${threshold}
+    `;
+    await tx.$executeRaw`
+      UPDATE "row_meta" SET "row" = -"row" - 1 + ${offset}
+      WHERE "sheetId" = ${sheetId} AND "row" < 0
+    `;
+    await tx.$executeRaw`
+      UPDATE "comments" SET "row" = "row" + ${offset}
+      WHERE "sheetId" = ${sheetId} AND "row" >= ${threshold}
+    `;
+  }
+
+  private async shiftColumns(
+    tx: Prisma.TransactionClient,
+    sheetId: string,
+    type: 'insert' | 'delete',
+    index: number,
+  ) {
+    if (type === 'delete') {
+      await tx.cell.deleteMany({ where: { sheetId, col: index } });
+      await tx.colMeta.deleteMany({ where: { sheetId, col: index } });
+      await tx.comment.deleteMany({ where: { sheetId, col: index } });
+    }
+    const threshold = type === 'insert' ? index : index + 1;
+    const offset = type === 'insert' ? 1 : -1;
+    await tx.$executeRaw`
+      UPDATE "cells" SET "col" = -"col" - 1
+      WHERE "sheetId" = ${sheetId} AND "col" >= ${threshold}
+    `;
+    await tx.$executeRaw`
+      UPDATE "cells" SET "col" = -"col" - 1 + ${offset}
+      WHERE "sheetId" = ${sheetId} AND "col" < 0
+    `;
+    await tx.$executeRaw`
+      UPDATE "col_meta" SET "col" = -"col" - 1
+      WHERE "sheetId" = ${sheetId} AND "col" >= ${threshold}
+    `;
+    await tx.$executeRaw`
+      UPDATE "col_meta" SET "col" = -"col" - 1 + ${offset}
+      WHERE "sheetId" = ${sheetId} AND "col" < 0
+    `;
+    await tx.$executeRaw`
+      UPDATE "comments" SET "col" = "col" + ${offset}
+      WHERE "sheetId" = ${sheetId} AND "col" >= ${threshold}
+    `;
   }
 
   // Cell operations

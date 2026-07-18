@@ -21,6 +21,8 @@ export interface SpreadsheetSheet {
   name: string;
   index: number;
   version?: number;
+  rowCount?: number;
+  colCount?: number;
   cells?: Array<{
     row: number;
     col: number;
@@ -172,6 +174,21 @@ export const api = {
     },
     deleteSheet: async (sheetId: string) => {
       await apiClient.request(`/sheets/sheet/${sheetId}`, { method: 'DELETE' });
+    },
+    changeStructure: async (
+      sheetId: string,
+      change: { axis: 'row' | 'column'; type: 'insert' | 'delete'; index: number },
+    ) => {
+      return apiClient.request<{
+        id: string;
+        version: number;
+        rowCount: number;
+        colCount: number;
+      }>(`/sheets/sheet/${sheetId}/structure`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(change),
+      });
     },
     update: async (id: string, data: { name?: string }) => {
       const token = localStorage.getItem("auth_token");

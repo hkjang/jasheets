@@ -170,6 +170,15 @@ export default function SpreadsheetPage() {
     )));
   }, []);
 
+  const handleStructureChange = useCallback((
+    sheetId: string,
+    dimensions: { rowCount: number; colCount: number },
+  ) => {
+    setSheets((current) => current.map((sheet) => (
+      sheet.id === sheetId ? { ...sheet, ...dimensions } : sheet
+    )));
+  }, []);
+
   useEffect(() => {
     if (authLoading || !user) return;
     void loadSpreadsheet();
@@ -210,6 +219,8 @@ export default function SpreadsheetPage() {
       spreadsheetId={id}
       activeSheetId={activeSheetId}
       initialVersion={activeSheetVersion}
+      initialRowCount={sheets.find(({ id: sheetId }) => sheetId === activeSheetId)?.rowCount}
+      initialColCount={sheets.find(({ id: sheetId }) => sheetId === activeSheetId)?.colCount}
       title={title}
       sheets={sheets.map(({ id: sheetId, name }) => ({ id: sheetId, name }))}
       onSheetSelect={selectSheet}
@@ -218,6 +229,7 @@ export default function SpreadsheetPage() {
       onSheetDelete={deleteSheet}
       onVersionChange={handleVersionChange}
       onChartsChange={handleChartsChange}
+      onStructureChange={handleStructureChange}
     />
   );
 }

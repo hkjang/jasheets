@@ -17,6 +17,7 @@ import { UpdateSpreadsheetDto } from './dto/update-spreadsheet.dto';
 import { UpdateCellDto, UpdateCellsDto } from './dto/update-cell.dto';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { CreateSheetDto, UpdateSheetDto } from './dto/sheet.dto';
+import { StructuralChangeDto } from './dto/structural-change.dto';
 
 @Controller('sheets')
 @UseGuards(JwtAuthGuard)
@@ -159,6 +160,15 @@ export class SheetsController {
   @Delete('sheet/:sheetId')
   deleteSheet(@Request() req: any, @Param('sheetId') sheetId: string) {
     return this.sheetsService.deleteSheet(req.user.id, sheetId);
+  }
+
+  @Post('sheet/:sheetId/structure')
+  changeStructure(
+    @Request() req: any,
+    @Param('sheetId') sheetId: string,
+    @Body() dto: StructuralChangeDto,
+  ) {
+    return this.sheetsService.changeStructure(req.user.id, sheetId, dto);
   }
 
   // Cell operations

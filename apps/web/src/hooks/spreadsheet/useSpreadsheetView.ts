@@ -4,19 +4,30 @@ import { ColumnDef, RowDef, DEFAULT_CONFIG } from '@/types/spreadsheet';
 interface UseSpreadsheetViewProps {
     initialRows?: RowDef[];
     initialCols?: ColumnDef[];
+    initialRowCount?: number;
+    initialColCount?: number;
 }
 
-export function useSpreadsheetView({ initialRows, initialCols }: UseSpreadsheetViewProps = {}) {
+export function useSpreadsheetView({
+    initialRows,
+    initialCols,
+    initialRowCount = DEFAULT_CONFIG.totalRows,
+    initialColCount = DEFAULT_CONFIG.totalCols,
+}: UseSpreadsheetViewProps = {}) {
     // Columns & Rows
     const [columns, setColumns] = useState<ColumnDef[]>(() =>
-        initialCols || Array(DEFAULT_CONFIG.totalCols).fill(null).map(() => ({ width: DEFAULT_CONFIG.defaultColWidth }))
+        initialCols || Array(initialColCount).fill(null).map(() => ({ width: DEFAULT_CONFIG.defaultColWidth }))
     );
     const [rows, setRows] = useState<RowDef[]>(() =>
-        initialRows || Array(DEFAULT_CONFIG.totalRows).fill(null).map(() => ({ height: DEFAULT_CONFIG.defaultRowHeight }))
+        initialRows || Array(initialRowCount).fill(null).map(() => ({ height: DEFAULT_CONFIG.defaultRowHeight }))
     );
 
     // Spreadsheet Config (Freeze, etc)
-    const [config, setConfig] = useState(DEFAULT_CONFIG);
+    const [config, setConfig] = useState(() => ({
+        ...DEFAULT_CONFIG,
+        totalRows: initialRowCount,
+        totalCols: initialColCount,
+    }));
 
     // View Options state
     const [showFormulaBar, setShowFormulaBar] = useState(true);
