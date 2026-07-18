@@ -1,46 +1,64 @@
-import { SheetData, colIndexToLetter } from '@/types/spreadsheet';
+import { SheetData } from '@/types/spreadsheet';
 
-export function exportToCSV(data: SheetData, filename: string = 'spreadsheet.csv') {
-    // 1. Determine bounds
-    const rows = Object.keys(data).map(Number);
-    if (rows.length === 0) return;
-    
-    const minRow = Math.min(...rows);
-    const maxRow = Math.max(...rows);
-    
-    let maxCol = 0;
-    rows.forEach(r => {
-        const cols = Object.keys(data[r]).map(Number);
-        if (cols.length > 0) {
-            maxCol = Math.max(maxCol, Math.max(...cols));
-        }
-    });
+const CSV_MIME_TYPE = 'text/csv;charset=utf-8';
+const UTF8_BOM = '\uFEFF';
 
-    // 2. Build Content
-    let csvContent = "data:text/csv;charset=utf-8,\uFEFF"; // Add BOM for Excel UTF-8 support
+function escapeCSVValue(value: unknown): string {
+  if (value === undefined || value === null) return '';
 
-    for (let r = minRow; r <= maxRow; r++) {
-        const rowData = [];
-        for (let c = 0; c <= maxCol; c++) {
-            const cell = data[r]?.[c];
-            let value = cell?.value !== undefined && cell?.value !== null ? String(cell.value) : '';
-            
-            // Escape quotes
-            if (value.includes('"') || value.includes(',') || value.includes('\n')) {
-                value = `"${value.replace(/"/g, '""')}"`;
-            }
-            
-            rowData.push(value);
-        }
-        csvContent += rowData.join(",") + "\r\n";
+  const text = String(value);
+  if (!/[",\r\n]/.test(text)) return text;
+
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+export function createCSVContent(data: SheetData): string | null {
+  const rows = Object.keys(data).map(Number);
+  if (rows.length === 0) return null;
+
+  const minRow = Math.min(...rows);
+  const maxRow = Math.max(...rows);
+  let maxCol = 0;
+
+  rows.forEach((row) => {
+    const columns = Object.keys(data[row] ?? {}).map(Number);
+    if (columns.length > 0) {
+      maxCol = Math.max(maxCol, Math.max(...columns));
     }
+  });
 
-    // 3. Download
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", filename);
-    document.body.appendChild(link);
+  const csvRows: string[] = [];
+  for (let row = minRow; row <= maxRow; row++) {
+    const values: string[] = [];
+    for (let column = 0; column <= maxCol; column++) {
+      values.push(escapeCSVValue(data[row]?.[column]?.value));
+    }
+    csvRows.push(values.join(','));
+  }
+
+  return `${UTF8_BOM}${csvRows.join('\r\n')}\r\n`;
+}
+
+export function exportToCSV(
+  data: SheetData,
+  filename: string = 'spreadsheet.csv',
+): void {
+  const csvContent = createCSVContent(data);
+  if (csvContent === null) return;
+
+  const blob = new Blob([csvContent], { type: CSV_MIME_TYPE });
+  const objectUrl = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+
+  link.href = objectUrl;
+  link.download = filename;
+  document.body.appendChild(link);
+
+  try {
     link.click();
-    document.body.removeChild(link);
+  } finally {
+    link.remove();
+    // Keep the object URL alive until the browser has consumed the click event.
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+  }
 }
