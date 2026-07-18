@@ -26,9 +26,21 @@ const createMockContext = (data: Record<string, CellValue>): EvaluationContext =
     return data[key] ?? 0;
   },
   getRangeValues: (start: CellReference, end: CellReference) => {
-    // Return a 1x1 or similar for simplicity if needed, or implement range logic.
-    // For now, let's just return [[0]] or try to lookup.
-    return [[0]];
+    const values: CellValue[][] = [];
+    for (let row = Math.min(start.row, end.row); row <= Math.max(start.row, end.row); row++) {
+      const rowValues: CellValue[] = [];
+      for (let col = Math.min(start.col, end.col); col <= Math.max(start.col, end.col); col++) {
+        let colIndex = col + 1;
+        let colName = '';
+        while (colIndex > 0) {
+          colName = String.fromCharCode(65 + ((colIndex - 1) % 26)) + colName;
+          colIndex = Math.floor((colIndex - 1) / 26);
+        }
+        rowValues.push(data[`${colName}${row + 1}`] ?? null);
+      }
+      values.push(rowValues);
+    }
+    return values;
   }
 });
 
@@ -71,9 +83,8 @@ describe('FormulaEngine', () => {
   });
 
   it('evaluates SUM with range', () => {
-    // Tests for ranges might depend on getRangeValues implementation
-    // For now, let's just test simple sum if Mock supports it or skip complex range
-    // Update: I'll skip range logic for now or implement dummy
+    expect(engine.evaluate('=SUM(A1:A3)', context)).toBe(60);
+    expect(engine.evaluate('=AVERAGE(A1:A3)', context)).toBe(20);
   });
 
   it('evaluates nested functions', () => {
@@ -86,6 +97,19 @@ describe('FormulaEngine', () => {
   it('handles division by zero', () => {
      // Implementation throws #DIV/0! error message
      expect(engine.evaluate('=1/0', context)).toBe('#DIV/0!');
+  });
+
+  it('propagates spreadsheet errors through operators and functions', () => {
+    const errorContext = createMockContext({ A1: '#REF!' });
+
+    expect(engine.evaluate('=A1+1', errorContext)).toBe('#REF!');
+    expect(engine.evaluate('=SUM(A1, 2)', errorContext)).toBe('#REF!');
+  });
+
+  it('evaluates conditional branches lazily and recovers with IFERROR', () => {
+    expect(engine.evaluate('=IF(FALSE, 1/0, 42)', context)).toBe(42);
+    expect(engine.evaluate('=IFERROR(1/0, 42)', context)).toBe(42);
+    expect(engine.evaluate('=IFERROR(A1+1, 42)', createMockContext({ A1: '#REF!' }))).toBe(42);
   });
 });
 

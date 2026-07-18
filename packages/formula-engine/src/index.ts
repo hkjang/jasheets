@@ -452,6 +452,12 @@ export interface EvaluationContext {
   getRangeValues(start: CellReference, end: CellReference): CellValue[][];
 }
 
+const SPREADSHEET_ERROR = /^#(?:NULL!|DIV\/0!|VALUE!|REF!|NAME\?|NUM!|N\/A|ERROR!)/;
+
+function isSpreadsheetError(value: unknown): value is string {
+  return typeof value === 'string' && SPREADSHEET_ERROR.test(value);
+}
+
 // Built-in functions
 type FormulaFunction = (args: CellValue[], context: EvaluationContext) => CellValue;
 
@@ -647,18 +653,38 @@ export class Evaluator {
   }
 
   private evaluateFunction(node: FunctionCallNode): CellValue {
+    // Conditional functions must be lazy. Besides avoiding unnecessary work,
+    // this is what lets IFERROR recover from a failing expression and IF avoid
+    // surfacing an error from the branch that was not selected.
+    if (node.name === 'IF') {
+      const condition = this.evaluate(node.args[0]);
+      if (isSpreadsheetError(condition)) return condition;
+      const selected = condition ? node.args[1] : node.args[2];
+      return selected ? this.evaluate(selected) : false;
+    }
+
+    if (node.name === 'IFERROR') {
+      const value = this.evaluate(node.args[0]);
+      if (!isSpreadsheetError(value)) return value;
+      return node.args[1] ? this.evaluate(node.args[1]) : '';
+    }
+
     const fn = FUNCTIONS[node.name];
     if (!fn) {
       throw new Error(`Unknown function: ${node.name}`);
     }
 
     const args = node.args.map((arg) => this.evaluate(arg));
+    const error = args.find(isSpreadsheetError);
+    if (error) return error;
     return fn(args, this.context);
   }
 
   private evaluateBinaryOp(node: BinaryOpNode): CellValue {
     const left = this.evaluate(node.left);
+    if (isSpreadsheetError(left)) return left;
     const right = this.evaluate(node.right);
+    if (isSpreadsheetError(right)) return right;
 
     switch (node.operator) {
       case '+':
@@ -669,7 +695,7 @@ export class Evaluator {
         return (Number(left) || 0) * (Number(right) || 0);
       case '/':
         const divisor = Number(right) || 0;
-        if (divisor === 0) throw new Error('#DIV/0!');
+        if (divisor === 0) return '#DIV/0!';
         return (Number(left) || 0) / divisor;
       case '%':
         return (Number(left) || 0) % (Number(right) || 0);
@@ -698,6 +724,7 @@ export class Evaluator {
 
   private evaluateUnaryOp(node: UnaryOpNode): CellValue {
     const operand = this.evaluate(node.operand);
+    if (isSpreadsheetError(operand)) return operand;
 
     switch (node.operator) {
       case '-':
