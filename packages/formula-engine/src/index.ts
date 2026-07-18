@@ -341,17 +341,6 @@ export class Parser {
         this.expect(TokenType.RPAREN);
         return expr;
 
-      case TokenType.OPERATOR:
-        if (token.value === '-' || token.value === '+') {
-          this.advance();
-          return {
-            type: 'UnaryOp',
-            operator: token.value,
-            operand: this.parsePrimary(),
-          };
-        }
-        throw new Error(`Unexpected operator: ${token.value}`);
-
       default:
         throw new Error(`Unexpected token: ${token.type}`);
     }
@@ -377,15 +366,52 @@ export class Parser {
     return { type: 'FunctionCall', name: nameToken.value, args };
   }
 
-  private parseMultiplicative(): ASTNode {
+  private parsePercent(): ASTNode {
     let left = this.parsePrimary();
+
+    while (this.current().type === TokenType.OPERATOR && this.current().value === '%') {
+      this.advance();
+      left = {
+        type: 'BinaryOp',
+        operator: '/',
+        left,
+        right: { type: 'Number', value: 100 },
+      };
+    }
+
+    return left;
+  }
+
+  private parsePower(): ASTNode {
+    const left = this.parsePercent();
+
+    if (this.current().type === TokenType.OPERATOR && this.current().value === '^') {
+      this.advance();
+      return { type: 'BinaryOp', operator: '^', left, right: this.parseUnary() };
+    }
+
+    return left;
+  }
+
+  private parseUnary(): ASTNode {
+    const token = this.current();
+    if (token.type === TokenType.OPERATOR && (token.value === '-' || token.value === '+')) {
+      this.advance();
+      return { type: 'UnaryOp', operator: token.value, operand: this.parseUnary() };
+    }
+
+    return this.parsePower();
+  }
+
+  private parseMultiplicative(): ASTNode {
+    let left = this.parseUnary();
 
     while (
       this.current().type === TokenType.OPERATOR &&
-      ['*', '/', '%', '^'].includes(this.current().value)
+      ['*', '/'].includes(this.current().value)
     ) {
       const op = this.advance().value;
-      const right = this.parsePrimary();
+      const right = this.parseUnary();
       left = { type: 'BinaryOp', operator: op, left, right };
     }
 
@@ -697,8 +723,6 @@ export class Evaluator {
         const divisor = Number(right) || 0;
         if (divisor === 0) return '#DIV/0!';
         return (Number(left) || 0) / divisor;
-      case '%':
-        return (Number(left) || 0) % (Number(right) || 0);
       case '^':
         return Math.pow(Number(left) || 0, Number(right) || 0);
       case '&':

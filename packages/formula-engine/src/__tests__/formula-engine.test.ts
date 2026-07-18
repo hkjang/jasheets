@@ -78,6 +78,14 @@ describe('FormulaEngine', () => {
     expect(engine.evaluate('=1+2', context)).toBe(3);
   });
 
+  it('uses spreadsheet precedence for powers, signs, and percentages', () => {
+    expect(engine.evaluate('=2^3^2', context)).toBe(512);
+    expect(engine.evaluate('=-2^2', context)).toBe(-4);
+    expect(engine.evaluate('=2^-2', context)).toBe(0.25);
+    expect(engine.evaluate('=50%', context)).toBe(0.5);
+    expect(engine.evaluate('=200*10%', context)).toBe(20);
+  });
+
   it('evaluates formulas with cell references', () => {
     expect(engine.evaluate('=A1+A2', context)).toBe(30);
   });
