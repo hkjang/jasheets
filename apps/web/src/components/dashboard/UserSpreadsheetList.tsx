@@ -1,45 +1,57 @@
-import React, { useEffect, useState } from 'react';
-import { api } from '@/lib/api';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { api, type SpreadsheetSummary } from '@/lib/api';
 import { useRouter } from 'next/navigation';
-
-interface Spreadsheet {
-  id: string;
-  name: string;
-  updatedAt: string;
-  owner?: { name: string; email: string; avatar: string };
-  _count?: { sheets: number };
-  isFavorite?: boolean;
-}
+import Image from 'next/image';
 
 interface UserSpreadsheetListProps {
   onSelect?: (id: string) => void;
 }
 
 export const UserSpreadsheetList = ({ onSelect }: UserSpreadsheetListProps) => {
-  const [spreadsheets, setSpreadsheets] = useState<Spreadsheet[]>([]);
+  const [spreadsheets, setSpreadsheets] = useState<SpreadsheetSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
   const router = useRouter();
+  const requestRef = useRef(0);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      loadSpreadsheets();
-    }, 300);
-    return () => clearTimeout(timer);
-  }, [activeTab, searchTerm]);
-
-  const loadSpreadsheets = async () => {
+  const loadSpreadsheets = useCallback(async (signal?: AbortSignal) => {
+    const requestId = ++requestRef.current;
     try {
       setLoading(true);
-      const data = await api.spreadsheets.list(activeTab === 'all' ? undefined : activeTab, searchTerm);
-      setSpreadsheets(data);
-    } catch (error) {
-      console.error('Failed to load spreadsheets:', error);
+      setError(null);
+      const data = await api.spreadsheets.list(
+        activeTab === 'all' ? undefined : activeTab,
+        searchTerm,
+        signal,
+      );
+      if (requestId === requestRef.current) setSpreadsheets(data);
+    } catch (loadError) {
+      if (signal?.aborted || (loadError instanceof DOMException && loadError.name === 'AbortError')) return;
+      console.error('Failed to load spreadsheets:', loadError);
+      if (requestId === requestRef.current) {
+        setError(
+          loadError instanceof DOMException && loadError.name === 'TimeoutError'
+            ? '서버 응답이 늦어지고 있습니다. 네트워크를 확인하고 다시 시도해 주세요.'
+            : '스프레드시트 목록을 불러오지 못했습니다.',
+        );
+      }
     } finally {
-      setLoading(false);
+      if (requestId === requestRef.current && !signal?.aborted) setLoading(false);
     }
-  };
+  }, [activeTab, searchTerm]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => {
+      void loadSpreadsheets(controller.signal);
+    }, 300);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
+  }, [loadSpreadsheets]);
 
   const handleCreate = async () => {
     const name = prompt('Enter spreadsheet name:', 'Untitled Spreadsheet');
@@ -47,7 +59,7 @@ export const UserSpreadsheetList = ({ onSelect }: UserSpreadsheetListProps) => {
     try {
         const newSheet = await api.spreadsheets.create({ name });
         router.push(`/spreadsheet/${newSheet.id}`);
-    } catch (err) {
+    } catch {
         alert('Failed to create spreadsheet');
     }
   };
@@ -83,6 +95,7 @@ export const UserSpreadsheetList = ({ onSelect }: UserSpreadsheetListProps) => {
                 <button
                     key={tab}
                     onClick={() => setActiveTab(tab)}
+                    aria-pressed={activeTab === tab}
                     className={`px-4 py-2 rounded-md text-sm font-medium transition ${
                         activeTab === tab ? 'bg-white text-gray-900 shadow-sm' : 'text-gray-500 hover:text-gray-700'
                     }`}
@@ -97,6 +110,7 @@ export const UserSpreadsheetList = ({ onSelect }: UserSpreadsheetListProps) => {
                 <input 
                     type="text" 
                     placeholder="Search spreadsheets..." 
+                    aria-label="스프레드시트 검색"
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-10 pr-4 py-2 border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -115,7 +129,28 @@ export const UserSpreadsheetList = ({ onSelect }: UserSpreadsheetListProps) => {
       </div>
 
       {loading ? (
-          <div className="text-center py-12">Loading...</div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3" role="status" aria-live="polite" aria-label="스프레드시트 목록을 불러오는 중">
+            {Array.from({ length: 6 }, (_, index) => (
+              <div key={index} className="h-36 animate-pulse rounded-xl border border-gray-200 bg-white p-5">
+                <div className="mb-5 h-9 w-9 rounded-lg bg-green-100" />
+                <div className="mb-3 h-4 w-2/3 rounded bg-gray-200" />
+                <div className="h-3 w-1/2 rounded bg-gray-100" />
+              </div>
+            ))}
+          </div>
+      ) : error ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-6 py-8 text-center" role="alert">
+          <div className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-white text-red-600 shadow-sm" aria-hidden="true">!</div>
+          <h2 className="font-semibold text-gray-900">목록을 표시할 수 없습니다</h2>
+          <p className="mt-1 text-sm text-gray-600">{error}</p>
+          <button
+            type="button"
+            onClick={() => void loadSpreadsheets()}
+            className="mt-5 rounded-lg bg-blue-600 px-4 py-2 text-sm font-semibold text-white transition hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+          >
+            다시 시도
+          </button>
+        </div>
       ) : spreadsheets.length === 0 ? (
         <div className="text-center py-12 bg-gray-50 rounded-lg border border-dashed">
           <p className="text-gray-500 mb-4">No spreadsheets found.</p>
@@ -152,7 +187,15 @@ export const UserSpreadsheetList = ({ onSelect }: UserSpreadsheetListProps) => {
                          </svg>
                     </button>
                     {sheet.owner && (
-                        <img src={sheet.owner.avatar || `https://ui-avatars.com/api/?name=${sheet.owner.name}`} alt={sheet.owner.name} className="w-8 h-8 rounded-full ml-2" title={sheet.owner.name} />
+                        <Image
+                          src={sheet.owner.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(sheet.owner.name)}`}
+                          alt={sheet.owner.name}
+                          width={32}
+                          height={32}
+                          unoptimized
+                          className="ml-2 h-8 w-8 rounded-full"
+                          title={sheet.owner.name}
+                        />
                     )}
                 </div>
               </div>

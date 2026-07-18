@@ -1,4 +1,31 @@
 import { API_URL, apiClient } from './api-client';
+import type { CellStyle } from '@/types/spreadsheet';
+
+export interface SpreadsheetSummary {
+  id: string;
+  name: string;
+  updatedAt: string;
+  owner?: { name: string; email: string; avatar?: string | null };
+  _count?: { sheets: number };
+  isFavorite?: boolean;
+}
+
+export interface SpreadsheetDetail {
+  id: string;
+  name?: string;
+  sheets?: Array<{
+    id: string;
+    version?: number;
+    cells?: Array<{
+      row: number;
+      col: number;
+      value: string | number | boolean | null;
+      formula?: string | null;
+      format?: CellStyle;
+    }>;
+    charts?: unknown[];
+  }>;
+}
 const fetch = (input: RequestInfo | URL, init?: RequestInit) =>
   apiClient.fetch(String(input), init);
 
@@ -81,25 +108,15 @@ export const api = {
     },
   },
   spreadsheets: {
-    list: async (filter?: string, search?: string) => {
-      const token = localStorage.getItem("auth_token");
+    list: async (filter?: string, search?: string, signal?: AbortSignal) => {
       const params = new URLSearchParams();
       if (filter) params.append("filter", filter);
       if (search) params.append("search", search);
-
-      const res = await fetch(`${API_URL}/sheets?${params.toString()}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Failed to fetch spreadsheets");
-      return res.json();
+      const query = params.toString();
+      return apiClient.request<SpreadsheetSummary[]>(`/sheets${query ? `?${query}` : ''}`, { signal });
     },
-    get: async (id: string) => {
-      const token = localStorage.getItem("auth_token");
-      const res = await fetch(`${API_URL}/sheets/${id}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      if (!res.ok) throw new Error("Failed to fetch spreadsheet");
-      return res.json();
+    get: async (id: string, signal?: AbortSignal) => {
+      return apiClient.request<SpreadsheetDetail>(`/sheets/${id}`, { signal });
     },
     update: async (id: string, data: { name?: string }) => {
       const token = localStorage.getItem("auth_token");
