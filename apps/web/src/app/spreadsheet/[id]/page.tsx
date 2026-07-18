@@ -12,6 +12,7 @@ import {
   SpreadsheetLoadingState,
 } from "@/components/ui/PageLoadState";
 import type { SheetData } from "@/types/spreadsheet";
+import { deserializeCellFormat } from "@/utils/cellPersistence";
 
 export default function SpreadsheetPage() {
   const params = useParams();
@@ -62,8 +63,8 @@ export default function SpreadsheetPage() {
           if (!sheetData[cell.row]) sheetData[cell.row] = {};
           sheetData[cell.row][cell.col] = {
             value: cell.value,
-            style: cell.format,
             formula: cell.formula ?? undefined,
+            ...deserializeCellFormat(cell.format),
           };
         });
         setData(sheetData);

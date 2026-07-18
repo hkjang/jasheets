@@ -62,6 +62,7 @@ export function useSpreadsheetCollaboration({
     isConnected,
     syncStatus,
     sendCellUpdate,
+    sendBatchUpdate,
     sendCursorMove,
     sendSelectionChange,
     sendChatMessage,
@@ -97,5 +98,6 @@ export function useSpreadsheetCollaboration({
     toggleChat,
     sendChatMessage,
     sendCellUpdate,
+    sendBatchUpdate,
   };
 }

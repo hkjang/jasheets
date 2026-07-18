@@ -46,6 +46,7 @@ import { useSpreadsheetEdit } from "@/hooks/spreadsheet/useSpreadsheetEdit";
 import { useKeyboardNavigation } from "@/hooks/spreadsheet/useKeyboardNavigation";
 import { useSpreadsheetCollaboration } from "@/hooks/spreadsheet/useSpreadsheetCollaboration";
 import { useSpreadsheetCharts } from "@/hooks/spreadsheet/useSpreadsheetCharts";
+import { useSpreadsheetAutosave } from "@/hooks/spreadsheet/useSpreadsheetAutosave";
 import MenuBar from "./MenuBar";
 import { exportToCSV } from "@/utils/export";
 import * as XLSX from "xlsx";
@@ -76,6 +77,7 @@ import { createFillUpdates } from "@/utils/fillHandle";
 import { createPasteUpdates, serializeRangeToTsv } from "@/utils/clipboard";
 import SnapshotManagerPanel from "./SnapshotManagerPanel";
 import CommandPalette from "./CommandPalette";
+import type { PersistedCellUpdate } from "@/utils/cellPersistence";
 
 interface SpreadsheetProps {
   initialData?: SheetData;
@@ -98,7 +100,30 @@ export default function Spreadsheet({
 }: SpreadsheetProps) {
   const [sheetTitle, setSheetTitle] = useState(title);
   const [sheetVersion, setSheetVersion] = useState(initialVersion);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
   const { user, loading } = useAuth();
+  const collaborationBroadcastRef = useRef<
+    (updates: PersistedCellUpdate[]) => void
+  >(() => undefined);
+  const handleAutosaveSaved = useCallback((version: number) => {
+    setSheetVersion(version);
+  }, []);
+  const handleAutosaveBroadcast = useCallback((updates: PersistedCellUpdate[]) => {
+    collaborationBroadcastRef.current(updates);
+  }, []);
+  const handleAutosaveError = useCallback(() => {
+    setToastMessage("자동 저장에 실패했습니다. 연결이 복구되면 다시 시도합니다.");
+  }, []);
+  const {
+    status: autosaveStatus,
+    queueChanges,
+    flush: flushAutosave,
+  } = useSpreadsheetAutosave({
+    sheetId: activeSheetId,
+    onSaved: handleAutosaveSaved,
+    onBroadcast: handleAutosaveBroadcast,
+    onError: handleAutosaveError,
+  });
 
   // Update title if prop changes (e.g. loaded from server)
   useEffect(() => {
@@ -149,7 +174,12 @@ export default function Spreadsheet({
     defineNamedRange,
     updateCellValidation,
     addProtectedRange,
-  } = useSpreadsheetData({ initialData, onDataChange, currentUserId: user?.id });
+  } = useSpreadsheetData({
+    initialData,
+    onDataChange,
+    onLocalCellsChange: queueChanges,
+    currentUserId: user?.id,
+  });
 
   // Selection
   const {
@@ -295,6 +325,7 @@ export default function Spreadsheet({
     syncStatus,
     toggleChat,
     sendChatMessage,
+    sendBatchUpdate,
   } = useSpreadsheetCollaboration({
     userId,
     userName,
@@ -304,6 +335,20 @@ export default function Spreadsheet({
     spreadsheetId: spreadsheetId || "demo-sheet",
     activeSheetId,
   });
+  useEffect(() => {
+    collaborationBroadcastRef.current = (updates) => {
+      if (!activeSheetId) return;
+      sendBatchUpdate(
+        activeSheetId,
+        updates.map(({ row, col, value, formula }) => ({
+          row,
+          col,
+          value,
+          formula: formula ?? undefined,
+        })),
+      );
+    };
+  }, [activeSheetId, sendBatchUpdate]);
 
   // Charts
   const {
@@ -325,51 +370,13 @@ export default function Spreadsheet({
   }, [initialCharts, setCharts]);
 
   // Save handler - defined after charts to access chart state
-  const pendingSaveRef = useRef<{ key: string; fingerprint: string } | null>(
-    null,
-  );
   const handleSave = useCallback(async () => {
     if (!activeSheetId) {
       alert("저장할 시트가 없습니다.");
       return;
     }
     try {
-      const updates: any[] = [];
-      Object.keys(data).forEach((r) => {
-        const row = Number(r);
-        Object.keys(data[row]).forEach((c) => {
-          const col = Number(c);
-          const cell = data[row][col];
-          if (cell) {
-            updates.push({
-              row,
-              col,
-              value: cell.value,
-              formula: cell.formula,
-              format: cell.style,
-            });
-          }
-        });
-      });
-
-      // Save cells
-      if (updates.length > 0) {
-        const fingerprint = JSON.stringify({ updates, sheetVersion });
-        if (pendingSaveRef.current?.fingerprint !== fingerprint) {
-          pendingSaveRef.current = {
-            key: crypto.randomUUID(),
-            fingerprint,
-          };
-        }
-        const result = await api.spreadsheets.updateCells(
-          activeSheetId,
-          updates,
-          sheetVersion,
-          pendingSaveRef.current.key,
-        );
-        setSheetVersion(result.version);
-        pendingSaveRef.current = null;
-      }
+      await flushAutosave();
 
       // Save charts
       if (charts.length > 0) {
@@ -383,7 +390,7 @@ export default function Spreadsheet({
         e instanceof Error ? e.message : "저장 중 오류가 발생했습니다.",
       );
     }
-  }, [data, activeSheetId, charts, sheetVersion]);
+  }, [activeSheetId, charts, flushAutosave]);
 
   // Keyboard shortcut for save
   useEffect(() => {
@@ -715,9 +722,6 @@ export default function Spreadsheet({
 
   // Keyboard Shortcuts state
   const [isShortcutsOpen, setIsShortcutsOpen] = useState(false);
-
-  // Toast state
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Share Dialog state
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
@@ -1422,8 +1426,10 @@ export default function Spreadsheet({
           onClearFilters={() => setRows((current) => current.map((row) => ({ ...row, hidden: false })))}
         />
       )}
-      <div role="status" aria-live="polite" style={{ padding: "2px 8px", fontSize: "12px", color: syncStatus === "connected" ? "#188038" : "#b06000" }}>
+      <div role="status" aria-live="polite" style={{ padding: "2px 8px", fontSize: "12px", color: autosaveStatus === "error" || syncStatus !== "connected" ? "#b06000" : "#188038" }}>
         동기화: {syncStatus === "connected" ? "연결됨" : syncStatus === "reconnecting" ? "재연결 중" : syncStatus === "connecting" ? "연결 중" : "연결 끊김"}
+        {" · "}저장: {autosaveStatus === "saved" ? "완료" : autosaveStatus === "saving" ? "저장 중" : autosaveStatus === "unsaved" ? "변경 대기" : "재시도 필요"}
+        {" · "}버전 {sheetVersion}
       </div>
 
       <div className={styles.canvasWrapper} style={{ position: "relative" }}>

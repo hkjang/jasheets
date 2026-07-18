@@ -1,5 +1,5 @@
 import { API_URL, apiClient } from './api-client';
-import type { CellStyle } from '@/types/spreadsheet';
+import type { CellValue } from '@/types/spreadsheet';
 
 export interface SpreadsheetSummary {
   id: string;
@@ -19,9 +19,9 @@ export interface SpreadsheetDetail {
     cells?: Array<{
       row: number;
       col: number;
-      value: string | number | boolean | null;
+      value: CellValue;
       formula?: string | null;
-      format?: CellStyle;
+      format?: unknown;
     }>;
     charts?: unknown[];
   }>;
@@ -253,9 +253,9 @@ export const api = {
       updates: {
         row: number;
         col: number;
-        value?: any;
-        formula?: string;
-        format?: any;
+        value?: CellValue;
+        formula?: string | null;
+        format?: unknown;
       }[],
       expectedVersion?: number,
       idempotencyKey?: string,

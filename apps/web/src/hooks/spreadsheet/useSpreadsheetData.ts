@@ -10,6 +10,10 @@ import { rewriteFormulaForStructuralChange, StructuralChange } from '@/utils/for
 import { validateCellInput } from '@/utils/dataValidation';
 import { canEditCell } from '@/utils/protectedRanges';
 import { FormulaWorkerClient } from '@/utils/formulaWorkerClient';
+import {
+    collectPersistedCellUpdates,
+    PersistedCellUpdate,
+} from '@/utils/cellPersistence';
 
 enablePatches();
 
@@ -25,6 +29,7 @@ interface Commit {
 interface UseSpreadsheetDataProps {
     initialData?: SheetData;
     onDataChange?: (data: SheetData) => void;
+    onLocalCellsChange?: (updates: PersistedCellUpdate[]) => void;
     currentUserId?: string;
 }
 
@@ -71,7 +76,7 @@ function rewriteFormulas(data: SheetData, change: StructuralChange): void {
     });
 }
 
-export function useSpreadsheetData({ initialData = {}, onDataChange, currentUserId }: UseSpreadsheetDataProps) {
+export function useSpreadsheetData({ initialData = {}, onDataChange, onLocalCellsChange, currentUserId }: UseSpreadsheetDataProps) {
     // Note: initialData is only used for initial state.
     // External updates should use updateData() directly to avoid infinite loops.
     const [data, setData] = useState<SheetData>(() => initialData || {});
@@ -112,10 +117,11 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, currentUser
                 return newHistory;
             });
             setHistoryIndex(prev => prev + 1);
+            onLocalCellsChange?.(collectPersistedCellUpdates(data, nextState, patches));
         }
 
         onDataChange?.(nextState);
-    }, [data, historyIndex, onDataChange]);
+    }, [data, historyIndex, onDataChange, onLocalCellsChange]);
 
     // Direct update without history (e.g. from server)
     const updateData = useCallback((newData: SheetData) => {
@@ -385,9 +391,10 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, currentUser
             const nextState = applyPatches(data, inversePatches);
             setData(nextState);
             setHistoryIndex(historyIndex - 1);
+            onLocalCellsChange?.(collectPersistedCellUpdates(data, nextState, inversePatches));
             onDataChange?.(nextState);
         }
-    }, [data, history, historyIndex, onDataChange]);
+    }, [data, history, historyIndex, onDataChange, onLocalCellsChange]);
 
     const handleRedo = useCallback(() => {
         if (historyIndex < history.length - 1) {
@@ -395,9 +402,10 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, currentUser
             const nextState = applyPatches(data, patches);
             setData(nextState);
             setHistoryIndex(historyIndex + 1);
+            onLocalCellsChange?.(collectPersistedCellUpdates(data, nextState, patches));
             onDataChange?.(nextState);
         }
-    }, [data, history, historyIndex, onDataChange]);
+    }, [data, history, historyIndex, onDataChange, onLocalCellsChange]);
 
     const insertRow = useCallback((rowIndex: number) => {
         applyChange((draft) => {

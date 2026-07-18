@@ -5,6 +5,7 @@ const withPWA = withPWAInit({
   dest: "public",
   register: true,
   cacheStartUrl: false,
+  dynamicStartUrl: false,
   publicExcludes: ["!sw.ts"],
   workboxOptions: {
     skipWaiting: true,
