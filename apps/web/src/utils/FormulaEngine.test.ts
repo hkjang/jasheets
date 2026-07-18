@@ -116,6 +116,16 @@ describe('formula error propagation', () => {
     expect(evaluateFormula('=IFNA(XLOOKUP("Z",A1:A1,B1:B1),"missing")', {})).toBe('missing');
     expect(evaluateFormula('=IFNA(10/0,99)', {})).toBe('#DIV/0!');
   });
+
+  it('lazily evaluates fallback formulas and references', () => {
+    const fallbackData: SheetData = {
+      0: { 0: { value: 7 }, 1: { value: 'recovered' } },
+    };
+
+    expect(evaluateFormula('=IFERROR(1/0,A1+5)', fallbackData)).toBe(12);
+    expect(evaluateFormula('=IFERROR(1/0,B1)', fallbackData)).toBe('recovered');
+    expect(evaluateFormula('=IFERROR(10,1/0)', fallbackData)).toBe(10);
+  });
 });
 
 describe('comparisons and conditional formulas', () => {

@@ -411,8 +411,7 @@ export function evaluateFormula(
                 ? isFormulaError(result)
                 : result === '#N/A';
             if (!recover) return result;
-            const fallback = lookupValue(args[1], data);
-            return fallback ?? '';
+            return evaluateArgument(args[1], data, namedRanges, locale);
         }
 
         const comparison = findTopLevelComparison(formula.slice(1));
