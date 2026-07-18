@@ -18,4 +18,28 @@ describe('spreadsheet fill handle', () => {
     expect(createFillUpdates(data, { start: { row: 0, col: 0 }, end: { row: 0, col: 0 } }, { start: { row: 0, col: 0 }, end: { row: 2, col: 0 } }))
       .toEqual([{ row: 1, col: 0, value: '=B2+$C$1' }, { row: 2, col: 0, value: '=B3+$C$1' }]);
   });
+
+  it('extends ISO date series across month boundaries', () => {
+    const data = {
+      0: { 0: { value: '2026-01-30' } },
+      1: { 0: { value: '2026-01-31' } },
+    };
+
+    expect(createFillUpdates(data, { start: { row: 0, col: 0 }, end: { row: 1, col: 0 } }, { start: { row: 0, col: 0 }, end: { row: 3, col: 0 } }))
+      .toEqual([{ row: 2, col: 0, value: '2026-02-01' }, { row: 3, col: 0, value: '2026-02-02' }]);
+  });
+
+  it('increments a single ISO date while rejecting normalized invalid dates', () => {
+    expect(createFillUpdates(
+      { 0: { 0: { value: '2024-02-28' } } },
+      { start: { row: 0, col: 0 }, end: { row: 0, col: 0 } },
+      { start: { row: 0, col: 0 }, end: { row: 2, col: 0 } },
+    )).toEqual([{ row: 1, col: 0, value: '2024-02-29' }, { row: 2, col: 0, value: '2024-03-01' }]);
+
+    expect(createFillUpdates(
+      { 0: { 0: { value: '2026-02-30' } } },
+      { start: { row: 0, col: 0 }, end: { row: 0, col: 0 } },
+      { start: { row: 0, col: 0 }, end: { row: 1, col: 0 } },
+    )).toEqual([{ row: 1, col: 0, value: '2026-02-30' }]);
+  });
 });
