@@ -1510,9 +1510,16 @@ export default function Spreadsheet({
             }),
           );
         }}
-        onSort={() => {
+        onSortAsc={() => {
           if (selectedCell) {
             sortRows(selectedCell.col, true);
+          } else {
+            alert("정렬할 열의 셀을 선택해주세요.");
+          }
+        }}
+        onSortDesc={() => {
+          if (selectedCell) {
+            sortRows(selectedCell.col, false);
           } else {
             alert("정렬할 열의 셀을 선택해주세요.");
           }

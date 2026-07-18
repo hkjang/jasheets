@@ -23,7 +23,8 @@ interface MenuBarProps {
   onFreezeRow: () => void;
   onFreezeCol: () => void;
   onFilter: () => void;
-  onSort: () => void;
+  onSortAsc: () => void;
+  onSortDesc: () => void;
   onToggleFormulaBar: () => void;
   onToggleGridlines: () => void;
   onDownloadXLSX: () => void;
@@ -81,7 +82,8 @@ export default function MenuBar({
   onFreezeRow,
   onFreezeCol,
   onFilter,
-  onSort,
+  onSortAsc,
+  onSortDesc,
   onToggleFormulaBar,
   onToggleGridlines,
   onDownloadXLSX,
@@ -333,8 +335,8 @@ export default function MenuBar({
           </button>
           {activeMenu === 'data' && (
             <div className={styles.dropdown}>
-              <MenuItem label="시트 정렬 (A-Z)" onClick={onSort} />
-              <MenuItem label="시트 정렬 (Z-A)" onClick={onSort} />
+              <MenuItem label="시트 정렬 (A-Z)" onClick={onSortAsc} />
+              <MenuItem label="시트 정렬 (Z-A)" onClick={onSortDesc} />
               <Separator />
               <MenuItem label="범위 정렬 (A-Z)" onClick={onSortRangeAsc} />
               <MenuItem label="범위 정렬 (Z-A)" onClick={onSortRangeDesc} />
