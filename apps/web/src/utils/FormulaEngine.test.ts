@@ -146,3 +146,18 @@ describe('comparisons and conditional formulas', () => {
     expect(evaluateFormula('=IF(C1,"yes","no")', conditionalData)).toBe('#REF!');
   });
 });
+
+describe('spreadsheet operator precedence', () => {
+  it('supports unary signs and right-associative powers', () => {
+    expect(evaluateFormula('=-2^2', {})).toBe(-4);
+    expect(evaluateFormula('=2^-2', {})).toBe(0.25);
+    expect(evaluateFormula('=2^3^2', {})).toBe(512);
+    expect(evaluateFormula('=-(1+2)*3', {})).toBe(-9);
+  });
+
+  it('treats percent signs as postfix percentage operators', () => {
+    expect(evaluateFormula('=50%', {})).toBe(0.5);
+    expect(evaluateFormula('=200*10%', {})).toBe(20);
+    expect(evaluateFormula('=50%^2', {})).toBe(0.25);
+  });
+});

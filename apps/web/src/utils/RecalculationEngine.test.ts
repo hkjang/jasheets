@@ -82,4 +82,23 @@ describe('incremental recalculation', () => {
     expect(data[0][1].value).toBe(6);
     expect(data[0][2].value).toBe(7);
   });
+
+  it('updates conditional formulas when their condition changes', () => {
+    const data: SheetData = {
+      0: {
+        0: { value: 12 },
+        1: formula('=IF(A1>=10,100,0)'),
+        2: formula('=B1*10%'),
+      },
+    };
+
+    recalculate(data, {}, [{ row: 0, col: 0 }]);
+    expect(data[0][1].value).toBe(100);
+    expect(data[0][2].value).toBe(10);
+
+    data[0][0] = { value: 5 };
+    recalculate(data, {}, [{ row: 0, col: 0 }]);
+    expect(data[0][1].value).toBe(0);
+    expect(data[0][2].value).toBe(0);
+  });
 });

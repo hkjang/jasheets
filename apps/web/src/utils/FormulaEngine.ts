@@ -17,7 +17,7 @@ export interface Token {
   value: string;
 }
 
-const OPERATORS = ['+', '-', '*', '/', '=', '<', '>'];
+const OPERATORS = ['+', '-', '*', '/', '^', '%', '=', '<', '>'];
 const FUNCTIONS = [
   'SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'SEQUENCE',
   'DATE', 'TIME', 'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND', 'TODAY', 'NOW',
@@ -462,7 +462,10 @@ export function evaluateFormula(
 
         // --- Parser (Recursive Descent) ---
         // Expression = Term { (+|-) Term }
-        // Term = Factor { (*|/) Factor }
+        // Term = Unary { (*|/) Unary }
+        // Unary = (+|-) Unary | Power
+        // Power = Percent [ ^ Unary ]
+        // Percent = Factor { % }
         // Factor = Number | Ref | ( Expression ) | Function
         
         function parseExpression(): number {
@@ -478,10 +481,10 @@ export function evaluateFormula(
         }
         
         function parseTerm(): number {
-            let left = parseFactor();
+            let left = parseUnary();
             while (peek().type === 'OPERATOR' && (peek().value === '*' || peek().value === '/')) {
                  const op = consume().value;
-                 const right = parseFactor();
+                 const right = parseUnary();
                  if (op === '*') left *= right;
                  else {
                      if (right === 0) throw new Error('#DIV/0!');
@@ -489,6 +492,33 @@ export function evaluateFormula(
                  }
             }
             return left;
+        }
+
+        function parseUnary(): number {
+            if (peek().type === 'OPERATOR' && (peek().value === '+' || peek().value === '-')) {
+                const operator = consume().value;
+                const value = parseUnary();
+                return operator === '-' ? -value : value;
+            }
+            return parsePower();
+        }
+
+        function parsePower(): number {
+            const left = parsePercent();
+            if (peek().type === 'OPERATOR' && peek().value === '^') {
+                consume();
+                return Math.pow(left, parseUnary());
+            }
+            return left;
+        }
+
+        function parsePercent(): number {
+            let value = parseFactor();
+            while (peek().type === 'OPERATOR' && peek().value === '%') {
+                consume();
+                value /= 100;
+            }
+            return value;
         }
         
         function parseFactor(): number {
