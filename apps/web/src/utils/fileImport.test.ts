@@ -1,4 +1,27 @@
-import { csvTextToSheetData, parseCSVRows } from './fileImport';
+import * as XLSX from 'xlsx';
+import { csvTextToSheetData, parseCSVRows, workSheetToSheetData } from './fileImport';
+import { dateToSerial } from './dateSerial';
+
+describe('XLSX import', () => {
+  it('converts Date cells to persisted serial values and preserves date/time formats', () => {
+    const date = new Date(Date.UTC(2024, 0, 2));
+    const time = new Date(Date.UTC(1899, 11, 30, 15, 30));
+    const worksheet: XLSX.WorkSheet = {
+      A1: { t: 'd', v: date, z: 'yyyy-mm-dd' },
+      B1: { t: 'd', v: time, z: 'hh:mm' },
+      C1: { t: 'd', v: date, z: 'yyyy-mm-dd hh:mm' },
+      '!ref': 'A1:C1',
+    };
+
+    expect(workSheetToSheetData(worksheet)).toEqual({
+      0: {
+        0: { value: dateToSerial(date), format: 'date' },
+        1: { value: dateToSerial(time), format: 'time' },
+        2: { value: dateToSerial(date), format: 'date' },
+      },
+    });
+  });
+});
 
 describe('CSV import', () => {
   it('preserves line breaks, commas, and escaped quotes in quoted fields', () => {

@@ -5,6 +5,7 @@
 
 import * as XLSX from 'xlsx';
 import { SheetData, CellData } from '@/types/spreadsheet';
+import { dateToSerial } from './dateSerial';
 
 export interface ImportResult {
   data: SheetData;
@@ -116,7 +117,7 @@ export async function importSpreadsheetFile(file: File): Promise<ImportResult> {
 /**
  * Convert XLSX worksheet to SheetData format
  */
-function workSheetToSheetData(worksheet: XLSX.WorkSheet): SheetData {
+export function workSheetToSheetData(worksheet: XLSX.WorkSheet): SheetData {
   const data: SheetData = {};
   const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
   
@@ -130,9 +131,17 @@ function workSheetToSheetData(worksheet: XLSX.WorkSheet): SheetData {
           data[row] = {};
         }
         
+        const importedDate = cell.v instanceof Date;
         const cellData: CellData = {
-          value: cell.v !== undefined ? cell.v : null,
+          // SheetJS returns Date objects when cellDates is enabled, but Date is
+          // not a valid persisted CellValue. Keep spreadsheet arithmetic intact
+          // by storing the same day-based serial used by the formula engine.
+          value: importedDate ? dateToSerial(cell.v) : (cell.v ?? null),
         };
+
+        if (importedDate) {
+          cellData.format = isTimeOnlyFormat(cell.z) ? 'time' : 'date';
+        }
         
         // Preserve formula if present
         if (cell.f) {
@@ -150,6 +159,22 @@ function workSheetToSheetData(worksheet: XLSX.WorkSheet): SheetData {
   }
   
   return data;
+}
+
+function isTimeOnlyFormat(numberFormat: XLSX.NumberFormat | undefined): boolean {
+  if (typeof numberFormat !== 'string' || numberFormat.length === 0) return false;
+
+  // Ignore quoted literals and escaped characters before checking Excel's
+  // date/time format tokens. Formats containing a year or day are dates even
+  // when they also show a time (for example, "yyyy-mm-dd hh:mm").
+  const format = numberFormat
+    .replace(/"[^"]*"/g, '')
+    .replace(/\\./g, '')
+    .toLowerCase();
+  const hasTime = /[hs]/.test(format);
+  const hasDate = /[yd]/.test(format);
+
+  return hasTime && !hasDate;
 }
 
 /**
