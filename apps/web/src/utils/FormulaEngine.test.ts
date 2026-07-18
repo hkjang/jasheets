@@ -329,6 +329,55 @@ describe('text and scalar formulas', () => {
   });
 });
 
+describe('text functions', () => {
+  const data: SheetData = {
+    0: {
+      0: { value: '  jaSheets   TEAM  ' },
+      1: { value: 'Invoice-2026-0042' },
+      2: { value: 'A\u0007B' },
+    },
+  };
+
+  it('measures, slices, and changes text casing', () => {
+    expect(evaluateFormula('=LEN("😀ab")', data)).toBe(3);
+    expect(evaluateFormula('=LEFT("😀ab",2)', data)).toBe('😀a');
+    expect(evaluateFormula('=RIGHT(B1,4)', data)).toBe('0042');
+    expect(evaluateFormula('=MID(B1,9,4)', data)).toBe('2026');
+    expect(evaluateFormula('=LOWER("JaSHEETS")', data)).toBe('jasheets');
+    expect(evaluateFormula('=UPPER("JaSheets")', data)).toBe('JASHEETS');
+    expect(evaluateFormula('=PROPER("quarterly SALES-report")', data)).toBe('Quarterly Sales-Report');
+  });
+
+  it('normalizes, repeats, and compares text', () => {
+    expect(evaluateFormula('=TRIM(A1)', data)).toBe('jaSheets TEAM');
+    expect(evaluateFormula('=CLEAN(C1)', data)).toBe('AB');
+    expect(evaluateFormula('=REPT("ab",3)', data)).toBe('ababab');
+    expect(evaluateFormula('=EXACT("JaSheets","JaSheets")', data)).toBe(true);
+    expect(evaluateFormula('=EXACT("JaSheets","jasheets")', data)).toBe(false);
+  });
+
+  it('substitutes and replaces text with spreadsheet positions', () => {
+    expect(evaluateFormula('=SUBSTITUTE("red blue red","red","green")', data)).toBe('green blue green');
+    expect(evaluateFormula('=SUBSTITUTE("red blue red","red","green",2)', data)).toBe('red blue green');
+    expect(evaluateFormula('=REPLACE(B1,9,4,"2027")', data)).toBe('Invoice-2027-0042');
+  });
+
+  it('finds text with case-sensitive and insensitive variants', () => {
+    expect(evaluateFormula('=FIND("Sheets","JaSheets")', data)).toBe(3);
+    expect(evaluateFormula('=SEARCH("sheets","JaSheets")', data)).toBe(3);
+    expect(evaluateFormula('=SEARCH("a","Banana",3)', data)).toBe(4);
+    expect(evaluateFormula('=FIND("sheets","JaSheets")', data)).toBe('#VALUE!');
+  });
+
+  it('validates argument counts and numeric bounds', () => {
+    expect(evaluateFormula('=LEFT("abc",-1)', data)).toBe('#VALUE!');
+    expect(evaluateFormula('=MID("abc",0,1)', data)).toBe('#VALUE!');
+    expect(evaluateFormula('=SUBSTITUTE("abc","a")', data)).toBe('#VALUE!');
+    expect(evaluateFormula('=REPT("x",40000)', data)).toBe('#VALUE!');
+    expect(evaluateFormula('=SEARCH("z","abc")', data)).toBe('#VALUE!');
+  });
+});
+
 describe('cross-sheet formulas', () => {
   const workbook = {
     Summary: {},
@@ -367,5 +416,45 @@ describe('cross-sheet formulas', () => {
 
   it('returns a reference error for a missing sheet', () => {
     expect(evaluateFormula('=Missing!A1+1', {}, {}, 'en-US', workbook)).toBe('#REF!');
+  });
+});
+
+describe('statistical functions', () => {
+  const statistics: SheetData = {
+    0: { 0: { value: 1 } },
+    1: { 0: { value: 2 } },
+    2: { 0: { value: 3 } },
+    3: { 0: { value: 4 } },
+    4: { 0: { value: 'ignored' } },
+  };
+
+  it('calculates medians for odd and even numeric sets', () => {
+    expect(evaluateFormula('=MEDIAN(A1:A3)', statistics)).toBe(2);
+    expect(evaluateFormula('=MEDIAN(A1:A4)', statistics)).toBe(2.5);
+    expect(evaluateFormula('=MEDIAN(A5:A5)', statistics)).toBe('#NUM!');
+  });
+
+  it('calculates sample variance and standard deviation', () => {
+    expect(evaluateFormula('=VAR.S(A1:A4)', statistics)).toBeCloseTo(5 / 3);
+    expect(evaluateFormula('=STDEV.S(A1:A4)', statistics)).toBeCloseTo(Math.sqrt(5 / 3));
+    expect(evaluateFormula('=VAR(A1:A4)', statistics)).toBeCloseTo(5 / 3);
+    expect(evaluateFormula('=STDEV(A1:A4)', statistics)).toBeCloseTo(Math.sqrt(5 / 3));
+  });
+
+  it('calculates population variance and standard deviation', () => {
+    expect(evaluateFormula('=VAR.P(A1:A4)', statistics)).toBeCloseTo(1.25);
+    expect(evaluateFormula('=STDEV.P(A1:A4)', statistics)).toBeCloseTo(Math.sqrt(1.25));
+    expect(evaluateFormula('=VARP(A1:A4)', statistics)).toBeCloseTo(1.25);
+    expect(evaluateFormula('=STDEVP(A1:A4)', statistics)).toBeCloseTo(Math.sqrt(1.25));
+  });
+
+  it('supports scalar, named, and cross-sheet inputs and validates sample sizes', () => {
+    const named = { VALUES: { start: { row: 0, col: 0 }, end: { row: 3, col: 0 } } };
+    const workbook = { Data: statistics };
+    expect(evaluateFormula('=MEDIAN(1,9,3)', statistics)).toBe(3);
+    expect(evaluateFormula('=VAR.P(VALUES)', statistics, named)).toBeCloseTo(1.25);
+    expect(evaluateFormula('=MEDIAN(Data!A1:A4)', {}, {}, 'en-US', workbook)).toBe(2.5);
+    expect(evaluateFormula('=STDEV.S(A1:A1)', statistics)).toBe('#DIV/0!');
+    expect(evaluateFormula('=VAR.P(A5:A5)', statistics)).toBe('#DIV/0!');
   });
 });

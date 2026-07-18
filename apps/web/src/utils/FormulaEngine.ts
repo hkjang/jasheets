@@ -6,7 +6,7 @@ import { normalizeLocalizedFormula } from './localeNumber';
  * Basic Formula Engine for JaSheets
  * Supports:
  * - Arithmetic: +, -, *, /, (, )
- * - Functions: SUM, AVERAGE, MIN, MAX, COUNT
+ * - Functions: aggregation, statistics, lookup, text, date/time, and dynamic arrays
  * - References: A1, B2, A1:B2 (Ranges)
  */
 
@@ -19,11 +19,15 @@ export interface Token {
 
 const OPERATORS = ['+', '-', '*', '/', '^', '%', '&', '=', '<', '>'];
 const FUNCTIONS = [
-  'SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'SEQUENCE', 'UNIQUE', 'SORT', 'FILTER',
+  'SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'MEDIAN',
+  'STDEV', 'STDEV.S', 'STDEV.P', 'STDEVP', 'VAR', 'VAR.S', 'VAR.P', 'VARP',
+  'SEQUENCE', 'UNIQUE', 'SORT', 'FILTER',
   'SUMIF', 'SUMIFS', 'COUNTIF', 'COUNTIFS', 'AVERAGEIF', 'AVERAGEIFS',
   'DATE', 'TIME', 'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND', 'TODAY', 'NOW',
   'VLOOKUP', 'HLOOKUP', 'INDEX', 'MATCH', 'XLOOKUP',
   'IF', 'IFERROR', 'IFNA',
+  'LEN', 'LEFT', 'RIGHT', 'MID', 'LOWER', 'UPPER', 'PROPER', 'TRIM', 'CLEAN',
+  'REPT', 'SUBSTITUTE', 'REPLACE', 'FIND', 'SEARCH', 'EXACT',
 ];
 
 export type FormulaResult = string | number | boolean | number[][];
@@ -173,7 +177,7 @@ export function tokenize(formula: string): Token[] {
         continue;
       }
       let word = '';
-      while (i < formula.length && /[A-Za-z0-9:$]/.test(formula[i])) { // Include : and $ for ranges/references
+      while (i < formula.length && /[A-Za-z0-9.:$]/.test(formula[i])) { // Include punctuation used by ranges and dotted function names
         word += formula[i];
         i++;
       }
@@ -485,6 +489,99 @@ function evaluateArgument(
     const ref = parseCellRef(trimmed.toUpperCase());
     if (ref) return data[ref.row]?.[ref.col]?.value ?? 0;
     return evaluateFormula(`=${trimmed}`, data, namedRanges, locale, workbook);
+}
+
+function evaluateTextFormula(
+    formula: string,
+    data: SheetData,
+    namedRanges: NamedRanges,
+    locale: string,
+    workbook?: FormulaWorkbook,
+): FormulaResult | undefined {
+    const match = formula.match(/^=(LEN|LEFT|RIGHT|MID|LOWER|UPPER|PROPER|TRIM|CLEAN|REPT|SUBSTITUTE|REPLACE|FIND|SEARCH|EXACT)\((.*)\)$/i);
+    if (!match) return undefined;
+
+    const name = match[1].toUpperCase();
+    const args = splitFunctionArgs(match[2]);
+    const values: Array<string | number | boolean> = [];
+    for (const argument of args) {
+        if (!argument) return '#VALUE!';
+        const value = evaluateArgument(argument, data, namedRanges, locale, workbook);
+        if (isFormulaError(value)) return value;
+        if (Array.isArray(value)) return '#VALUE!';
+        values.push(value);
+    }
+
+    const text = (index: number) => String(values[index] ?? '');
+    const characters = (index: number) => Array.from(text(index));
+    const integer = (index: number, fallback?: number): number | null => {
+        if (values[index] === undefined) return fallback ?? null;
+        const value = Number(values[index]);
+        return Number.isFinite(value) ? Math.trunc(value) : null;
+    };
+    const exactArgs = (count: number) => args.length === count;
+
+    if (name === 'LEN') return exactArgs(1) ? characters(0).length : '#VALUE!';
+    if (name === 'LOWER') return exactArgs(1) ? text(0).toLocaleLowerCase(locale) : '#VALUE!';
+    if (name === 'UPPER') return exactArgs(1) ? text(0).toLocaleUpperCase(locale) : '#VALUE!';
+    if (name === 'TRIM') return exactArgs(1) ? text(0).trim().replace(/ +/g, ' ') : '#VALUE!';
+    if (name === 'CLEAN') return exactArgs(1) ? text(0).replace(/[\u0000-\u001f\u007f]/g, '') : '#VALUE!';
+    if (name === 'EXACT') return exactArgs(2) ? text(0) === text(1) : '#VALUE!';
+    if (name === 'PROPER') {
+        if (!exactArgs(1)) return '#VALUE!';
+        return text(0).toLocaleLowerCase(locale).replace(/(^|[^\p{L}\p{N}])(\p{L})/gu, (_, prefix: string, letter: string) => (
+            prefix + letter.toLocaleUpperCase(locale)
+        ));
+    }
+
+    if (name === 'LEFT' || name === 'RIGHT') {
+        if (args.length < 1 || args.length > 2) return '#VALUE!';
+        const count = integer(1, 1);
+        if (count === null || count < 0) return '#VALUE!';
+        const input = characters(0);
+        return name === 'LEFT' ? input.slice(0, count).join('') : input.slice(Math.max(0, input.length - count)).join('');
+    }
+    if (name === 'MID') {
+        if (!exactArgs(3)) return '#VALUE!';
+        const start = integer(1);
+        const count = integer(2);
+        if (start === null || count === null || start < 1 || count < 0) return '#VALUE!';
+        return characters(0).slice(start - 1, start - 1 + count).join('');
+    }
+    if (name === 'REPT') {
+        if (!exactArgs(2)) return '#VALUE!';
+        const count = integer(1);
+        if (count === null || count < 0 || text(0).length * count > 32767) return '#VALUE!';
+        return text(0).repeat(count);
+    }
+    if (name === 'SUBSTITUTE') {
+        if (args.length < 3 || args.length > 4 || text(1) === '') return '#VALUE!';
+        if (args.length === 3) return text(0).split(text(1)).join(text(2));
+        const occurrence = integer(3);
+        if (occurrence === null || occurrence < 1) return '#VALUE!';
+        let seen = 0;
+        return text(0).replaceAll(text(1), (value) => (++seen === occurrence ? text(2) : value));
+    }
+    if (name === 'REPLACE') {
+        if (!exactArgs(4)) return '#VALUE!';
+        const start = integer(1);
+        const count = integer(2);
+        if (start === null || count === null || start < 1 || count < 0) return '#VALUE!';
+        const input = characters(0);
+        input.splice(start - 1, count, ...Array.from(text(3)));
+        return input.join('');
+    }
+    if (name === 'FIND' || name === 'SEARCH') {
+        if (args.length < 2 || args.length > 3) return '#VALUE!';
+        const start = integer(2, 1);
+        if (start === null || start < 1 || start > characters(1).length + 1) return '#VALUE!';
+        const haystack = name === 'SEARCH' ? text(1).toLocaleLowerCase(locale) : text(1);
+        const needle = name === 'SEARCH' ? text(0).toLocaleLowerCase(locale) : text(0);
+        const offset = Array.from(text(1)).slice(0, start - 1).join('').length;
+        const found = haystack.indexOf(needle, offset);
+        return found < 0 ? '#VALUE!' : Array.from(text(1).slice(0, found)).length + 1;
+    }
+    return undefined;
 }
 
 function evaluateLookupFormula(
@@ -846,6 +943,9 @@ export function evaluateFormula(
             return evaluateArgument(args[1], data, namedRanges, locale, workbook);
         }
 
+        const textResult = evaluateTextFormula(formula, data, namedRanges, locale, workbook);
+        if (textResult !== undefined) return textResult;
+
         const comparison = findTopLevelComparison(formula.slice(1));
         if (comparison) {
             const left = evaluateArgument(comparison.left, data, namedRanges, locale, workbook);
@@ -1076,6 +1176,32 @@ export function evaluateFormula(
                  case 'MIN': return Math.min(...args);
                  case 'MAX': return Math.max(...args);
                  case 'COUNT': return args.length;
+                 case 'MEDIAN': {
+                     if (!args.length) throw new Error('#NUM!');
+                     const sorted = [...args].sort((a, b) => a - b);
+                     const middle = Math.floor(sorted.length / 2);
+                     return sorted.length % 2
+                         ? sorted[middle]
+                         : (sorted[middle - 1] + sorted[middle]) / 2;
+                 }
+                 case 'STDEV':
+                 case 'STDEV.S':
+                 case 'VAR':
+                 case 'VAR.S': {
+                     if (args.length < 2) throw new Error('#DIV/0!');
+                     const mean = args.reduce((sum, value) => sum + value, 0) / args.length;
+                     const variance = args.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (args.length - 1);
+                     return funcName.startsWith('STDEV') ? Math.sqrt(variance) : variance;
+                 }
+                 case 'STDEV.P':
+                 case 'STDEVP':
+                 case 'VAR.P':
+                 case 'VARP': {
+                     if (!args.length) throw new Error('#DIV/0!');
+                     const mean = args.reduce((sum, value) => sum + value, 0) / args.length;
+                     const variance = args.reduce((sum, value) => sum + (value - mean) ** 2, 0) / args.length;
+                     return funcName.startsWith('STDEV') ? Math.sqrt(variance) : variance;
+                 }
                  case 'DATE': return datePartsToSerial(args[0] ?? 0, args[1] ?? 1, args[2] ?? 1);
                  case 'TIME': return timePartsToSerial(args[0] ?? 0, args[1] ?? 0, args[2] ?? 0);
                  case 'YEAR': return serialToDate(args[0] ?? 0).getUTCFullYear();
