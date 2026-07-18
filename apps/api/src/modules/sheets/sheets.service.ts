@@ -697,11 +697,15 @@ export class SheetsService {
 
   // Permission helpers
   async checkAccess(userId: string, spreadsheetId: string): Promise<boolean> {
-    const spreadsheet = await this.prisma.spreadsheet.findUnique({
-      where: { id: spreadsheetId },
-      include: {
+    const spreadsheet = await this.prisma.spreadsheet.findFirst({
+      where: { id: spreadsheetId, deletedAt: null },
+      select: {
+        isPublic: true,
+        ownerId: true,
         permissions: {
           where: { userId },
+          select: { id: true },
+          take: 1,
         },
       },
     });

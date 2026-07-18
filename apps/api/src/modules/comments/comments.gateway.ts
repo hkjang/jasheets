@@ -4,35 +4,50 @@ import {
   MessageBody,
   WebSocketServer,
   ConnectedSocket,
+  OnGatewayInit,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { CommentsService } from './comments.service';
+import {
+  getWebSocketUser,
+  WebSocketAuthService,
+} from '../auth/websocket-auth.service';
+import { websocketCors } from '../../config/cors.config';
 
 @WebSocketGateway({
-  cors: { origin: '*' },
+  cors: websocketCors,
   namespace: '/comments',
 })
-export class CommentsGateway {
+export class CommentsGateway implements OnGatewayInit {
   @WebSocketServer()
   server: Server;
 
-  constructor(private readonly commentsService: CommentsService) {}
+  constructor(
+    private readonly commentsService: CommentsService,
+    private readonly websocketAuth: WebSocketAuthService,
+  ) {}
+
+  afterInit(server: Server) {
+    this.websocketAuth.attach(server);
+  }
 
   @SubscribeMessage('subscribe')
-  handleSubscribe(
+  async handleSubscribe(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { sheetId: string },
   ) {
-    client.join(`sheet:${data.sheetId}`);
+    const user = getWebSocketUser(client);
+    await this.commentsService.assertSheetAccess(user.id, data.sheetId);
+    await client.join(`sheet:${data.sheetId}`);
     return { subscribed: true };
   }
 
   @SubscribeMessage('unsubscribe')
-  handleUnsubscribe(
+  async handleUnsubscribe(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { sheetId: string },
   ) {
-    client.leave(`sheet:${data.sheetId}`);
+    await client.leave(`sheet:${data.sheetId}`);
     return { unsubscribed: true };
   }
 

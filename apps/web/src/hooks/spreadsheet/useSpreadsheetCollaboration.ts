@@ -1,7 +1,7 @@
 
-import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useCollaboration, ChatMessage } from '@/hooks/useCollaboration';
-import { CellPosition, CellRange, SheetData } from '@/types/spreadsheet';
+import { CellPosition, CellRange, CellValue, SheetData } from '@/types/spreadsheet';
 import { applyCollaborationOperation } from '@/utils/collaborationConflict';
 
 interface UseSpreadsheetCollaborationProps {
@@ -37,7 +37,7 @@ export function useSpreadsheetCollaboration({
     sheetId: string;
     row: number;
     col: number;
-    value: any;
+    value: CellValue;
     formula?: string;
     sequence?: number;
   }) => {
@@ -47,7 +47,7 @@ export function useSpreadsheetCollaboration({
 
   const handleCellsUpdate = useCallback((data: {
     sheetId: string;
-    updates: Array<{ row: number; col: number; value: any; formula?: string }>;
+    updates: Array<{ row: number; col: number; value: CellValue; formula?: string }>;
     sequence?: number;
   }) => {
     if (activeSheetId && data.sheetId !== activeSheetId) return;

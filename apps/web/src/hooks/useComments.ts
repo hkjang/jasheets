@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { ApiClient } from '@/lib/api-client';
+import { getAccessToken } from '@/lib/auth-session';
 
 interface Author {
   id: string;
@@ -84,6 +85,7 @@ export function useComments({
     }
 
     const socket = io(wsUrl, {
+      auth: (callback) => callback({ token: getAccessToken() }),
       transports: ['websocket'],
       autoConnect: true,
       reconnectionAttempts: 3,
@@ -119,7 +121,8 @@ export function useComments({
 
   // Fetch comments on mount
   useEffect(() => {
-    fetchComments();
+    const timeout = window.setTimeout(() => void fetchComments(), 0);
+    return () => window.clearTimeout(timeout);
   }, [fetchComments]);
 
   const addComment = useCallback(async (row: number, col: number, content: string) => {

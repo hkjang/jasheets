@@ -6,12 +6,20 @@ import {
   ConnectedSocket,
   OnGatewayConnection,
   OnGatewayDisconnect,
+  OnGatewayInit,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { Logger } from '@nestjs/common';
 import { SheetsService } from '../sheets/sheets.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { reduceOperationLog, SnapshotCell } from './operation-log.util';
+import {
+  getWebSocketUser,
+  WebSocketAuthService,
+  WebSocketUser,
+} from '../auth/websocket-auth.service';
+import { websocketCors } from '../../config/cors.config';
+import { Prisma } from '@prisma/client';
 
 interface UserPresence {
   id: string;
@@ -36,27 +44,38 @@ interface RoomState {
 }
 
 @WebSocketGateway({
-  cors: {
-    origin: '*',
-  },
+  cors: websocketCors,
   namespace: '/collaboration',
 })
-export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisconnect {
+export class CollaborationGateway
+  implements OnGatewayInit, OnGatewayConnection, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
   private readonly logger = new Logger(CollaborationGateway.name);
   private rooms: Map<string, RoomState> = new Map();
   private userColors = [
-    '#4285f4', '#ea4335', '#34a853', '#fbbc04',
-    '#9c27b0', '#00bcd4', '#ff5722', '#795548',
+    '#4285f4',
+    '#ea4335',
+    '#34a853',
+    '#fbbc04',
+    '#9c27b0',
+    '#00bcd4',
+    '#ff5722',
+    '#795548',
   ];
   private colorIndex = 0;
 
   constructor(
     private readonly sheetsService: SheetsService,
     private readonly prisma: PrismaService,
+    private readonly websocketAuth: WebSocketAuthService,
   ) {}
+
+  afterInit(server: Server) {
+    this.websocketAuth.attach(server);
+  }
 
   handleConnection(client: Socket) {
     this.logger.log(`Client connected: ${client.id}`);
@@ -70,13 +89,17 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
   @SubscribeMessage('join')
   async handleJoin(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: { spreadsheetId: string; userId: string; userName: string; lastSequence?: number },
+    @MessageBody() data: { spreadsheetId: string; lastSequence?: number },
   ) {
-    const { spreadsheetId, userId, userName } = data;
+    const { spreadsheetId } = data;
+    const user = this.getAuthenticatedUser(client);
+    if (!(await this.sheetsService.checkAccess(user.id, spreadsheetId))) {
+      throw new Error('You do not have access to this spreadsheet');
+    }
     const roomId = `sheet:${spreadsheetId}`;
 
     // Join the room
-    client.join(roomId);
+    await client.join(roomId);
 
     // Initialize room if not exists
     if (!this.rooms.has(roomId)) {
@@ -89,8 +112,8 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
     // Add user to room
     const room = this.rooms.get(roomId)!;
     const userPresence: UserPresence = {
-      id: userId,
-      name: userName,
+      id: user.id,
+      name: user.name || user.email,
       color: this.getNextColor(),
       lastSeenAt: Date.now(),
     };
@@ -104,12 +127,19 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
     });
 
     // Send current users to the joining client
-    const currentUsers = Array.from(room.users.entries()).map(([socketId, user]) => ({
-      socketId,
-      user,
-    }));
+    const currentUsers = Array.from(room.users.entries()).map(
+      ([socketId, user]) => ({
+        socketId,
+        user,
+      }),
+    );
 
-    const lastSequence = BigInt(Math.max(0, Number(data.lastSequence ?? 0)));
+    const requestedSequence = Number(data.lastSequence ?? 0);
+    const lastSequence = BigInt(
+      Number.isSafeInteger(requestedSequence) && requestedSequence > 0
+        ? requestedSequence
+        : 0,
+    );
     const operations = await this.prisma.collaborationOperation.findMany({
       where: { spreadsheetId, id: { gt: lastSequence } },
       orderBy: { id: 'asc' },
@@ -122,15 +152,21 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
         event: operation.event,
         payload: operation.payload,
       })),
-      sequence: operations.length > 0 ? Number(operations[operations.length - 1].id) : Number(lastSequence),
+      sequence:
+        operations.length > 0
+          ? Number(operations[operations.length - 1].id)
+          : Number(lastSequence),
     };
   }
 
   @SubscribeMessage('leave')
-  handleLeave(@ConnectedSocket() client: Socket, @MessageBody() data: { spreadsheetId: string }) {
+  async handleLeave(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { spreadsheetId: string },
+  ) {
     const roomId = `sheet:${data.spreadsheetId}`;
     this.removeUserFromRoom(client, roomId);
-    client.leave(roomId);
+    await client.leave(roomId);
   }
 
   @SubscribeMessage('cursor-move')
@@ -156,7 +192,8 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
   @SubscribeMessage('selection-change')
   handleSelectionChange(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: {
+    @MessageBody()
+    data: {
       spreadsheetId: string;
       startRow: number;
       startCol: number;
@@ -187,25 +224,32 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
   @SubscribeMessage('cell-update')
   async handleCellUpdate(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: {
+    @MessageBody()
+    data: {
       spreadsheetId: string;
       sheetId: string;
       row: number;
       col: number;
-      value: any;
+      value: unknown;
       formula?: string;
     },
   ) {
     const roomId = `sheet:${data.spreadsheetId}`;
 
-    const operation = await this.appendOperation(client, data.spreadsheetId, data.sheetId, 'cell-updated', {
-      socketId: client.id,
-      sheetId: data.sheetId,
-      row: data.row,
-      col: data.col,
-      value: data.value,
-      formula: data.formula,
-    });
+    const operation = await this.appendOperation(
+      client,
+      data.spreadsheetId,
+      data.sheetId,
+      'cell-updated',
+      {
+        socketId: client.id,
+        sheetId: data.sheetId,
+        row: data.row,
+        col: data.col,
+        value: data.value,
+        formula: data.formula,
+      },
+    );
 
     // Broadcast the update to all other clients in the room
     client.to(roomId).emit('cell-updated', {
@@ -225,24 +269,31 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
   @SubscribeMessage('batch-update')
   async handleBatchUpdate(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: {
+    @MessageBody()
+    data: {
       spreadsheetId: string;
       sheetId: string;
       updates: Array<{
         row: number;
         col: number;
-        value: any;
+        value: unknown;
         formula?: string;
       }>;
     },
   ) {
     const roomId = `sheet:${data.spreadsheetId}`;
 
-    const operation = await this.appendOperation(client, data.spreadsheetId, data.sheetId, 'cells-updated', {
-      socketId: client.id,
-      sheetId: data.sheetId,
-      updates: data.updates,
-    });
+    const operation = await this.appendOperation(
+      client,
+      data.spreadsheetId,
+      data.sheetId,
+      'cells-updated',
+      {
+        socketId: client.id,
+        sheetId: data.sheetId,
+        updates: data.updates,
+      },
+    );
 
     client.to(roomId).emit('cells-updated', {
       socketId: client.id,
@@ -263,11 +314,14 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
   }
 
   @SubscribeMessage('crdt-update')
-  handleCrdtUpdate(
+  async handleCrdtUpdate(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: { spreadsheetId: string; update: number[] },
   ) {
     const roomId = `sheet:${data.spreadsheetId}`;
+    const user = this.getAuthenticatedUser(client);
+    if (!this.isRoomMember(client, roomId)) return;
+    await this.sheetsService.checkEditAccess(user.id, data.spreadsheetId);
 
     // Broadcast CRDT update to all other clients
     client.to(roomId).emit('crdt-update', {
@@ -279,7 +333,8 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
   @SubscribeMessage('chat-message')
   handleChatMessage(
     @ConnectedSocket() client: Socket,
-    @MessageBody() data: {
+    @MessageBody()
+    data: {
       spreadsheetId: string;
       content: string;
       timestamp: number;
@@ -300,8 +355,10 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
 
       // Broadcast to all users in room including sender
       this.server.to(roomId).emit('chat-message', message);
-      
-      this.logger.log(`Chat message in ${roomId} from ${sender.name}: ${data.content.substring(0, 50)}`);
+
+      this.logger.log(
+        `Chat message in ${roomId} from ${sender.name}: ${data.content.substring(0, 50)}`,
+      );
     }
   }
 
@@ -335,6 +392,17 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
     return color;
   }
 
+  private getAuthenticatedUser(client: Socket): WebSocketUser {
+    return getWebSocketUser(client);
+  }
+
+  private isRoomMember(client: Socket, roomId: string): boolean {
+    return (
+      client.rooms.has(roomId) &&
+      Boolean(this.rooms.get(roomId)?.users.has(client.id))
+    );
+  }
+
   private async appendOperation(
     client: Socket,
     spreadsheetId: string,
@@ -345,13 +413,19 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
     const room = this.rooms.get(`sheet:${spreadsheetId}`);
     const user = room?.users.get(client.id);
     if (!user) throw new Error('Client must join before editing');
+    await this.sheetsService.checkEditAccess(user.id, spreadsheetId);
+    const sheet = await this.prisma.sheet.findFirst({
+      where: { id: sheetId, spreadsheetId },
+      select: { id: true },
+    });
+    if (!sheet) throw new Error('Sheet does not belong to spreadsheet');
     const operation = await this.prisma.collaborationOperation.create({
       data: {
         spreadsheetId,
         sheetId,
         userId: user.id,
         event,
-        payload: JSON.parse(JSON.stringify(payload)),
+        payload: JSON.parse(JSON.stringify(payload)) as Prisma.InputJsonValue,
       },
     });
     await this.createPeriodicSnapshot(spreadsheetId, sheetId, operation.id);
@@ -363,7 +437,9 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
     sheetId: string,
     sequence: bigint,
   ): Promise<void> {
-    const operationCount = await this.prisma.collaborationOperation.count({ where: { sheetId } });
+    const operationCount = await this.prisma.collaborationOperation.count({
+      where: { sheetId },
+    });
     if (operationCount % 100 !== 0) return;
     const previous = await this.prisma.collaborationSnapshot.findFirst({
       where: { sheetId },
@@ -373,7 +449,8 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
       where: { sheetId, id: { gt: previous?.sequence ?? 0n, lte: sequence } },
       orderBy: { id: 'asc' },
     });
-    const previousState = previous?.state as unknown as { cells?: SnapshotCell[] } | undefined;
+    const previousState = previous?.state as unknown as
+      { cells?: SnapshotCell[] } | undefined;
     const cells = reduceOperationLog(
       operations.map((operation) => ({
         sequence: Number(operation.id),
@@ -387,7 +464,7 @@ export class CollaborationGateway implements OnGatewayConnection, OnGatewayDisco
         spreadsheetId,
         sheetId,
         sequence,
-        state: JSON.parse(JSON.stringify({ cells })),
+        state: JSON.parse(JSON.stringify({ cells })) as Prisma.InputJsonValue,
       },
     });
   }

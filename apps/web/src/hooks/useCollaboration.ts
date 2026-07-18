@@ -2,6 +2,23 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
+import { getAccessToken } from '@/lib/auth-session';
+import type { CellValue } from '@/types/spreadsheet';
+
+interface CellUpdate {
+  sheetId: string;
+  row: number;
+  col: number;
+  value: CellValue;
+  formula?: string;
+  sequence?: number;
+}
+
+interface CellsUpdate {
+  sheetId: string;
+  updates: Array<Omit<CellUpdate, 'sheetId' | 'sequence'>>;
+  sequence?: number;
+}
 
 interface UserPresence {
   socketId?: string;
@@ -26,17 +43,8 @@ interface UseCollaborationOptions {
   userId: string;
   userName: string;
   wsUrl?: string;
-  onCellUpdate?: (data: {
-    sheetId: string;
-    row: number;
-    col: number;
-    value: any;
-    formula?: string;
-  }) => void;
-  onCellsUpdate?: (data: {
-    sheetId: string;
-    updates: Array<{ row: number; col: number; value: any; formula?: string }>;
-  }) => void;
+  onCellUpdate?: (data: CellUpdate) => void;
+  onCellsUpdate?: (data: CellsUpdate) => void;
   onChatMessage?: (message: ChatMessage) => void;
 }
 
@@ -52,8 +60,8 @@ interface UseCollaborationReturn {
   isConnected: boolean;
   syncStatus: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
   users: UserPresence[];
-  sendCellUpdate: (sheetId: string, row: number, col: number, value: any, formula?: string) => void;
-  sendBatchUpdate: (sheetId: string, updates: Array<{ row: number; col: number; value: any; formula?: string }>) => void;
+  sendCellUpdate: (sheetId: string, row: number, col: number, value: CellValue, formula?: string) => void;
+  sendBatchUpdate: (sheetId: string, updates: CellsUpdate['updates']) => void;
   sendCursorMove: (row: number, col: number) => void;
   sendSelectionChange: (startRow: number, startCol: number, endRow: number, endCol: number) => void;
   sendChatMessage: (content: string) => void;
@@ -87,6 +95,7 @@ export function useCollaboration({
   // Initialize socket connection
   useEffect(() => {
     const socket = io(wsUrl, {
+      auth: (callback) => callback({ token: getAccessToken() }),
       transports: ['websocket'],
       autoConnect: true,
       reconnectionAttempts: 3,
@@ -108,7 +117,10 @@ export function useCollaboration({
         lastSequence: lastSequenceRef.current,
       }, (response: {
         users: Array<{ socketId: string; user: UserPresence }>;
-        operations?: Array<{ sequence: number; event: 'cell-updated' | 'cells-updated'; payload: any }>;
+        operations?: Array<
+          | { sequence: number; event: 'cell-updated'; payload: CellUpdate }
+          | { sequence: number; event: 'cells-updated'; payload: CellsUpdate }
+        >;
         sequence?: number;
       }) => {
         if (response?.users) {
@@ -152,25 +164,12 @@ export function useCollaboration({
     });
 
     // Handle cell updates
-    socket.on('cell-updated', (data: {
-      socketId: string;
-      sheetId: string;
-      row: number;
-      col: number;
-      value: any;
-      formula?: string;
-      sequence?: number;
-    }) => {
+    socket.on('cell-updated', (data: CellUpdate & { socketId: string }) => {
       lastSequenceRef.current = Math.max(lastSequenceRef.current, data.sequence ?? 0);
       onCellUpdateRef.current?.(data);
     });
 
-    socket.on('cells-updated', (data: {
-      socketId: string;
-      sheetId: string;
-      updates: Array<{ row: number; col: number; value: any; formula?: string }>;
-      sequence?: number;
-    }) => {
+    socket.on('cells-updated', (data: CellsUpdate & { socketId: string }) => {
       lastSequenceRef.current = Math.max(lastSequenceRef.current, data.sequence ?? 0);
       onCellsUpdateRef.current?.(data);
     });
@@ -201,7 +200,7 @@ export function useCollaboration({
     sheetId: string,
     row: number,
     col: number,
-    value: any,
+    value: CellValue,
     formula?: string,
   ) => {
     socketRef.current?.emit('cell-update', {
@@ -217,7 +216,7 @@ export function useCollaboration({
   // Send batch update
   const sendBatchUpdate = useCallback((
     sheetId: string,
-    updates: Array<{ row: number; col: number; value: any; formula?: string }>,
+    updates: CellsUpdate['updates'],
   ) => {
     socketRef.current?.emit('batch-update', {
       spreadsheetId,

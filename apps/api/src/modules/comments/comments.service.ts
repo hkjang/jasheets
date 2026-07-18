@@ -1,5 +1,10 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { PermissionRole } from '@prisma/client';
 
 interface CreateCommentDto {
   sheetId: string;
@@ -16,15 +21,49 @@ interface CreateReplyDto {
 export class CommentsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createComment(userId: string, dto: CreateCommentDto) {
+  async assertSheetAccess(
+    userId: string,
+    sheetId: string,
+    requireCommentAccess = false,
+  ): Promise<void> {
     const sheet = await this.prisma.sheet.findUnique({
-      where: { id: dto.sheetId },
-      include: { spreadsheet: true },
+      where: { id: sheetId },
+      select: {
+        spreadsheet: {
+          select: {
+            ownerId: true,
+            isPublic: true,
+            deletedAt: true,
+            permissions: {
+              where: { userId },
+              select: { role: true },
+              take: 1,
+            },
+          },
+        },
+      },
     });
 
-    if (!sheet) {
+    if (!sheet || sheet.spreadsheet.deletedAt) {
       throw new NotFoundException('Sheet not found');
     }
+
+    const spreadsheet = sheet.spreadsheet;
+    if (spreadsheet.ownerId === userId) return;
+    const role = spreadsheet.permissions[0]?.role;
+    const hasReadAccess = spreadsheet.isPublic || Boolean(role);
+    const hasCommentAccess =
+      role === PermissionRole.COMMENTER ||
+      role === PermissionRole.EDITOR ||
+      role === PermissionRole.OWNER;
+
+    if (requireCommentAccess ? !hasCommentAccess : !hasReadAccess) {
+      throw new ForbiddenException('You do not have access to this sheet');
+    }
+  }
+
+  async createComment(userId: string, dto: CreateCommentDto) {
+    await this.assertSheetAccess(userId, dto.sheetId, true);
 
     return this.prisma.comment.create({
       data: {
@@ -49,9 +88,10 @@ export class CommentsService {
     });
   }
 
-  async getComments(sheetId: string) {
+  async getComments(userId: string, sheetId: string) {
+    await this.assertSheetAccess(userId, sheetId);
     return this.prisma.comment.findMany({
-      where: { 
+      where: {
         sheetId,
         parentId: null, // Only top-level comments
       },
@@ -72,9 +112,15 @@ export class CommentsService {
     });
   }
 
-  async getCommentsForCell(sheetId: string, row: number, col: number) {
+  async getCommentsForCell(
+    userId: string,
+    sheetId: string,
+    row: number,
+    col: number,
+  ) {
+    await this.assertSheetAccess(userId, sheetId);
     return this.prisma.comment.findMany({
-      where: { 
+      where: {
         sheetId,
         row,
         col,
@@ -105,6 +151,7 @@ export class CommentsService {
     if (!parentComment) {
       throw new NotFoundException('Comment not found');
     }
+    await this.assertSheetAccess(userId, parentComment.sheetId, true);
 
     return this.prisma.comment.create({
       data: {
@@ -132,6 +179,8 @@ export class CommentsService {
       throw new NotFoundException('Comment not found');
     }
 
+    await this.assertSheetAccess(userId, comment.sheetId, true);
+
     if (comment.authorId !== userId) {
       throw new ForbiddenException('You can only edit your own comments');
     }
@@ -158,7 +207,10 @@ export class CommentsService {
     }
 
     // Allow author or spreadsheet owner to delete
-    if (comment.authorId !== userId && comment.sheet.spreadsheet.ownerId !== userId) {
+    if (
+      comment.authorId !== userId &&
+      comment.sheet.spreadsheet.ownerId !== userId
+    ) {
       throw new ForbiddenException('You cannot delete this comment');
     }
 
@@ -175,6 +227,8 @@ export class CommentsService {
     if (!comment) {
       throw new NotFoundException('Comment not found');
     }
+
+    await this.assertSheetAccess(userId, comment.sheetId, true);
 
     return this.prisma.comment.update({
       where: { id: commentId },

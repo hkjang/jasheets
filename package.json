@@ -20,16 +20,23 @@
     "db:generate": "turbo run prisma:generate",
     "db:migrate": "turbo run prisma:migrate",
     "db:verify": "bash scripts/verify-migrations.sh",
-    "db:studio": "turbo run prisma:studio"
+    "db:studio": "turbo run prisma:studio",
+    "security:audit": "pnpm audit --audit-level high"
   },
   "devDependencies": {
-    "@playwright/test": "^1.57.0",
-    "rimraf": "^5.0.5",
-    "turbo": "^2.3.3",
-    "typescript": "^5.7.2"
+    "@playwright/test": "^1.61.1",
+    "rimraf": "^5.0.10",
+    "turbo": "^2.10.5",
+    "typescript": "^5.9.3"
   },
   "packageManager": "pnpm@9.14.4",
+  "pnpm": {
+    "overrides": {
+      "postcss": ">=8.5.10",
+      "serialize-javascript": ">=7.0.5"
+    }
+  },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=20.9.0"
   }
 }

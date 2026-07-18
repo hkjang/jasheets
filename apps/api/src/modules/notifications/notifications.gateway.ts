@@ -1,46 +1,65 @@
 import {
   WebSocketGateway,
   SubscribeMessage,
-  MessageBody,
   WebSocketServer,
   ConnectedSocket,
+  OnGatewayDisconnect,
+  OnGatewayInit,
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
+import {
+  getWebSocketUser,
+  WebSocketAuthService,
+  WebSocketUser,
+} from '../auth/websocket-auth.service';
+import { websocketCors } from '../../config/cors.config';
 
 @WebSocketGateway({
-  cors: { origin: '*' },
+  cors: websocketCors,
   namespace: '/notifications',
 })
-export class NotificationsGateway {
+export class NotificationsGateway
+  implements OnGatewayInit, OnGatewayDisconnect
+{
   @WebSocketServer()
   server: Server;
 
   private userSockets: Map<string, Set<string>> = new Map();
 
+  constructor(private readonly websocketAuth: WebSocketAuthService) {}
+
+  afterInit(server: Server) {
+    this.websocketAuth.attach(server);
+  }
+
+  handleDisconnect(client: Socket) {
+    const user = (client.data as { user?: WebSocketUser }).user;
+    if (!user) return;
+    const sockets = this.userSockets.get(user.id);
+    sockets?.delete(client.id);
+    if (sockets?.size === 0) this.userSockets.delete(user.id);
+  }
+
   @SubscribeMessage('subscribe')
-  handleSubscribe(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { userId: string },
-  ) {
-    const sockets = this.userSockets.get(data.userId) ?? new Set();
+  async handleSubscribe(@ConnectedSocket() client: Socket) {
+    const user = getWebSocketUser(client);
+    const sockets = this.userSockets.get(user.id) ?? new Set();
     sockets.add(client.id);
-    this.userSockets.set(data.userId, sockets);
-    
-    client.join(`user:${data.userId}`);
+    this.userSockets.set(user.id, sockets);
+
+    await client.join(`user:${user.id}`);
     return { subscribed: true };
   }
 
   @SubscribeMessage('unsubscribe')
-  handleUnsubscribe(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: { userId: string },
-  ) {
-    const sockets = this.userSockets.get(data.userId);
+  async handleUnsubscribe(@ConnectedSocket() client: Socket) {
+    const user = getWebSocketUser(client);
+    const sockets = this.userSockets.get(user.id);
     if (sockets) {
       sockets.delete(client.id);
     }
-    
-    client.leave(`user:${data.userId}`);
+
+    await client.leave(`user:${user.id}`);
     return { unsubscribed: true };
   }
 
