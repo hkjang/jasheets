@@ -81,4 +81,32 @@ describe("authenticatedFetch", () => {
     expect(localStorage.getItem("auth_token")).toBeNull();
     expect(localStorage.getItem("refresh_token")).toBeNull();
   });
+
+  it("stops waiting and clears the session when refresh times out", async () => {
+    jest.useFakeTimers();
+    saveAuthSession({
+      accessToken: "expired",
+      refreshToken: "refresh-1",
+      user: { id: "1", email: "user@example.com" },
+    });
+    const fetchMock = jest
+      .fn()
+      .mockResolvedValueOnce(response(401))
+      .mockImplementationOnce((_: RequestInfo | URL, init?: RequestInit) =>
+        new Promise((_, reject) => {
+          init?.signal?.addEventListener("abort", () => reject(init.signal?.reason));
+        }),
+      );
+    globalThis.fetch = fetchMock;
+
+    const pending = authenticatedFetch(API_URL, `${API_URL}/sheets`);
+    await Promise.resolve();
+    await Promise.resolve();
+    await jest.advanceTimersByTimeAsync(10_000);
+
+    await expect(pending).resolves.toMatchObject({ status: 401 });
+    expect(localStorage.getItem("auth_token")).toBeNull();
+    expect(localStorage.getItem("refresh_token")).toBeNull();
+    jest.useRealTimers();
+  });
 });

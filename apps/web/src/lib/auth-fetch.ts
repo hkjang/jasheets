@@ -7,6 +7,7 @@ import {
 } from "./auth-session";
 
 let refreshRequest: Promise<AuthSession> | null = null;
+const REFRESH_TIMEOUT_MS = 10_000;
 
 function withAccessToken(init: RequestInit, token: string | null): RequestInit {
   const headers = new Headers(init.headers);
@@ -18,11 +19,22 @@ async function refreshSession(apiUrl: string): Promise<AuthSession> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) throw new Error("No refresh token available");
 
-  const response = await globalThis.fetch(`${apiUrl}/auth/refresh`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refreshToken }),
-  });
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(new DOMException("Session refresh timed out", "TimeoutError")),
+    REFRESH_TIMEOUT_MS,
+  );
+  let response: Response;
+  try {
+    response = await globalThis.fetch(`${apiUrl}/auth/refresh`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ refreshToken }),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
 
   if (!response.ok) throw new Error("Session refresh failed");
   const session = (await response.json()) as AuthSession;
