@@ -97,6 +97,61 @@ describe('lookup formulas', () => {
   });
 });
 
+describe('conditional aggregate formulas', () => {
+  const aggregateData: SheetData = {
+    0: { 0: { value: 'East' }, 1: { value: 'Paid' }, 2: { value: 120 } },
+    1: { 0: { value: 'West' }, 1: { value: 'Draft' }, 2: { value: 80 } },
+    2: { 0: { value: 'East' }, 1: { value: 'Paid' }, 2: { value: 200 } },
+    3: { 0: { value: 'Eastern' }, 1: { value: 'Paid' }, 2: { value: 50 } },
+  };
+
+  it('supports single-condition sum, count, and average aggregates', () => {
+    expect(evaluateFormula('=SUMIF(A1:A4,"East",C1:C4)', aggregateData)).toBe(320);
+    expect(evaluateFormula('=COUNTIF(C1:C4,">=100")', aggregateData)).toBe(2);
+    expect(evaluateFormula('=AVERAGEIF(B1:B4,"Paid",C1:C4)', aggregateData)).toBeCloseTo(123.333333);
+  });
+
+  it('coerces numeric text criteria and treats empty cells as blanks', () => {
+    const mixedData: SheetData = {
+      0: { 0: { value: '100' } },
+      1: { 0: { value: 100 } },
+      2: {},
+      3: { 0: { value: '' } },
+    };
+    expect(evaluateFormula('=COUNTIF(A1:A4,100)', mixedData)).toBe(2);
+    expect(evaluateFormula('=COUNTIF(A1:A4,"")', mixedData)).toBe(2);
+    expect(evaluateFormula('=COUNTIF(A1:A4,"<>")', mixedData)).toBe(2);
+  });
+
+  it('supports multiple criteria and cell-based criteria', () => {
+    const withCriterion: SheetData = {
+      ...aggregateData,
+      4: { 0: { value: 'East' } },
+    };
+    expect(evaluateFormula('=SUMIFS(C1:C4,A1:A4,A5,B1:B4,"Paid")', withCriterion)).toBe(320);
+    expect(evaluateFormula('=COUNTIFS(A1:A4,"East",C1:C4,">100")', aggregateData)).toBe(2);
+    expect(evaluateFormula('=AVERAGEIFS(C1:C4,A1:A4,"<>West",B1:B4,"Paid")', aggregateData)).toBeCloseTo(123.333333);
+  });
+
+  it('matches case-insensitive wildcards and escaped wildcard characters', () => {
+    const wildcardData: SheetData = {
+      0: { 0: { value: 'North' } },
+      1: { 0: { value: 'northeast' } },
+      2: { 0: { value: 'North*' } },
+    };
+    expect(evaluateFormula('=COUNTIF(A1:A3,"north*")', wildcardData)).toBe(3);
+    expect(evaluateFormula('=COUNTIF(A1:A3,"North~*")', wildcardData)).toBe(1);
+  });
+
+  it('supports cross-sheet criteria ranges and reports invalid shapes', () => {
+    const workbook = { Summary: {}, Sales: aggregateData };
+    expect(evaluateFormula('=SUMIFS(Sales!C1:C4,Sales!A1:A4,"East")', {}, {}, 'en-US', workbook)).toBe(320);
+    expect(evaluateFormula('=COUNTIFS(A1:A2,"East",B1:B3,"Paid")', aggregateData)).toBe('#VALUE!');
+    expect(evaluateFormula('=AVERAGEIF(A1:A4,"Missing",C1:C4)', aggregateData)).toBe('#DIV/0!');
+    expect(evaluateFormula('=COUNTIF(A1:A4,"East",C1:C4,"Paid")', aggregateData)).toBe('#VALUE!');
+  });
+});
+
 describe('formula error propagation', () => {
   it('propagates errors from referenced cells through arithmetic', () => {
     const errorData: SheetData = {

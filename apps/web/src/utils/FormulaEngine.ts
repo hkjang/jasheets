@@ -20,6 +20,7 @@ export interface Token {
 const OPERATORS = ['+', '-', '*', '/', '^', '%', '&', '=', '<', '>'];
 const FUNCTIONS = [
   'SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'SEQUENCE',
+  'SUMIF', 'SUMIFS', 'COUNTIF', 'COUNTIFS', 'AVERAGEIF', 'AVERAGEIFS',
   'DATE', 'TIME', 'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND', 'TODAY', 'NOW',
   'VLOOKUP', 'HLOOKUP', 'INDEX', 'MATCH', 'XLOOKUP',
   'IF', 'IFERROR', 'IFNA',
@@ -546,6 +547,137 @@ function evaluateLookupFormula(
     return index < 0 ? scalar(args[3] ? lookupValue(args[3], data, workbook) : undefined) : scalar(returns[index]);
 }
 
+type MatrixValue = string | number | boolean | null;
+
+function resolveRangeMatrix(
+    argument: string,
+    data: SheetData,
+    namedRanges: NamedRanges,
+    workbook?: FormulaWorkbook,
+): MatrixValue[][] | null {
+    const trimmed = argument.trim();
+    const qualified = parseQualifiedReference(trimmed);
+    if (qualified) {
+        const target = resolveWorkbookSheet(workbook, qualified.sheetName);
+        return target ? getRangeMatrix(qualified.reference, target) : null;
+    }
+
+    const named = namedRanges[trimmed.toUpperCase()];
+    if (named) {
+        return getRangeMatrix(
+            `${columnIndexToName(named.start.col)}${named.start.row + 1}:${columnIndexToName(named.end.col)}${named.end.row + 1}`,
+            data,
+        );
+    }
+
+    const upper = trimmed.toUpperCase();
+    if (/^\$?[A-Z]+\$?[1-9][0-9]*(?::\$?[A-Z]+\$?[1-9][0-9]*)?$/.test(upper)) {
+        return getRangeMatrix(upper.includes(':') ? upper : `${upper}:${upper}`, data);
+    }
+    return null;
+}
+
+function wildcardPattern(criteria: string): RegExp {
+    let source = '';
+    for (let index = 0; index < criteria.length; index++) {
+        const char = criteria[index];
+        if (char === '~' && index + 1 < criteria.length && ['*', '?', '~'].includes(criteria[index + 1])) {
+            source += criteria[++index].replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        } else if (char === '*') {
+            source += '.*';
+        } else if (char === '?') {
+            source += '.';
+        } else {
+            source += char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+        }
+    }
+    return new RegExp(`^${source}$`, 'i');
+}
+
+function matchesCriterion(value: MatrixValue, criterion: MatrixValue): boolean {
+    if (typeof criterion !== 'string') {
+        if (typeof criterion === 'number' && value !== null && value !== '' && !Number.isNaN(Number(value))) {
+            return Number(value) === criterion;
+        }
+        return valuesEqual(value, criterion);
+    }
+    const match = criterion.match(/^(<=|>=|<>|=|<|>)([\s\S]*)$/);
+    const operator = match?.[1] ?? '=';
+    const operandText = match?.[2] ?? criterion;
+    const normalizedOperand: MatrixValue = /^(TRUE|FALSE)$/i.test(operandText)
+        ? operandText.toUpperCase() === 'TRUE'
+        : operandText !== '' && !Number.isNaN(Number(operandText))
+            ? Number(operandText)
+            : operandText;
+
+    if ((operator === '=' || operator === '<>') && typeof normalizedOperand === 'string'
+        && /[*?~]/.test(normalizedOperand)) {
+        const matches = wildcardPattern(normalizedOperand).test(String(value ?? ''));
+        return operator === '=' ? matches : !matches;
+    }
+    if ((operator === '=' || operator === '<>') && normalizedOperand === '') {
+        const matches = value === null || value === '';
+        return operator === '=' ? matches : !matches;
+    }
+    if ((operator === '=' || operator === '<>') && typeof normalizedOperand === 'number'
+        && value !== null && value !== '' && !Number.isNaN(Number(value))) {
+        const matches = Number(value) === normalizedOperand;
+        return operator === '=' ? matches : !matches;
+    }
+    return compareValues(value, operator, normalizedOperand);
+}
+
+function evaluateConditionalAggregate(
+    formula: string,
+    data: SheetData,
+    namedRanges: NamedRanges,
+    locale: string,
+    workbook?: FormulaWorkbook,
+): FormulaResult | undefined {
+    const match = formula.match(/^=(SUMIF|SUMIFS|COUNTIF|COUNTIFS|AVERAGEIF|AVERAGEIFS)\(([\s\S]*)\)$/i);
+    if (!match) return undefined;
+    const name = match[1].toUpperCase();
+    const args = splitFunctionArgs(match[2]);
+    const plural = name.endsWith('IFS');
+    const count = name.startsWith('COUNT');
+    if ((!plural && count && args.length !== 2)
+        || (!plural && !count && (args.length < 2 || args.length > 3))) return '#VALUE!';
+    const targetArgument = count ? undefined : (plural ? args.shift() : args[2] ?? args[0]);
+    const conditionArgs = count || plural ? args : args.slice(0, 2);
+    if (conditionArgs.length < 2 || conditionArgs.length % 2 !== 0) return '#VALUE!';
+
+    const conditions: Array<{ values: MatrixValue[]; criterion: MatrixValue }> = [];
+    for (let index = 0; index < conditionArgs.length; index += 2) {
+        const matrix = resolveRangeMatrix(conditionArgs[index], data, namedRanges, workbook);
+        if (!matrix) return '#REF!';
+        const evaluated = evaluateArgument(conditionArgs[index + 1], data, namedRanges, locale, workbook);
+        if (isFormulaError(evaluated)) return evaluated;
+        if (Array.isArray(evaluated)) return '#VALUE!';
+        conditions.push({ values: matrix.flat(), criterion: evaluated });
+    }
+
+    const size = conditions[0].values.length;
+    if (conditions.some((condition) => condition.values.length !== size)) return '#VALUE!';
+    const target = targetArgument
+        ? resolveRangeMatrix(targetArgument, data, namedRanges, workbook)?.flat()
+        : undefined;
+    if (targetArgument && (!target || target.length !== size)) return '#VALUE!';
+
+    const selected: MatrixValue[] = [];
+    for (let index = 0; index < size; index++) {
+        if (conditions.every((condition) => matchesCriterion(condition.values[index], condition.criterion))) {
+            selected.push(target?.[index] ?? conditions[0].values[index]);
+        }
+    }
+    if (count) return selected.length;
+    const error = selected.find(isFormulaError);
+    if (error) return error;
+    const numbers = selected
+        .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+    if (name.startsWith('AVERAGE')) return numbers.length ? numbers.reduce((sum, value) => sum + value, 0) / numbers.length : '#DIV/0!';
+    return numbers.reduce((sum, value) => sum + value, 0);
+}
+
 export function evaluateFormula(
     formula: string,
     data: SheetData,
@@ -618,6 +750,9 @@ export function evaluateFormula(
 
         const lookupResult = evaluateLookupFormula(formula, data, namedRanges, workbook);
         if (lookupResult !== undefined) return lookupResult;
+
+        const conditionalAggregate = evaluateConditionalAggregate(formula, data, namedRanges, locale, workbook);
+        if (conditionalAggregate !== undefined) return conditionalAggregate;
 
         const sequence = formula.match(/^=SEQUENCE\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?(?:,\s*(-?\d+(?:\.\d+)?)\s*)?(?:,\s*(-?\d+(?:\.\d+)?)\s*)?\)$/i);
         if (sequence) {
