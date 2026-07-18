@@ -49,11 +49,13 @@ describe('cell persistence', () => {
       style: { color: '#123456' },
       format: 'percent',
       validation: { type: 'number', min: 0 },
+      link: { url: 'https://example.com/report' },
     });
     expect(deserializeCellFormat(format)).toEqual({
       style: { color: '#123456' },
       format: 'percent',
       validation: { type: 'number', min: 0 },
+      link: { url: 'https://example.com/report' },
     });
     expect(deserializeCellFormat({ color: '#abcdef' })).toEqual({
       style: { color: '#abcdef' },

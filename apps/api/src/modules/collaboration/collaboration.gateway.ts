@@ -232,6 +232,7 @@ export class CollaborationGateway
       col: number;
       value: unknown;
       formula?: string;
+      format?: Record<string, unknown> | null;
     },
   ) {
     const roomId = `sheet:${data.spreadsheetId}`;
@@ -248,6 +249,7 @@ export class CollaborationGateway
         col: data.col,
         value: data.value,
         formula: data.formula,
+        format: data.format,
       },
     );
 
@@ -259,6 +261,7 @@ export class CollaborationGateway
       col: data.col,
       value: data.value,
       formula: data.formula,
+      format: data.format,
       sequence: operation.sequence,
     });
 
@@ -278,6 +281,7 @@ export class CollaborationGateway
         col: number;
         value: unknown;
         formula?: string;
+        format?: Record<string, unknown> | null;
       }>;
     },
   ) {

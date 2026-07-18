@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { CellRange, DataValidationRule, NamedRanges, ProtectedRange, SheetData, CellStyle } from '@/types/spreadsheet';
+import { CellData, CellRange, DataValidationRule, NamedRanges, ProtectedRange, SheetData, CellStyle } from '@/types/spreadsheet';
 import { produce, applyPatches, Patch, enablePatches } from 'immer';
 // Use local FormulaEngine
 import { evaluateFormula, type FormulaWorkbook } from '@/utils/FormulaEngine';
@@ -14,6 +14,7 @@ import {
     collectPersistedCellUpdates,
     PersistedCellUpdate,
 } from '@/utils/cellPersistence';
+import { sortRangeData, sortRowsData } from '@/utils/spreadsheetSorting';
 
 enablePatches();
 
@@ -229,6 +230,7 @@ export function useSpreadsheetData({
                 style: draft[row][col]?.style,
                 format: finalFormat,
                 validation,
+                link: draft[row][col]?.link,
             };
 
             if (arrayResult) {
@@ -307,6 +309,7 @@ export function useSpreadsheetData({
                     style: draft[row][col]?.style,
                     format: finalFormat,
                     validation,
+                    link: draft[row][col]?.link,
                 };
                 if (arrayResult) {
                     const spillError = spillArray(draft, row, col, arrayResult, value, finalFormat);
@@ -568,6 +571,27 @@ export function useSpreadsheetData({
                 }
             });
         },
+        updateCellLink: (position: { row: number; col: number }, text: string, url: string) => {
+            applyChange((draft) => {
+                const { row, col } = position;
+                if (!canEditCell(protectedRanges, position, currentUserId)) return;
+                if (!draft[row]) draft[row] = {};
+                const current = draft[row][col] ?? { value: null };
+                draft[row][col] = {
+                    ...current,
+                    value: text,
+                    displayValue: text,
+                    formula: undefined,
+                    error: undefined,
+                    link: { url },
+                    style: {
+                        ...current.style,
+                        color: '#1155cc',
+                        textDecoration: 'underline',
+                    },
+                };
+            });
+        },
         insertRow,
         deleteRow,
         insertColumn,
@@ -579,77 +603,17 @@ export function useSpreadsheetData({
         history,
         sortRows: useCallback((colIndex: number, ascending: boolean = true) => {
             applyChange((draft) => {
-                // ... existing sort logic ...
-                // 1. Get all row indices
-                const rowIndices = Object.keys(draft).map(Number).filter(r => !isNaN(r));
-                if (rowIndices.length === 0) return;
-                const minRow = Math.min(...rowIndices);
-                const maxRow = Math.max(...rowIndices);
-
-                const rowsToSort = [];
-                for (let r = minRow; r <= maxRow; r++) {
-                    rowsToSort.push({ index: r, data: draft[r] });
-                }
-
-                rowsToSort.sort((a, b) => {
-                    const valA = a.data?.[colIndex]?.value;
-                    const valB = b.data?.[colIndex]?.value;
-                    if (valA === valB) return 0;
-                    if (valA === null || valA === undefined) return 1;
-                    if (valB === null || valB === undefined) return -1;
-                    if (valA < valB) return ascending ? -1 : 1;
-                    if (valA > valB) return ascending ? 1 : -1;
-                    return 0;
-                });
-
-                rowsToSort.forEach((item, i) => {
-                    const targetRowIndex = minRow + i;
-                    draft[targetRowIndex] = item.data;
-                });
+                const currentData = draft as unknown as SheetData;
+                sortRowsData(currentData, colIndex, ascending, namedRanges, workbookFor(currentData));
             });
-        }, [applyChange]),
+        }, [applyChange, namedRanges, workbookFor]),
 
         sortRange: useCallback((range: { start: { row: number, col: number }, end: { row: number, col: number } }, colIndex: number, ascending: boolean = true) => {
             applyChange((draft) => {
-                const startRow = Math.min(range.start.row, range.end.row);
-                const endRow = Math.max(range.start.row, range.end.row);
-                const minCol = Math.min(range.start.col, range.end.col);
-                const maxCol = Math.max(range.start.col, range.end.col);
-
-                // Extract rows data for the range columns
-                const rowsToSort = [];
-                for (let r = startRow; r <= endRow; r++) {
-                    const cellMap: Record<number, any> = {};
-                    for (let c = minCol; c <= maxCol; c++) {
-                        cellMap[c] = draft[r]?.[c];
-                    }
-                    // Value to sort by
-                    const keyVal = draft[r]?.[colIndex]?.value;
-                    rowsToSort.push({ originalRow: r, keyVal, cellMap });
-                }
-
-                rowsToSort.sort((a, b) => {
-                    const valA = a.keyVal;
-                    const valB = b.keyVal;
-                    if (valA === valB) return 0;
-                    if (valA === null || valA === undefined) return 1;
-                    if (valB === null || valB === undefined) return -1;
-                    if (valA < valB) return ascending ? -1 : 1;
-                    if (valA > valB) return ascending ? 1 : -1;
-                    return 0;
-                });
-
-                // Write back
-                rowsToSort.forEach((item, i) => {
-                    const targetRow = startRow + i;
-                    if (!draft[targetRow]) draft[targetRow] = {};
-
-                    for (let c = minCol; c <= maxCol; c++) {
-                        draft[targetRow][c] = item.cellMap[c];
-                    }
-                });
+                const currentData = draft as unknown as SheetData;
+                sortRangeData(currentData, range, colIndex, ascending, namedRanges, workbookFor(currentData));
             });
-        }, [applyChange]),
+        }, [applyChange, namedRanges, workbookFor]),
 
         removeDuplicates: useCallback((range: { start: { row: number, col: number }, end: { row: number, col: number } }) => {
             applyChange((draft) => {
@@ -658,7 +622,7 @@ export function useSpreadsheetData({
                 const minCol = Math.min(range.start.col, range.end.col);
                 const maxCol = Math.max(range.start.col, range.end.col);
 
-                const uniqueRows: any[] = [];
+                const uniqueRows: Record<number, CellData | undefined>[] = [];
                 const seen = new Set();
 
                 for (let r = startRow; r <= endRow; r++) {
@@ -669,7 +633,7 @@ export function useSpreadsheetData({
 
                     if (!seen.has(signature)) {
                         seen.add(signature);
-                        const cellMap: Record<number, any> = {};
+                        const cellMap: Record<number, CellData | undefined> = {};
                         for (let c = minCol; c <= maxCol; c++) {
                             cellMap[c] = draft[r]?.[c];
                         }
@@ -685,7 +649,9 @@ export function useSpreadsheetData({
                     if (i < uniqueRows.length) {
                         const cellMap = uniqueRows[i];
                         for (let c = minCol; c <= maxCol; c++) {
-                            draft[targetRow][c] = cellMap[c];
+                            const cell = cellMap[c];
+                            if (cell) draft[targetRow][c] = cell;
+                            else delete draft[targetRow][c];
                         }
                     } else {
                         // Clear remaining rows in range

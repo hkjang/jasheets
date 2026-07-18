@@ -6,6 +6,7 @@
 import * as XLSX from 'xlsx';
 import { SheetData, CellData } from '@/types/spreadsheet';
 import { dateToSerial } from './dateSerial';
+import { normalizeHyperlinkUrl } from './hyperlink';
 
 export interface ImportResult {
   data: SheetData;
@@ -151,6 +152,16 @@ export function workSheetToSheetData(worksheet: XLSX.WorkSheet): SheetData {
         // Basic style extraction
         if (cell.s) {
           cellData.style = extractCellStyle(cell.s);
+        }
+
+        // SheetJS exposes external hyperlinks through the cell's `l.Target`
+        // metadata. Never persist executable or otherwise unsupported schemes
+        // from an untrusted workbook.
+        const safeLink = cell.l?.Target
+          ? normalizeHyperlinkUrl(cell.l.Target)
+          : null;
+        if (safeLink) {
+          cellData.link = { url: safeLink };
         }
         
         data[row][col] = cellData;

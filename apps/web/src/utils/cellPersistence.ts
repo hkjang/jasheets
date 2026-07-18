@@ -11,6 +11,7 @@ export interface PersistedCellFormat {
   style?: CellStyle;
   numberFormat?: string;
   validation?: DataValidationRule;
+  link?: { url: string };
 }
 
 export interface PersistedCellUpdate {
@@ -27,22 +28,24 @@ function coordinate(value: string | number | undefined): number | null {
 }
 
 export function serializeCellFormat(cell: CellData | undefined): PersistedCellFormat | null {
-  if (!cell?.style && !cell?.format && !cell?.validation) return null;
+  if (!cell?.style && !cell?.format && !cell?.validation && !cell?.link) return null;
   return {
     ...(cell.style ? { style: cell.style } : {}),
     ...(cell.format ? { numberFormat: cell.format } : {}),
     ...(cell.validation ? { validation: cell.validation } : {}),
+    ...(cell.link ? { link: cell.link } : {}),
   };
 }
 
-export function deserializeCellFormat(format: unknown): Pick<CellData, 'style' | 'format' | 'validation'> {
+export function deserializeCellFormat(format: unknown): Pick<CellData, 'style' | 'format' | 'validation' | 'link'> {
   if (!format || typeof format !== 'object' || Array.isArray(format)) return {};
   const persisted = format as PersistedCellFormat;
-  if ('style' in persisted || 'numberFormat' in persisted || 'validation' in persisted) {
+  if ('style' in persisted || 'numberFormat' in persisted || 'validation' in persisted || 'link' in persisted) {
     return {
       style: persisted.style,
       format: persisted.numberFormat,
       validation: persisted.validation,
+      link: persisted.link,
     };
   }
   return { style: format as CellStyle };

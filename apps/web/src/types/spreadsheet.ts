@@ -72,6 +72,7 @@ export interface CellData {
   error?: string;
   spillParent?: CellPosition;
   validation?: DataValidationRule;
+  link?: { url: string };
 }
 
 export type DataValidationRule =

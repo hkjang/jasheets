@@ -19,6 +19,7 @@ import ConditionalFormattingDialog, {
 import TableFormatDialog, { TableFormatConfig } from "./TableFormatDialog";
 import ThemeDialog, { Theme } from "./ThemeDialog";
 import FindDialog from "./FindDialog";
+import LinkDialog from "./LinkDialog";
 
 // ... (in Spreadsheet component)
 
@@ -48,7 +49,7 @@ import { useSpreadsheetCollaboration } from "@/hooks/spreadsheet/useSpreadsheetC
 import { useSpreadsheetCharts } from "@/hooks/spreadsheet/useSpreadsheetCharts";
 import { useSpreadsheetAutosave } from "@/hooks/spreadsheet/useSpreadsheetAutosave";
 import MenuBar from "./MenuBar";
-import { exportToCSV } from "@/utils/export";
+import { createXLSXWorksheet, exportToCSV } from "@/utils/export";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -232,6 +233,7 @@ export default function Spreadsheet({
     removeDuplicates,
     defineNamedRange,
     updateCellValidation,
+    updateCellLink,
     addProtectedRange,
   } = useSpreadsheetData({
     initialData,
@@ -401,11 +403,12 @@ export default function Spreadsheet({
       if (!activeSheetId) return;
       sendBatchUpdate(
         activeSheetId,
-        updates.map(({ row, col, value, formula }) => ({
+        updates.map(({ row, col, value, formula, format }) => ({
           row,
           col,
           value,
           formula: formula ?? undefined,
+          format,
         })),
       );
     };
@@ -534,6 +537,9 @@ export default function Spreadsheet({
   const viewStateRef = useRef({ rows, columns, config });
   const viewSaveTimerRef = useRef<number | null>(null);
   const viewDirtyRef = useRef(false);
+  const profileHiddenRowsRef = useRef<Set<number>>(new Set());
+  const profileHiddenColsRef = useRef<Set<number>>(new Set());
+  const profileSortingsRef = useRef<FilterProfile["sortings"]>([]);
 
   useEffect(() => {
     viewStateRef.current = { rows, columns, config };
@@ -1389,21 +1395,8 @@ export default function Spreadsheet({
           exportToCSV(data, `${sheetTitle.trim() || "spreadsheet"}.csv`)
         }
         onDownloadXLSX={() => {
-          const rows = Object.keys(data)
-            .map(Number)
-            .sort((a, b) => a - b);
-          const maxRow = rows.length ? rows[rows.length - 1] : 0;
-          const maxCol = 26;
-          const aoa = [];
-          for (let r = 0; r <= maxRow; r++) {
-            const rowData = [];
-            for (let c = 0; c < maxCol; c++) {
-              rowData.push(data[r]?.[c]?.value ?? "");
-            }
-            aoa.push(rowData);
-          }
           const wb = XLSX.utils.book_new();
-          const wsFull = XLSX.utils.aoa_to_sheet(aoa);
+          const wsFull = createXLSXWorksheet(data);
           XLSX.utils.book_append_sheet(wb, wsFull, "Sheet1");
           XLSX.writeFile(wb, `${sheetTitle.trim() || "spreadsheet"}.xlsx`);
         }}
@@ -1513,6 +1506,10 @@ export default function Spreadsheet({
         onSortAsc={() => {
           if (selectedCell) {
             sortRows(selectedCell.col, true);
+            profileSortingsRef.current = [{
+              column: selectedCell.col,
+              direction: "asc",
+            }];
           } else {
             alert("정렬할 열의 셀을 선택해주세요.");
           }
@@ -1520,6 +1517,10 @@ export default function Spreadsheet({
         onSortDesc={() => {
           if (selectedCell) {
             sortRows(selectedCell.col, false);
+            profileSortingsRef.current = [{
+              column: selectedCell.col,
+              direction: "desc",
+            }];
           } else {
             alert("정렬할 열의 셀을 선택해주세요.");
           }
@@ -1532,7 +1533,10 @@ export default function Spreadsheet({
         onInsertChart={handleAddChart}
         onInsertPivot={handleOpenPivotDialog}
         onConditionalFormat={handleOpenConditionalDialog}
-        onInsertLink={() => alert("링크 삽입 기능은 추후 지원 예정입니다.")}
+        onInsertLink={() => {
+          if (selectedCell) setIsLinkDialogOpen(true);
+          else alert("링크를 삽입할 셀을 선택해주세요.");
+        }}
         onUnfreeze={handleUnfreeze}
         onZoomChange={handleZoomChange}
         onTrimWhitespace={handleTrimWhitespace}
@@ -1693,18 +1697,58 @@ export default function Spreadsheet({
               ...getHiddenRowsForFilterView(data, profile.filters),
               ...(profile.hiddenRows ?? []),
             ]);
+            const previouslyHiddenRows = profileHiddenRowsRef.current;
             setRows((current) =>
               current.map((row, index) => ({
                 ...row,
-                hidden: hiddenRows.has(index),
+                hidden: hiddenRows.has(index)
+                  ? true
+                  : previouslyHiddenRows.has(index)
+                    ? false
+                    : row.hidden,
               })),
             );
+            const hiddenCols = new Set(profile.hiddenCols ?? []);
+            const previouslyHiddenCols = profileHiddenColsRef.current;
+            setColumns((current) =>
+              current.map((column, index) => ({
+                ...column,
+                hidden: hiddenCols.has(index)
+                  ? true
+                  : previouslyHiddenCols.has(index)
+                    ? false
+                    : column.hidden,
+              })),
+            );
+            profileHiddenRowsRef.current = hiddenRows;
+            profileHiddenColsRef.current = hiddenCols;
+            for (const sorting of profile.sortings ?? []) {
+              sortRows(sorting.column, sorting.direction === "asc");
+            }
+            profileSortingsRef.current = profile.sortings ?? [];
           }}
-          onClearFilters={() =>
+          getProfileSnapshot={() => ({
+            hiddenRows: rows.flatMap((row, index) => row.hidden ? [index] : []),
+            hiddenCols: columns.flatMap((column, index) => column.hidden ? [index] : []),
+            sortings: profileSortingsRef.current,
+          })}
+          onClearFilters={() => {
+            const previouslyHiddenRows = profileHiddenRowsRef.current;
+            const previouslyHiddenCols = profileHiddenColsRef.current;
             setRows((current) =>
-              current.map((row) => ({ ...row, hidden: false })),
-            )
-          }
+              current.map((row, index) => previouslyHiddenRows.has(index)
+                ? { ...row, hidden: false }
+                : row),
+            );
+            setColumns((current) =>
+              current.map((column, index) => previouslyHiddenCols.has(index)
+                ? { ...column, hidden: false }
+                : column),
+            );
+            profileHiddenRowsRef.current = new Set();
+            profileHiddenColsRef.current = new Set();
+            profileSortingsRef.current = [];
+          }}
         />
       )}
       <div
@@ -1998,6 +2042,18 @@ export default function Spreadsheet({
         onReplace={handleReplace}
         onReplaceAll={replaceAll}
       />
+
+      {isLinkDialogOpen && selectedCell && (
+        <LinkDialog
+          initialText={String(data[selectedCell.row]?.[selectedCell.col]?.value ?? "")}
+          initialUrl={data[selectedCell.row]?.[selectedCell.col]?.link?.url ?? ""}
+          onApply={({ text, url }) => {
+            updateCellLink(selectedCell, text, url);
+            setIsLinkDialogOpen(false);
+          }}
+          onClose={() => setIsLinkDialogOpen(false)}
+        />
+      )}
 
       {toastMessage && (
         <Toast message={toastMessage} onClose={() => setToastMessage(null)} />

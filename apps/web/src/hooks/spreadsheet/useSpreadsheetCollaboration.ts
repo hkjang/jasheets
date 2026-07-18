@@ -3,6 +3,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { useCollaboration, ChatMessage } from '@/hooks/useCollaboration';
 import { CellPosition, CellRange, CellValue, SheetData } from '@/types/spreadsheet';
 import { applyCollaborationOperation } from '@/utils/collaborationConflict';
+import type { PersistedCellFormat } from '@/utils/cellPersistence';
 
 interface UseSpreadsheetCollaborationProps {
   userId: string;
@@ -39,6 +40,7 @@ export function useSpreadsheetCollaboration({
     col: number;
     value: CellValue;
     formula?: string;
+    format?: PersistedCellFormat | null;
     sequence?: number;
   }) => {
     if (activeSheetId && data.sheetId !== activeSheetId) return;
@@ -47,7 +49,7 @@ export function useSpreadsheetCollaboration({
 
   const handleCellsUpdate = useCallback((data: {
     sheetId: string;
-    updates: Array<{ row: number; col: number; value: CellValue; formula?: string }>;
+    updates: Array<{ row: number; col: number; value: CellValue; formula?: string; format?: PersistedCellFormat | null }>;
     sequence?: number;
   }) => {
     if (activeSheetId && data.sheetId !== activeSheetId) return;

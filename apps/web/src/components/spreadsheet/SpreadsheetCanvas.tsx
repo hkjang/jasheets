@@ -22,6 +22,7 @@ import {
 import styles from './SpreadsheetCanvas.module.css';
 import { describeSpreadsheetCell } from '@/utils/spreadsheetAccessibility';
 import { isDoubleTap, isTap, PointerSample } from '@/utils/mobileGestures';
+import { normalizeHyperlinkUrl } from '@/utils/hyperlink';
 
 interface SpreadsheetCanvasProps {
   data: SheetData;
@@ -489,6 +490,14 @@ export default function SpreadsheetCanvas({
 
       const cell = getCellFromPoint(x, y);
       if (cell) {
+        if (e.button === 0 && (e.ctrlKey || e.metaKey)) {
+          const link = data[cell.row]?.[cell.col]?.link?.url;
+          const safeUrl = link ? normalizeHyperlinkUrl(link) : null;
+          if (safeUrl) {
+            window.open(safeUrl, '_blank', 'noopener,noreferrer');
+            return;
+          }
+        }
         // Right-click: preserve selection if clicked cell is within current selection
         if (e.button === 2 && selection) {
           const isWithinSelection =
@@ -544,7 +553,7 @@ export default function SpreadsheetCanvas({
         }
       }
     },
-    [getCellFromPoint, getColX, getRowY, onCellSelect, onSelectionChange, config, columns, rows, viewport, canvasSize, selection]
+    [data, getCellFromPoint, getColX, getRowY, onCellSelect, onSelectionChange, config, columns, rows, viewport, canvasSize, selection]
   );
 
   // Handle mouse move

@@ -4,13 +4,15 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { io, Socket } from 'socket.io-client';
 import { getAccessToken } from '@/lib/auth-session';
 import type { CellValue } from '@/types/spreadsheet';
+import type { PersistedCellFormat } from '@/utils/cellPersistence';
 
-interface CellUpdate {
+export interface CellUpdate {
   sheetId: string;
   row: number;
   col: number;
   value: CellValue;
   formula?: string;
+  format?: PersistedCellFormat | null;
   sequence?: number;
 }
 
@@ -60,7 +62,7 @@ interface UseCollaborationReturn {
   isConnected: boolean;
   syncStatus: 'connecting' | 'connected' | 'reconnecting' | 'disconnected';
   users: UserPresence[];
-  sendCellUpdate: (sheetId: string, row: number, col: number, value: CellValue, formula?: string) => void;
+  sendCellUpdate: (sheetId: string, row: number, col: number, value: CellValue, formula?: string, format?: PersistedCellFormat | null) => void;
   sendBatchUpdate: (sheetId: string, updates: CellsUpdate['updates']) => void;
   sendCursorMove: (row: number, col: number) => void;
   sendSelectionChange: (startRow: number, startCol: number, endRow: number, endCol: number) => void;
@@ -202,6 +204,7 @@ export function useCollaboration({
     col: number,
     value: CellValue,
     formula?: string,
+    format?: PersistedCellFormat | null,
   ) => {
     socketRef.current?.emit('cell-update', {
       spreadsheetId,
@@ -210,6 +213,7 @@ export function useCollaboration({
       col,
       value,
       formula,
+      format,
     });
   }, [spreadsheetId]);
 

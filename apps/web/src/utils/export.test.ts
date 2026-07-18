@@ -1,4 +1,37 @@
-import { createCSVContent, exportToCSV } from './export';
+import { createCSVContent, createXLSXWorksheet, exportToCSV } from './export';
+
+describe('XLSX export', () => {
+  it('preserves formulas and safe hyperlinks while omitting unsafe links', () => {
+    const worksheet = createXLSXWorksheet({
+      0: {
+        0: {
+          value: 'Documentation',
+          link: { url: '  https://example.com/docs  ' },
+        },
+        1: {
+          value: 'Unsafe',
+          link: { url: 'javascript:alert(1)' },
+        },
+        2: {
+          value: 2,
+          formula: '=1+1',
+          link: { url: 'mailto:help@example.com' },
+        },
+      },
+    });
+
+    expect(worksheet.A1).toMatchObject({
+      v: 'Documentation',
+      l: { Target: 'https://example.com/docs' },
+    });
+    expect(worksheet.B1.l).toBeUndefined();
+    expect(worksheet.C1).toMatchObject({
+      v: 2,
+      f: '1+1',
+      l: { Target: 'mailto:help@example.com' },
+    });
+  });
+});
 
 describe('CSV export', () => {
   it('creates an Excel-compatible UTF-8 CSV and escapes special values', () => {

@@ -21,6 +21,41 @@ describe('XLSX import', () => {
       },
     });
   });
+
+  it('preserves safe hyperlink metadata and rejects unsafe workbook links', () => {
+    const worksheet: XLSX.WorkSheet = {
+      A1: {
+        t: 's',
+        v: 'Documentation',
+        l: { Target: '  https://example.com/docs  ' },
+      },
+      B1: {
+        t: 's',
+        v: 'Do not open',
+        l: { Target: 'javascript:alert(1)' },
+      },
+      C1: {
+        t: 's',
+        v: 'Email us',
+        l: { Target: 'mailto:help@example.com' },
+      },
+      '!ref': 'A1:C1',
+    };
+
+    expect(workSheetToSheetData(worksheet)).toEqual({
+      0: {
+        0: {
+          value: 'Documentation',
+          link: { url: 'https://example.com/docs' },
+        },
+        1: { value: 'Do not open' },
+        2: {
+          value: 'Email us',
+          link: { url: 'mailto:help@example.com' },
+        },
+      },
+    });
+  });
 });
 
 describe('CSV import', () => {
