@@ -16,9 +16,16 @@ export function matchesFilter(value: CellValue, filter: FilterCondition): boolea
     case 'startsWith': return String(value ?? '').toLowerCase().startsWith(String(expected ?? '').toLowerCase());
     case 'endsWith': return String(value ?? '').toLowerCase().endsWith(String(expected ?? '').toLowerCase());
     case 'greaterThan': return Number(value) > Number(expected);
+    case 'greaterThanOrEqual': return Number(value) >= Number(expected);
     case 'lessThan': return Number(value) < Number(expected);
+    case 'lessThanOrEqual': return Number(value) <= Number(expected);
     case 'isEmpty': return value === null || value === '';
     case 'isNotEmpty': return value !== null && value !== '';
+    case 'between':
+      return Array.isArray(expected)
+        && expected.length === 2
+        && Number(value) >= Number(expected[0])
+        && Number(value) <= Number(expected[1]);
     default: return true;
   }
 }
