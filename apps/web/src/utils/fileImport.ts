@@ -155,15 +155,12 @@ function workSheetToSheetData(worksheet: XLSX.WorkSheet): SheetData {
 /**
  * Parse CSV text to SheetData format
  */
-function csvTextToSheetData(text: string): SheetData {
+export function csvTextToSheetData(text: string): SheetData {
   const data: SheetData = {};
-  const lines = text.split(/\r\n|\n|\r/);
-  
-  lines.forEach((line, rowIndex) => {
-    if (line.trim() === '') return;
-    
-    // Parse CSV with proper quote handling
-    const values = parseCSVLine(line);
+  const rows = parseCSVRows(text);
+
+  rows.forEach((values, rowIndex) => {
+    if (values.length === 1 && values[0].trim() === '') return;
     
     values.forEach((value, colIndex) => {
       if (!data[rowIndex]) {
@@ -195,16 +192,25 @@ function csvTextToSheetData(text: string): SheetData {
 }
 
 /**
- * Parse a single CSV line with proper quote handling
+ * Parse complete CSV records. A quoted field may contain commas, escaped
+ * quotes, and line breaks, so splitting the input into lines first is lossy.
  */
-function parseCSVLine(line: string): string[] {
-  const result: string[] = [];
+export function parseCSVRows(text: string): string[][] {
+  const rows: string[][] = [];
+  let row: string[] = [];
   let current = '';
   let inQuotes = false;
-  
-  for (let i = 0; i < line.length; i++) {
-    const char = line[i];
-    const nextChar = line[i + 1];
+
+  const finishRow = () => {
+    row.push(current);
+    rows.push(row);
+    row = [];
+    current = '';
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+    const nextChar = text[i + 1];
     
     if (inQuotes) {
       if (char === '"') {
@@ -223,22 +229,44 @@ function parseCSVLine(line: string): string[] {
       if (char === '"') {
         inQuotes = true;
       } else if (char === ',') {
-        result.push(current);
+        row.push(current);
         current = '';
+      } else if (char === '\n' || char === '\r') {
+        finishRow();
+        if (char === '\r' && nextChar === '\n') i++;
       } else {
         current += char;
       }
     }
   }
-  
-  result.push(current);
-  return result;
+
+  if (inQuotes) {
+    throw new Error('Invalid CSV: unclosed quoted field');
+  }
+
+  // A final record separator does not create an extra spreadsheet row.
+  if (current !== '' || row.length > 0 || rows.length === 0) {
+    finishRow();
+  }
+
+  return rows;
 }
 
 /**
  * Extract basic cell styles from XLSX cell style object
  */
-function extractCellStyle(xlsxStyle: any): Record<string, string> {
+interface ImportedCellStyle {
+  font?: {
+    bold?: boolean;
+    italic?: boolean;
+    underline?: boolean;
+    color?: { rgb?: string };
+  };
+  fill?: { fgColor?: { rgb?: string } };
+  alignment?: { horizontal?: string };
+}
+
+function extractCellStyle(xlsxStyle: ImportedCellStyle): Record<string, string> {
   const style: Record<string, string> = {};
   
   if (xlsxStyle.font) {
