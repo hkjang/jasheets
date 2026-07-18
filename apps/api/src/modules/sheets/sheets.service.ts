@@ -506,6 +506,70 @@ export class SheetsService {
     `;
   }
 
+  async saveView(
+    userId: string,
+    sheetId: string,
+    view: {
+      frozenRows: number;
+      frozenCols: number;
+      rowMeta: Array<{ row: number; height: number; hidden: boolean }>;
+      colMeta: Array<{ col: number; width: number; hidden: boolean }>;
+    },
+  ) {
+    const sheet = await this.prisma.sheet.findUnique({ where: { id: sheetId } });
+    if (!sheet) throw new NotFoundException('Sheet not found');
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+
+    if (view.frozenRows > sheet.rowCount || view.frozenCols > sheet.colCount) {
+      throw new BadRequestException('Frozen rows or columns exceed sheet dimensions');
+    }
+    this.validateViewCoordinates(view.rowMeta, 'row', sheet.rowCount);
+    this.validateViewCoordinates(view.colMeta, 'col', sheet.colCount);
+
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.sheet.update({
+        where: { id: sheetId },
+        data: {
+          frozenRows: view.frozenRows,
+          frozenCols: view.frozenCols,
+          version: { increment: 1 },
+        },
+        select: { id: true, version: true },
+      });
+      await tx.rowMeta.deleteMany({ where: { sheetId } });
+      await tx.colMeta.deleteMany({ where: { sheetId } });
+      if (view.rowMeta.length > 0) {
+        await tx.rowMeta.createMany({
+          data: view.rowMeta.map((meta) => ({ sheetId, ...meta })),
+        });
+      }
+      if (view.colMeta.length > 0) {
+        await tx.colMeta.createMany({
+          data: view.colMeta.map((meta) => ({ sheetId, ...meta })),
+        });
+      }
+      return updated;
+    });
+  }
+
+  private validateViewCoordinates<T extends 'row' | 'col'>(
+    metadata: Array<Record<T, number>>,
+    coordinate: T,
+    size: number,
+  ) {
+    const seen = new Set<number>();
+    for (const item of metadata) {
+      const index = item[coordinate];
+      if (!Number.isInteger(index) || index < 0 || index >= size) {
+        throw new BadRequestException(`${coordinate} metadata is out of bounds`);
+      }
+      if (seen.has(index)) {
+        throw new BadRequestException(`Duplicate ${coordinate} metadata`);
+      }
+      seen.add(index);
+    }
+  }
+
   // Cell operations
   async updateCell(
     userId: string,

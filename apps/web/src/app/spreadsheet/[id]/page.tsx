@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState, useRef } from "react";
+import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { clearAuthSession } from "@/lib/auth-session";
 import Spreadsheet from "@/components/spreadsheet/Spreadsheet";
@@ -11,7 +11,7 @@ import {
   SpreadsheetErrorState,
   SpreadsheetLoadingState,
 } from "@/components/ui/PageLoadState";
-import type { SheetData } from "@/types/spreadsheet";
+import { DEFAULT_CONFIG, type ColumnDef, type RowDef, type SheetData } from "@/types/spreadsheet";
 import { deserializeCellFormat } from "@/utils/cellPersistence";
 
 function deserializeSheetData(sheet: SpreadsheetSheet): SheetData {
@@ -179,6 +179,41 @@ export default function SpreadsheetPage() {
     )));
   }, []);
 
+  const activeSheet = useMemo(
+    () => sheets.find(({ id: sheetId }) => sheetId === activeSheetId),
+    [activeSheetId, sheets],
+  );
+  const initialRows = useMemo<RowDef[] | undefined>(() => {
+    if (!activeSheet) return undefined;
+    const nextRows: RowDef[] = Array.from(
+      { length: activeSheet.rowCount ?? DEFAULT_CONFIG.totalRows },
+      () => ({ height: activeSheet.defaultRowHeight ?? DEFAULT_CONFIG.defaultRowHeight }),
+    );
+    activeSheet.rowMeta?.forEach((meta) => {
+      if (!nextRows[meta.row]) return;
+      nextRows[meta.row] = {
+        height: meta.height ?? activeSheet.defaultRowHeight ?? DEFAULT_CONFIG.defaultRowHeight,
+        hidden: meta.hidden,
+      };
+    });
+    return nextRows;
+  }, [activeSheet]);
+  const initialCols = useMemo<ColumnDef[] | undefined>(() => {
+    if (!activeSheet) return undefined;
+    const nextCols: ColumnDef[] = Array.from(
+      { length: activeSheet.colCount ?? DEFAULT_CONFIG.totalCols },
+      () => ({ width: activeSheet.defaultColWidth ?? DEFAULT_CONFIG.defaultColWidth }),
+    );
+    activeSheet.colMeta?.forEach((meta) => {
+      if (!nextCols[meta.col]) return;
+      nextCols[meta.col] = {
+        width: meta.width ?? activeSheet.defaultColWidth ?? DEFAULT_CONFIG.defaultColWidth,
+        hidden: meta.hidden,
+      };
+    });
+    return nextCols;
+  }, [activeSheet]);
+
   useEffect(() => {
     if (authLoading || !user) return;
     void loadSpreadsheet();
@@ -219,8 +254,12 @@ export default function SpreadsheetPage() {
       spreadsheetId={id}
       activeSheetId={activeSheetId}
       initialVersion={activeSheetVersion}
-      initialRowCount={sheets.find(({ id: sheetId }) => sheetId === activeSheetId)?.rowCount}
-      initialColCount={sheets.find(({ id: sheetId }) => sheetId === activeSheetId)?.colCount}
+      initialRowCount={activeSheet?.rowCount}
+      initialColCount={activeSheet?.colCount}
+      initialRows={initialRows}
+      initialCols={initialCols}
+      initialFrozenRows={activeSheet?.frozenRows}
+      initialFrozenCols={activeSheet?.frozenCols}
       title={title}
       sheets={sheets.map(({ id: sheetId, name }) => ({ id: sheetId, name }))}
       onSheetSelect={selectSheet}

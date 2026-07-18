@@ -6,6 +6,8 @@ describe('useSpreadsheetView', () => {
     const { result } = renderHook(() => useSpreadsheetView({
       initialRowCount: 120,
       initialColCount: 40,
+      initialFrozenRows: 2,
+      initialFrozenCols: 1,
     }));
 
     expect(result.current.rows).toHaveLength(120);
@@ -13,6 +15,8 @@ describe('useSpreadsheetView', () => {
     expect(result.current.config).toMatchObject({
       totalRows: 120,
       totalCols: 40,
+      frozenRows: 2,
+      frozenCols: 1,
     });
   });
 });

@@ -18,6 +18,7 @@ import { UpdateCellDto, UpdateCellsDto } from './dto/update-cell.dto';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { CreateSheetDto, UpdateSheetDto } from './dto/sheet.dto';
 import { StructuralChangeDto } from './dto/structural-change.dto';
+import { SheetViewDto } from './dto/sheet-view.dto';
 
 @Controller('sheets')
 @UseGuards(JwtAuthGuard)
@@ -169,6 +170,15 @@ export class SheetsController {
     @Body() dto: StructuralChangeDto,
   ) {
     return this.sheetsService.changeStructure(req.user.id, sheetId, dto);
+  }
+
+  @Put('sheet/:sheetId/view')
+  saveView(
+    @Request() req: any,
+    @Param('sheetId') sheetId: string,
+    @Body() dto: SheetViewDto,
+  ) {
+    return this.sheetsService.saveView(req.user.id, sheetId, dto);
   }
 
   // Cell operations

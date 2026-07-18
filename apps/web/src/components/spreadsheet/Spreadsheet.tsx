@@ -89,6 +89,10 @@ interface SpreadsheetProps {
   initialVersion?: number;
   initialRowCount?: number;
   initialColCount?: number;
+  initialRows?: RowDef[];
+  initialCols?: ColumnDef[];
+  initialFrozenRows?: number;
+  initialFrozenCols?: number;
   title?: string;
   sheets?: SheetTab[];
   onSheetSelect?: (sheetId: string) => Promise<void> | void;
@@ -112,6 +116,10 @@ export default function Spreadsheet({
   initialVersion = 0,
   initialRowCount = DEFAULT_CONFIG.totalRows,
   initialColCount = DEFAULT_CONFIG.totalCols,
+  initialRows,
+  initialCols,
+  initialFrozenRows = 0,
+  initialFrozenCols = 0,
   title = "Untitled Spreadsheet",
   sheets = [],
   onSheetSelect,
@@ -130,6 +138,7 @@ export default function Spreadsheet({
   const collaborationBroadcastRef = useRef<
     (updates: PersistedCellUpdate[]) => void
   >(() => undefined);
+  const viewFlushRef = useRef<() => Promise<void>>(async () => undefined);
   const handleAutosaveSaved = useCallback((version: number) => {
     setSheetVersion(version);
     if (activeSheetId) onVersionChange?.(activeSheetId, version);
@@ -404,6 +413,7 @@ export default function Spreadsheet({
       throw new Error("저장할 시트가 없습니다.");
     }
     await flushAutosave();
+    await viewFlushRef.current();
     await api.spreadsheets.saveCharts(activeSheetId, charts);
   }, [activeSheetId, charts, flushAutosave]);
 
@@ -479,7 +489,71 @@ export default function Spreadsheet({
     unhideRow,
     hideColumn,
     unhideColumn,
-  } = useSpreadsheetView({ initialRowCount, initialColCount });
+  } = useSpreadsheetView({
+    initialRows,
+    initialCols,
+    initialRowCount,
+    initialColCount,
+    initialFrozenRows,
+    initialFrozenCols,
+  });
+  const viewStateRef = useRef({ rows, columns, config });
+  const viewSaveTimerRef = useRef<number | null>(null);
+  const viewDirtyRef = useRef(false);
+
+  useEffect(() => {
+    viewStateRef.current = { rows, columns, config };
+  }, [columns, config, rows]);
+
+  const flushViewState = useCallback(async () => {
+    if (!activeSheetId || !viewDirtyRef.current) return;
+    if (viewSaveTimerRef.current !== null) {
+      window.clearTimeout(viewSaveTimerRef.current);
+      viewSaveTimerRef.current = null;
+    }
+    const snapshot = viewStateRef.current;
+    viewDirtyRef.current = false;
+    try {
+      const result = await api.spreadsheets.saveView(activeSheetId, {
+        frozenRows: snapshot.config.frozenRows,
+        frozenCols: snapshot.config.frozenCols,
+        rowMeta: snapshot.rows.flatMap((row, index) => (
+          row.hidden || row.height !== snapshot.config.defaultRowHeight
+            ? [{ row: index, height: row.height, hidden: Boolean(row.hidden) }]
+            : []
+        )),
+        colMeta: snapshot.columns.flatMap((column, index) => (
+          column.hidden || column.width !== snapshot.config.defaultColWidth
+            ? [{ col: index, width: column.width, hidden: Boolean(column.hidden) }]
+            : []
+        )),
+      });
+      setSheetVersion(result.version);
+      onVersionChange?.(activeSheetId, result.version);
+    } catch (error) {
+      viewDirtyRef.current = true;
+      throw error;
+    }
+  }, [activeSheetId, onVersionChange]);
+
+  useEffect(() => {
+    viewFlushRef.current = flushViewState;
+    return () => {
+      if (viewSaveTimerRef.current !== null) window.clearTimeout(viewSaveTimerRef.current);
+      void flushViewState().catch(() => undefined);
+    };
+  }, [flushViewState]);
+
+  const queueViewSave = useCallback(() => {
+    viewDirtyRef.current = true;
+    if (viewSaveTimerRef.current !== null) window.clearTimeout(viewSaveTimerRef.current);
+    viewSaveTimerRef.current = window.setTimeout(() => {
+      void flushViewState().catch((error: unknown) => {
+        console.error("View autosave failed", error);
+        setToastMessage("행·열 보기 설정을 저장하지 못했습니다. 다시 시도합니다.");
+      });
+    }, 700);
+  }, [flushViewState]);
 
   // Context Menu State
   const [contextMenu, setContextMenu] = useState<{
@@ -600,8 +674,9 @@ export default function Spreadsheet({
       if (newRows[index]) newRows[index] = { ...newRows[index], hidden: true };
       return newRows;
     });
+    queueViewSave();
     setContextMenu(null);
-  }, [contextMenu]);
+  }, [contextMenu, queueViewSave]);
 
   const handleUnhideRow = useCallback(() => {
     // Logic: If user specifically clicked a hidden row placeholder?
@@ -640,9 +715,10 @@ export default function Spreadsheet({
         }
         return newRows;
       });
+      queueViewSave();
     }
     setContextMenu(null);
-  }, [contextMenu, selection]);
+  }, [contextMenu, queueViewSave, selection]);
 
   const handleInsertColBefore = useCallback(() => {
     if (!contextMenu || contextMenu.type !== "col") return;
@@ -673,8 +749,9 @@ export default function Spreadsheet({
       if (newCols[index]) newCols[index] = { ...newCols[index], hidden: true };
       return newCols;
     });
+    queueViewSave();
     setContextMenu(null);
-  }, [contextMenu]);
+  }, [contextMenu, queueViewSave]);
 
   const handleUnhideCol = useCallback(() => {
     if (!contextMenu || contextMenu.type !== "col") return;
@@ -694,9 +771,10 @@ export default function Spreadsheet({
         }
         return newCols;
       });
+      queueViewSave();
     }
     setContextMenu(null);
-  }, [contextMenu, selection]);
+  }, [contextMenu, queueViewSave, selection]);
 
   const getCellPosition = useCallback(
     (row: number, col: number) => {
@@ -904,8 +982,9 @@ export default function Spreadsheet({
   // Handler for clearing all freeze (rows and columns)
   const handleUnfreeze = useCallback(() => {
     setConfig((prev) => ({ ...prev, frozenRows: 0, frozenCols: 0 }));
+    queueViewSave();
     setToastMessage("모든 고정이 해제되었습니다.");
-  }, [setConfig]);
+  }, [queueViewSave, setConfig]);
 
   // Handler for zoom change
   const handleZoomChange = useCallback((newZoom: number) => {
@@ -1318,6 +1397,7 @@ export default function Spreadsheet({
         onFreezeRow={() => {
           if (selectedCell) {
             handleFreezeRow(selectedCell.row);
+            queueViewSave();
           } else {
             alert("고정할 행 아래의 셀을 선택해주세요.");
           }
@@ -1325,6 +1405,7 @@ export default function Spreadsheet({
         onFreezeCol={() => {
           if (selectedCell) {
             handleFreezeCol(selectedCell.col);
+            queueViewSave();
           } else {
             alert("고정할 열 오른쪽의 셀을 선택해주세요.");
           }
@@ -1543,8 +1624,14 @@ export default function Spreadsheet({
           onSelectionChange={handleSelectionChange}
           onCellEdit={(pos) => startEditing(pos)}
           conditionalRules={conditionalRules}
-          onColumnResize={handleColumnResize}
-          onRowResize={handleRowResize}
+          onColumnResize={(index, width) => {
+            handleColumnResize(index, width);
+            queueViewSave();
+          }}
+          onRowResize={(index, height) => {
+            handleRowResize(index, height);
+            queueViewSave();
+          }}
           showGridlines={showGridlines}
           onHeaderContextMenu={handleHeaderContextMenu}
           onCellContextMenu={(x, y) => setCellContextMenu({ x, y })}

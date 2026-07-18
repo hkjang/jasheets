@@ -11,11 +11,12 @@ describe('SheetsService sheet operations', () => {
       findFirst: jest.fn(),
       create: jest.fn(),
       updateMany: jest.fn(),
+      update: jest.fn(),
       findUniqueOrThrow: jest.fn(),
     },
     cell: { deleteMany: jest.fn() },
-    rowMeta: { deleteMany: jest.fn() },
-    colMeta: { deleteMany: jest.fn() },
+    rowMeta: { deleteMany: jest.fn(), createMany: jest.fn() },
+    colMeta: { deleteMany: jest.fn(), createMany: jest.fn() },
     comment: { deleteMany: jest.fn() },
     $executeRaw: jest.fn(),
   };
@@ -49,6 +50,7 @@ describe('SheetsService sheet operations', () => {
       version: 3,
     });
     tx.sheet.updateMany.mockResolvedValue({ count: 1 });
+    tx.sheet.update.mockResolvedValue({ id: 'sheet-1', version: 4 });
     tx.sheet.findUniqueOrThrow.mockResolvedValue({
       id: 'sheet-1',
       rowCount: 1001,
@@ -57,7 +59,9 @@ describe('SheetsService sheet operations', () => {
     });
     tx.cell.deleteMany.mockResolvedValue({ count: 0 });
     tx.rowMeta.deleteMany.mockResolvedValue({ count: 0 });
+    tx.rowMeta.createMany.mockResolvedValue({ count: 1 });
     tx.colMeta.deleteMany.mockResolvedValue({ count: 0 });
+    tx.colMeta.createMany.mockResolvedValue({ count: 1 });
     tx.comment.deleteMany.mockResolvedValue({ count: 0 });
     tx.$executeRaw.mockResolvedValue(0);
   });
@@ -135,6 +139,47 @@ describe('SheetsService sheet operations', () => {
         axis: 'column',
         type: 'delete',
         index: 26,
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('replaces bounded row and column view metadata atomically', async () => {
+    const result = await service.saveView('user-1', 'sheet-1', {
+      frozenRows: 2,
+      frozenCols: 1,
+      rowMeta: [{ row: 4, height: 36, hidden: false }],
+      colMeta: [{ col: 3, width: 180, hidden: true }],
+    });
+
+    expect(tx.sheet.update).toHaveBeenCalledWith({
+      where: { id: 'sheet-1' },
+      data: {
+        frozenRows: 2,
+        frozenCols: 1,
+        version: { increment: 1 },
+      },
+      select: { id: true, version: true },
+    });
+    expect(tx.rowMeta.createMany).toHaveBeenCalledWith({
+      data: [{ sheetId: 'sheet-1', row: 4, height: 36, hidden: false }],
+    });
+    expect(tx.colMeta.createMany).toHaveBeenCalledWith({
+      data: [{ sheetId: 'sheet-1', col: 3, width: 180, hidden: true }],
+    });
+    expect(result).toEqual({ id: 'sheet-1', version: 4 });
+  });
+
+  it('rejects duplicate view metadata coordinates', async () => {
+    await expect(
+      service.saveView('user-1', 'sheet-1', {
+        frozenRows: 0,
+        frozenCols: 0,
+        rowMeta: [
+          { row: 3, height: 30, hidden: false },
+          { row: 3, height: 40, hidden: true },
+        ],
+        colMeta: [],
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(prisma.$transaction).not.toHaveBeenCalled();

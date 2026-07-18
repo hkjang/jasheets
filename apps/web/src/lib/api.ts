@@ -23,6 +23,12 @@ export interface SpreadsheetSheet {
   version?: number;
   rowCount?: number;
   colCount?: number;
+  frozenRows?: number;
+  frozenCols?: number;
+  defaultRowHeight?: number;
+  defaultColWidth?: number;
+  rowMeta?: Array<{ row: number; height?: number | null; hidden: boolean }>;
+  colMeta?: Array<{ col: number; width?: number | null; hidden: boolean }>;
   cells?: Array<{
     row: number;
     col: number;
@@ -189,6 +195,24 @@ export const api = {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(change),
       });
+    },
+    saveView: async (
+      sheetId: string,
+      view: {
+        frozenRows: number;
+        frozenCols: number;
+        rowMeta: Array<{ row: number; height: number; hidden: boolean }>;
+        colMeta: Array<{ col: number; width: number; hidden: boolean }>;
+      },
+    ) => {
+      return apiClient.request<{ id: string; version: number }>(
+        `/sheets/sheet/${sheetId}/view`,
+        {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(view),
+        },
+      );
     },
     update: async (id: string, data: { name?: string }) => {
       const token = localStorage.getItem("auth_token");

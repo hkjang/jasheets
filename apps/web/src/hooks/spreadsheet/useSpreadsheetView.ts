@@ -6,6 +6,8 @@ interface UseSpreadsheetViewProps {
     initialCols?: ColumnDef[];
     initialRowCount?: number;
     initialColCount?: number;
+    initialFrozenRows?: number;
+    initialFrozenCols?: number;
 }
 
 export function useSpreadsheetView({
@@ -13,6 +15,8 @@ export function useSpreadsheetView({
     initialCols,
     initialRowCount = DEFAULT_CONFIG.totalRows,
     initialColCount = DEFAULT_CONFIG.totalCols,
+    initialFrozenRows = 0,
+    initialFrozenCols = 0,
 }: UseSpreadsheetViewProps = {}) {
     // Columns & Rows
     const [columns, setColumns] = useState<ColumnDef[]>(() =>
@@ -27,6 +31,8 @@ export function useSpreadsheetView({
         ...DEFAULT_CONFIG,
         totalRows: initialRowCount,
         totalCols: initialColCount,
+        frozenRows: initialFrozenRows,
+        frozenCols: initialFrozenCols,
     }));
 
     // View Options state
