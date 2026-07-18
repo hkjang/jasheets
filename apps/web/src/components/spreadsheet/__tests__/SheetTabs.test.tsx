@@ -12,6 +12,7 @@ describe('SheetTabs', () => {
     const onAdd = jest.fn();
     const onRename = jest.fn();
     const onDelete = jest.fn();
+    const onReorder = jest.fn();
 
     render(
       <SheetTabs
@@ -21,6 +22,7 @@ describe('SheetTabs', () => {
         onAdd={onAdd}
         onRename={onRename}
         onDelete={onDelete}
+        onReorder={onReorder}
       />,
     );
 
@@ -50,10 +52,46 @@ describe('SheetTabs', () => {
         onAdd={jest.fn()}
         onRename={jest.fn()}
         onDelete={jest.fn()}
+        onReorder={jest.fn()}
       />,
     );
 
     fireEvent.keyDown(screen.getByRole('tab', { name: 'Sheet 1' }), { key: 'ArrowLeft' });
     expect(onSelect).toHaveBeenCalledWith('sheet-2');
+  });
+
+  it('reorders tabs by drag and accessible keyboard shortcut', () => {
+    const onReorder = jest.fn();
+    render(
+      <SheetTabs
+        sheets={sheets}
+        activeSheetId="sheet-1"
+        onSelect={jest.fn()}
+        onAdd={jest.fn()}
+        onRename={jest.fn()}
+        onDelete={jest.fn()}
+        onReorder={onReorder}
+      />,
+    );
+
+    const source = screen.getByRole('tab', { name: 'Sheet 1' }).parentElement!;
+    const target = screen.getByRole('tab', { name: 'Forecast' }).parentElement!;
+    const dataTransfer = {
+      effectAllowed: '',
+      dropEffect: '',
+      setData: jest.fn(),
+      getData: jest.fn(() => 'sheet-1'),
+    };
+    fireEvent.dragStart(source, { dataTransfer });
+    fireEvent.dragOver(target, { dataTransfer });
+    fireEvent.drop(target, { dataTransfer });
+    expect(onReorder).toHaveBeenCalledWith('sheet-1', 1);
+
+    fireEvent.keyDown(screen.getByRole('tab', { name: 'Sheet 1' }), {
+      key: 'ArrowRight',
+      altKey: true,
+      shiftKey: true,
+    });
+    expect(onReorder).toHaveBeenLastCalledWith('sheet-1', 1);
   });
 });

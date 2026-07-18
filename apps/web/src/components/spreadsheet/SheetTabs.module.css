@@ -30,6 +30,14 @@
   border-bottom-color: var(--color-primary);
 }
 
+.tabGroup.dragging {
+  opacity: 0.45;
+}
+
+.tabGroup.dragOver {
+  box-shadow: inset 3px 0 0 var(--color-primary);
+}
+
 .tabButton,
 .addButton,
 .deleteButton {

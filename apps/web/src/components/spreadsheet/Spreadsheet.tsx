@@ -102,6 +102,7 @@ interface SpreadsheetProps {
   onSheetAdd?: () => Promise<void> | void;
   onSheetRename?: (sheetId: string, name: string) => Promise<void> | void;
   onSheetDelete?: (sheetId: string) => Promise<void> | void;
+  onSheetReorder?: (sheetId: string, index: number) => Promise<void> | void;
   onVersionChange?: (sheetId: string, version: number) => void;
   onChartsChange?: (sheetId: string, charts: unknown[]) => void;
   onStructureChange?: (
@@ -131,6 +132,7 @@ export default function Spreadsheet({
   onSheetAdd,
   onSheetRename,
   onSheetDelete,
+  onSheetReorder,
   onVersionChange,
   onChartsChange,
   onStructureChange,
@@ -1677,7 +1679,7 @@ export default function Spreadsheet({
         />
       </div>
 
-      {sheets.length > 0 && onSheetSelect && onSheetAdd && onSheetRename && onSheetDelete && (
+      {sheets.length > 0 && onSheetSelect && onSheetAdd && onSheetRename && onSheetDelete && onSheetReorder && (
         <SheetTabs
           sheets={sheets}
           activeSheetId={activeSheetId ?? null}
@@ -1699,6 +1701,10 @@ export default function Spreadsheet({
               successMessage: "시트를 삭제했습니다.",
             });
           }}
+          onReorder={(sheetId, index) => runSheetAction(
+            () => onSheetReorder(sheetId, index),
+            { saveFirst: true, successMessage: "시트 순서를 변경했습니다." },
+          )}
         />
       )}
 

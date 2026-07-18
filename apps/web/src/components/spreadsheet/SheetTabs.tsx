@@ -1,6 +1,6 @@
 'use client';
 
-import { KeyboardEvent, useEffect, useRef, useState } from 'react';
+import { DragEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
 import styles from './SheetTabs.module.css';
 
 export interface SheetTab {
@@ -16,6 +16,7 @@ interface SheetTabsProps {
   onAdd: () => Promise<void> | void;
   onRename: (sheetId: string, name: string) => Promise<void> | void;
   onDelete: (sheetId: string) => Promise<void> | void;
+  onReorder: (sheetId: string, index: number) => Promise<void> | void;
 }
 
 export default function SheetTabs({
@@ -26,10 +27,13 @@ export default function SheetTabs({
   onAdd,
   onRename,
   onDelete,
+  onReorder,
 }: SheetTabsProps) {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draftName, setDraftName] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const [draggingId, setDraggingId] = useState<string | null>(null);
+  const [dragOverId, setDragOverId] = useState<string | null>(null);
 
   useEffect(() => {
     if (editingId) inputRef.current?.select();
@@ -54,8 +58,22 @@ export default function SheetTabs({
     if (event.key !== 'ArrowLeft' && event.key !== 'ArrowRight') return;
     event.preventDefault();
     const direction = event.key === 'ArrowRight' ? 1 : -1;
+    if (event.altKey && event.shiftKey) {
+      const nextIndex = Math.max(0, Math.min(sheets.length - 1, index + direction));
+      if (nextIndex !== index) void onReorder(sheets[index].id, nextIndex);
+      return;
+    }
     const nextIndex = (index + direction + sheets.length) % sheets.length;
     void onSelect(sheets[nextIndex].id);
+  };
+
+  const handleDrop = (event: DragEvent<HTMLDivElement>, targetIndex: number) => {
+    event.preventDefault();
+    const sheetId = draggingId ?? event.dataTransfer.getData('text/plain');
+    setDraggingId(null);
+    setDragOverId(null);
+    if (!sheetId || sheets[targetIndex]?.id === sheetId) return;
+    void onReorder(sheetId, targetIndex);
   };
 
   return (
@@ -74,7 +92,25 @@ export default function SheetTabs({
         {sheets.map((sheet, index) => (
           <div
             key={sheet.id}
-            className={`${styles.tabGroup} ${sheet.id === activeSheetId ? styles.active : ''}`}
+            className={`${styles.tabGroup} ${sheet.id === activeSheetId ? styles.active : ''} ${sheet.id === draggingId ? styles.dragging : ''} ${sheet.id === dragOverId ? styles.dragOver : ''}`}
+            draggable={!disabled && editingId !== sheet.id}
+            onDragStart={(event) => {
+              setDraggingId(sheet.id);
+              event.dataTransfer.effectAllowed = 'move';
+              event.dataTransfer.setData('text/plain', sheet.id);
+            }}
+            onDragEnd={() => {
+              setDraggingId(null);
+              setDragOverId(null);
+            }}
+            onDragOver={(event) => {
+              if (disabled) return;
+              event.preventDefault();
+              event.dataTransfer.dropEffect = 'move';
+              setDragOverId(sheet.id);
+            }}
+            onDragLeave={() => setDragOverId((current) => current === sheet.id ? null : current)}
+            onDrop={(event) => handleDrop(event, index)}
           >
             {editingId === sheet.id ? (
               <input
@@ -100,7 +136,7 @@ export default function SheetTabs({
                 onClick={() => void onSelect(sheet.id)}
                 onDoubleClick={() => beginRename(sheet)}
                 onKeyDown={(event) => handleTabKeyDown(event, index)}
-                title="두 번 클릭하여 이름 변경"
+                title="두 번 클릭하여 이름 변경 · 드래그하여 순서 변경"
               >
                 {sheet.name}
               </button>

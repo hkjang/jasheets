@@ -181,6 +181,13 @@ export const api = {
     deleteSheet: async (sheetId: string) => {
       await apiClient.request(`/sheets/sheet/${sheetId}`, { method: 'DELETE' });
     },
+    reorderSheet: async (sheetId: string, index: number) => {
+      return apiClient.request<SpreadsheetSheet[]>(`/sheets/sheet/${sheetId}/reorder`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ index }),
+      });
+    },
     changeStructure: async (
       sheetId: string,
       change: { axis: 'row' | 'column'; type: 'insert' | 'delete'; index: number },

@@ -9,6 +9,7 @@ describe('SheetsService sheet operations', () => {
     sheet: {
       count: jest.fn(),
       findFirst: jest.fn(),
+      findMany: jest.fn(),
       create: jest.fn(),
       updateMany: jest.fn(),
       update: jest.fn(),
@@ -36,7 +37,10 @@ describe('SheetsService sheet operations', () => {
     jest.clearAllMocks();
     jest.spyOn(service, 'checkEditAccess').mockResolvedValue(undefined);
     tx.sheet.count.mockResolvedValue(2);
-    tx.sheet.findFirst.mockReset().mockResolvedValueOnce(null).mockResolvedValue({ index: 4 });
+    tx.sheet.findFirst
+      .mockReset()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValue({ index: 4 });
     tx.sheet.create.mockResolvedValue({
       id: 'sheet-3',
       spreadsheetId,
@@ -53,6 +57,7 @@ describe('SheetsService sheet operations', () => {
     });
     tx.sheet.updateMany.mockResolvedValue({ count: 1 });
     tx.sheet.update.mockResolvedValue({ id: 'sheet-1', version: 4 });
+    tx.sheet.findMany.mockResolvedValue([]);
     tx.sheet.findUniqueOrThrow.mockResolvedValue({
       id: 'sheet-1',
       rowCount: 1001,
@@ -114,6 +119,43 @@ describe('SheetsService sheet operations', () => {
       service.updateSheet('user-1', 'sheet-1', { name: 'revenue' }),
     ).rejects.toBeInstanceOf(ConflictException);
     expect(tx.sheet.update).not.toHaveBeenCalled();
+  });
+
+  it('reorders tabs atomically without unique index collisions', async () => {
+    const before = [{ id: 'sheet-1' }, { id: 'sheet-2' }, { id: 'sheet-3' }];
+    const after = [
+      { id: 'sheet-2', index: 0 },
+      { id: 'sheet-3', index: 1 },
+      { id: 'sheet-1', index: 2 },
+    ];
+    tx.sheet.findMany
+      .mockResolvedValueOnce(before)
+      .mockResolvedValueOnce(after);
+
+    const result = await service.reorderSheet('user-1', 'sheet-1', 2);
+
+    expect(tx.$executeRaw).toHaveBeenCalledTimes(1);
+    expect(tx.sheet.update).toHaveBeenNthCalledWith(1, {
+      where: { id: 'sheet-2' },
+      data: { index: 0 },
+    });
+    expect(tx.sheet.update).toHaveBeenNthCalledWith(3, {
+      where: { id: 'sheet-1' },
+      data: { index: 2 },
+    });
+    expect(result).toEqual(after);
+  });
+
+  it('rejects an out-of-range tab position without changing indexes', async () => {
+    tx.sheet.findMany.mockResolvedValueOnce([
+      { id: 'sheet-1' },
+      { id: 'sheet-2' },
+    ]);
+
+    await expect(
+      service.reorderSheet('user-1', 'sheet-1', 2),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.$executeRaw).not.toHaveBeenCalled();
   });
 
   it('increments the row count and shifts rows for an insertion', async () => {

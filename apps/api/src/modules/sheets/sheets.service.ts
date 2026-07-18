@@ -312,29 +312,32 @@ export class SheetsService {
   async addSheet(userId: string, spreadsheetId: string, name: string) {
     await this.checkEditAccess(userId, spreadsheetId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const sheetCount = await tx.sheet.count({ where: { spreadsheetId } });
-      if (sheetCount >= this.maxSheetsPerSpreadsheet) {
-        throw new BadRequestException(
-          `A spreadsheet can contain at most ${this.maxSheetsPerSpreadsheet} sheets`,
-        );
-      }
+    return this.prisma.$transaction(
+      async (tx) => {
+        const sheetCount = await tx.sheet.count({ where: { spreadsheetId } });
+        if (sheetCount >= this.maxSheetsPerSpreadsheet) {
+          throw new BadRequestException(
+            `A spreadsheet can contain at most ${this.maxSheetsPerSpreadsheet} sheets`,
+          );
+        }
 
-      await this.assertUniqueSheetName(tx, spreadsheetId, name);
+        await this.assertUniqueSheetName(tx, spreadsheetId, name);
 
-      const lastSheet = await tx.sheet.findFirst({
-        where: { spreadsheetId },
-        orderBy: { index: 'desc' },
-      });
+        const lastSheet = await tx.sheet.findFirst({
+          where: { spreadsheetId },
+          orderBy: { index: 'desc' },
+        });
 
-      return tx.sheet.create({
-        data: {
-          spreadsheetId,
-          name,
-          index: (lastSheet?.index ?? -1) + 1,
-        },
-      });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+        return tx.sheet.create({
+          data: {
+            spreadsheetId,
+            name,
+            index: (lastSheet?.index ?? -1) + 1,
+          },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
   async updateSheet(userId: string, sheetId: string, data: { name: string }) {
@@ -350,16 +353,24 @@ export class SheetsService {
 
     if (sheet.name === data.name) return sheet;
 
-    return this.prisma.$transaction(async (tx) => {
-      await this.assertUniqueSheetName(tx, sheet.spreadsheetId, data.name, sheetId);
-      await this.rewriteStoredSheetReferences(
-        tx,
-        sheet.spreadsheetId,
-        sheet.name,
-        data.name,
-      );
-      return tx.sheet.update({ where: { id: sheetId }, data });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return this.prisma.$transaction(
+      async (tx) => {
+        await this.assertUniqueSheetName(
+          tx,
+          sheet.spreadsheetId,
+          data.name,
+          sheetId,
+        );
+        await this.rewriteStoredSheetReferences(
+          tx,
+          sheet.spreadsheetId,
+          sheet.name,
+          data.name,
+        );
+        return tx.sheet.update({ where: { id: sheetId }, data });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
   async deleteSheet(userId: string, sheetId: string) {
@@ -373,22 +384,75 @@ export class SheetsService {
 
     await this.checkEditAccess(userId, sheet.spreadsheetId);
 
-    return this.prisma.$transaction(async (tx) => {
-      const sheetCount = await tx.sheet.count({
-        where: { spreadsheetId: sheet.spreadsheetId },
-      });
-      if (sheetCount <= 1) {
-        throw new ForbiddenException('Cannot delete the last sheet');
-      }
-      await this.rewriteStoredSheetReferences(
-        tx,
-        sheet.spreadsheetId,
-        sheet.name,
-        undefined,
-        sheetId,
-      );
-      return tx.sheet.delete({ where: { id: sheetId } });
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+    return this.prisma.$transaction(
+      async (tx) => {
+        const sheetCount = await tx.sheet.count({
+          where: { spreadsheetId: sheet.spreadsheetId },
+        });
+        if (sheetCount <= 1) {
+          throw new ForbiddenException('Cannot delete the last sheet');
+        }
+        await this.rewriteStoredSheetReferences(
+          tx,
+          sheet.spreadsheetId,
+          sheet.name,
+          undefined,
+          sheetId,
+        );
+        return tx.sheet.delete({ where: { id: sheetId } });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  }
+
+  async reorderSheet(userId: string, sheetId: string, targetIndex: number) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+      select: { id: true, spreadsheetId: true },
+    });
+    if (!sheet) throw new NotFoundException('Sheet not found');
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+
+    return this.prisma.$transaction(
+      async (tx) => {
+        const ordered = await tx.sheet.findMany({
+          where: { spreadsheetId: sheet.spreadsheetId },
+          orderBy: { index: 'asc' },
+          select: { id: true },
+        });
+        if (targetIndex >= ordered.length) {
+          throw new BadRequestException('Sheet index is out of range');
+        }
+
+        const currentIndex = ordered.findIndex(({ id }) => id === sheetId);
+        if (currentIndex < 0) throw new NotFoundException('Sheet not found');
+        const reordered = [...ordered];
+        const [moved] = reordered.splice(currentIndex, 1);
+        reordered.splice(targetIndex, 0, moved);
+
+        if (currentIndex !== targetIndex) {
+          await tx.$executeRaw`
+          UPDATE "sheets"
+          SET "index" = -"index" - 1
+          WHERE "spreadsheetId" = ${sheet.spreadsheetId}
+        `;
+          await Promise.all(
+            reordered.map(({ id }, index) =>
+              tx.sheet.update({
+                where: { id },
+                data: { index },
+              }),
+            ),
+          );
+        }
+
+        return tx.sheet.findMany({
+          where: { spreadsheetId: sheet.spreadsheetId },
+          orderBy: { index: 'asc' },
+        });
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   }
 
   private async assertUniqueSheetName(
@@ -405,7 +469,8 @@ export class SheetsService {
       },
       select: { id: true },
     });
-    if (duplicate) throw new ConflictException('A sheet with this name already exists');
+    if (duplicate)
+      throw new ConflictException('A sheet with this name already exists');
   }
 
   private async rewriteStoredSheetReferences(
@@ -423,17 +488,19 @@ export class SheetsService {
       },
       select: { id: true, formula: true },
     });
-    await Promise.all(formulaCells.map(({ id, formula }) => {
-      const rewritten = rewriteSheetReferences(formula!, oldName, newName);
-      if (rewritten === formula) return Promise.resolve();
-      return tx.cell.update({
-        where: { id },
-        data: {
-          formula: rewritten,
-          ...(newName === undefined ? { value: '#REF!' } : {}),
-        },
-      });
-    }));
+    await Promise.all(
+      formulaCells.map(({ id, formula }) => {
+        const rewritten = rewriteSheetReferences(formula!, oldName, newName);
+        if (rewritten === formula) return Promise.resolve();
+        return tx.cell.update({
+          where: { id },
+          data: {
+            formula: rewritten,
+            ...(newName === undefined ? { value: '#REF!' } : {}),
+          },
+        });
+      }),
+    );
   }
 
   async changeStructure(
@@ -445,14 +512,20 @@ export class SheetsService {
       index: number;
     },
   ) {
-    const sheet = await this.prisma.sheet.findUnique({ where: { id: sheetId } });
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+    });
     if (!sheet) throw new NotFoundException('Sheet not found');
 
     await this.checkEditAccess(userId, sheet.spreadsheetId);
     const size = change.axis === 'row' ? sheet.rowCount : sheet.colCount;
     const maxSize = change.axis === 'row' ? 1_000_000 : 18_278;
     const maxIndex = change.type === 'insert' ? size : size - 1;
-    if (!Number.isInteger(change.index) || change.index < 0 || change.index > maxIndex) {
+    if (
+      !Number.isInteger(change.index) ||
+      change.index < 0 ||
+      change.index > maxIndex
+    ) {
       throw new BadRequestException(
         `${change.axis} index must be between 0 and ${maxIndex}`,
       );
@@ -576,12 +649,16 @@ export class SheetsService {
       colMeta: Array<{ col: number; width: number; hidden: boolean }>;
     },
   ) {
-    const sheet = await this.prisma.sheet.findUnique({ where: { id: sheetId } });
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+    });
     if (!sheet) throw new NotFoundException('Sheet not found');
     await this.checkEditAccess(userId, sheet.spreadsheetId);
 
     if (view.frozenRows > sheet.rowCount || view.frozenCols > sheet.colCount) {
-      throw new BadRequestException('Frozen rows or columns exceed sheet dimensions');
+      throw new BadRequestException(
+        'Frozen rows or columns exceed sheet dimensions',
+      );
     }
     this.validateViewCoordinates(view.rowMeta, 'row', sheet.rowCount);
     this.validateViewCoordinates(view.colMeta, 'col', sheet.colCount);
@@ -621,7 +698,9 @@ export class SheetsService {
     for (const item of metadata) {
       const index = item[coordinate];
       if (!Number.isInteger(index) || index < 0 || index >= size) {
-        throw new BadRequestException(`${coordinate} metadata is out of bounds`);
+        throw new BadRequestException(
+          `${coordinate} metadata is out of bounds`,
+        );
       }
       if (seen.has(index)) {
         throw new BadRequestException(`Duplicate ${coordinate} metadata`);

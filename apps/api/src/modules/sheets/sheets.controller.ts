@@ -16,7 +16,11 @@ import { CreateSpreadsheetDto } from './dto/create-spreadsheet.dto';
 import { UpdateSpreadsheetDto } from './dto/update-spreadsheet.dto';
 import { UpdateCellDto, UpdateCellsDto } from './dto/update-cell.dto';
 import { AdminGuard } from '../auth/guards/admin.guard';
-import { CreateSheetDto, UpdateSheetDto } from './dto/sheet.dto';
+import {
+  CreateSheetDto,
+  ReorderSheetDto,
+  UpdateSheetDto,
+} from './dto/sheet.dto';
 import { StructuralChangeDto } from './dto/structural-change.dto';
 import { SheetViewDto } from './dto/sheet-view.dto';
 
@@ -161,6 +165,15 @@ export class SheetsController {
   @Delete('sheet/:sheetId')
   deleteSheet(@Request() req: any, @Param('sheetId') sheetId: string) {
     return this.sheetsService.deleteSheet(req.user.id, sheetId);
+  }
+
+  @Put('sheet/:sheetId/reorder')
+  reorderSheet(
+    @Request() req: any,
+    @Param('sheetId') sheetId: string,
+    @Body() dto: ReorderSheetDto,
+  ) {
+    return this.sheetsService.reorderSheet(req.user.id, sheetId, dto.index);
   }
 
   @Post('sheet/:sheetId/structure')

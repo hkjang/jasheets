@@ -190,6 +190,18 @@ export default function SpreadsheetPage() {
     setInitialCharts(Array.isArray(nextSheet.charts) ? nextSheet.charts : []);
   }, [sheetData, sheets]);
 
+  const reorderSheet = useCallback(async (sheetId: string, targetIndex: number) => {
+    await api.spreadsheets.reorderSheet(sheetId, targetIndex);
+    setSheets((current) => {
+      const sourceIndex = current.findIndex(({ id: candidateId }) => candidateId === sheetId);
+      if (sourceIndex < 0 || targetIndex < 0 || targetIndex >= current.length) return current;
+      const reordered = [...current];
+      const [moved] = reordered.splice(sourceIndex, 1);
+      reordered.splice(targetIndex, 0, moved);
+      return reordered.map((sheet, index) => ({ ...sheet, index }));
+    });
+  }, []);
+
   const handleDataChange = useCallback((nextData: SheetData) => {
     if (!activeSheetId) return;
     setData(nextData);
@@ -309,6 +321,7 @@ export default function SpreadsheetPage() {
       onSheetAdd={addSheet}
       onSheetRename={renameSheet}
       onSheetDelete={deleteSheet}
+      onSheetReorder={reorderSheet}
       onVersionChange={handleVersionChange}
       onChartsChange={handleChartsChange}
       onStructureChange={handleStructureChange}
