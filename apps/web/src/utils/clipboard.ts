@@ -25,7 +25,11 @@ export function parseTsv(text: string): string[][] {
   const rows: string[][] = [[]];
   let field = '';
   let quoted = false;
-  for (let i = 0; i < text.length; i++) {
+  // Excel and exported TSV files can prefix the first cell with a UTF-8 BOM.
+  // Treat it as transport metadata so formulas and values in that cell remain
+  // identical to content pasted directly from another spreadsheet.
+  const startIndex = text.charCodeAt(0) === 0xfeff ? 1 : 0;
+  for (let i = startIndex; i < text.length; i++) {
     const char = text[i];
     if (quoted) {
       if (char === '"' && text[i + 1] === '"') {

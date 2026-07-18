@@ -17,6 +17,13 @@ describe('spreadsheet clipboard', () => {
     expect(parseTsv('A\tB\r\nC\tD\r\n')).toEqual([['A', 'B'], ['C', 'D']]);
   });
 
+  it('removes an external TSV byte-order mark from only the first cell', () => {
+    expect(parseTsv('\uFEFF=SUM(A1:A2)\tA\uFEFFB')).toEqual([['=SUM(A1:A2)', 'A\uFEFFB']]);
+    expect(createPasteUpdates('\uFEFF=SUM(A1:A2)', { row: 1, col: 2 })).toEqual([
+      { row: 1, col: 2, value: '=SUM(A1:A2)' },
+    ]);
+  });
+
   it('creates cell updates relative to the paste origin', () => {
     expect(createPasteUpdates('A\tB\nC\tD', { row: 2, col: 3 })).toEqual([
       { row: 2, col: 3, value: 'A' }, { row: 2, col: 4, value: 'B' },
