@@ -26,6 +26,18 @@ export interface SpreadsheetDetail {
     charts?: unknown[];
   }>;
 }
+
+export interface SpreadsheetVersion {
+  id: string;
+  name?: string | null;
+  createdAt: string;
+  createdBy: {
+    id: string;
+    email: string;
+    name?: string | null;
+    avatar?: string | null;
+  };
+}
 const fetch = (input: RequestInfo | URL, init?: RequestInit) =>
   apiClient.fetch(String(input), init);
 
@@ -39,6 +51,28 @@ export const api = {
       });
       if (!res.ok) throw new Error("Login failed");
       return res.json();
+    },
+  },
+  versions: {
+    list: async (spreadsheetId: string): Promise<SpreadsheetVersion[]> => {
+      const res = await fetch(`${API_URL}/versions/spreadsheet/${spreadsheetId}`);
+      if (!res.ok) throw new Error('버전 기록을 불러오지 못했습니다.');
+      return res.json();
+    },
+    create: async (spreadsheetId: string, name?: string): Promise<SpreadsheetVersion> => {
+      const res = await fetch(`${API_URL}/versions/spreadsheet/${spreadsheetId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name }),
+      });
+      if (!res.ok) throw new Error('버전을 생성하지 못했습니다.');
+      return res.json();
+    },
+    restore: async (versionId: string): Promise<void> => {
+      const res = await fetch(`${API_URL}/versions/${versionId}/restore`, {
+        method: 'POST',
+      });
+      if (!res.ok) throw new Error('버전을 복원하지 못했습니다.');
     },
   },
   users: {

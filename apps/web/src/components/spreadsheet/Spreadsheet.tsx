@@ -162,7 +162,6 @@ export default function Spreadsheet({
     handleRedo,
     canUndo,
     canRedo,
-    history,
     sortRows,
     findNext,
     replaceAll,
@@ -1436,10 +1435,8 @@ export default function Spreadsheet({
         <VersionHistorySidebar
           isOpen={isHistoryOpen}
           onClose={() => setIsHistoryOpen(false)}
-          history={history}
-          onRestore={(index) =>
-            alert(`Restore version ${index} logic (requires patching)`)
-          }
+          spreadsheetId={spreadsheetId}
+          onRestore={() => window.location.reload()}
         />
         <UserCursors
           users={users}

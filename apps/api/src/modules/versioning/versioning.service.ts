@@ -1,6 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { Prisma } from '@prisma/client';
 
 export interface VersionSnapshot {
   cells: Array<{
@@ -23,19 +26,20 @@ export class VersioningService {
   constructor(private readonly prisma: PrismaService) {}
 
   // Create a new version snapshot
-  async createVersion(
-    userId: string,
-    spreadsheetId: string,
-    name?: string,
-  ) {
+  async createVersion(userId: string, spreadsheetId: string, name?: string) {
     // Verify access
     const spreadsheet = await this.prisma.spreadsheet.findUnique({
-      where: { id: spreadsheetId },
+      where: { id: spreadsheetId, deletedAt: null },
       include: {
         sheets: {
           include: {
             cells: true,
           },
+        },
+        permissions: {
+          where: { userId },
+          select: { role: true },
+          take: 1,
         },
       },
     });
@@ -45,10 +49,11 @@ export class VersioningService {
     }
 
     // Check if user has access
-    const hasAccess = spreadsheet.ownerId === userId ||
-      await this.prisma.permission.findFirst({
-        where: { spreadsheetId, userId },
-      });
+    const permission = spreadsheet.permissions[0];
+    const hasAccess =
+      spreadsheet.ownerId === userId ||
+      permission?.role === 'EDITOR' ||
+      permission?.role === 'OWNER';
 
     if (!hasAccess) {
       throw new ForbiddenException('Access denied');
@@ -64,7 +69,7 @@ export class VersioningService {
           value: cell.value,
           formula: cell.formula ?? undefined,
           format: cell.format ?? undefined,
-        }))
+        })),
       ),
       sheets: spreadsheet.sheets.map((sheet: any) => ({
         id: sheet.id,
@@ -90,19 +95,29 @@ export class VersioningService {
 
   // Get version history
   async getVersions(userId: string, spreadsheetId: string, limit = 50) {
+    const safeLimit = Number.isInteger(limit)
+      ? Math.min(Math.max(limit, 1), 100)
+      : 50;
     // Verify access
-    const spreadsheet = await this.prisma.spreadsheet.findUnique({
-      where: { id: spreadsheetId },
+    const spreadsheet = await this.prisma.spreadsheet.findFirst({
+      where: { id: spreadsheetId, deletedAt: null },
+      select: {
+        ownerId: true,
+        permissions: {
+          where: { userId },
+          select: { id: true },
+          take: 1,
+        },
+      },
     });
 
     if (!spreadsheet) {
       throw new NotFoundException('Spreadsheet not found');
     }
 
-    const hasAccess = spreadsheet.ownerId === userId ||
-      await this.prisma.permission.findFirst({
-        where: { spreadsheetId, userId },
-      });
+    const hasAccess =
+      spreadsheet.ownerId === userId ||
+      spreadsheet.permissions.length > 0;
 
     if (!hasAccess) {
       throw new ForbiddenException('Access denied');
@@ -111,8 +126,11 @@ export class VersioningService {
     return this.prisma.version.findMany({
       where: { spreadsheetId },
       orderBy: { createdAt: 'desc' },
-      take: limit,
-      include: {
+      take: safeLimit,
+      select: {
+        id: true,
+        name: true,
+        createdAt: true,
         createdBy: {
           select: { id: true, email: true, name: true, avatar: true },
         },
@@ -136,10 +154,11 @@ export class VersioningService {
       throw new NotFoundException('Version not found');
     }
 
-    const hasAccess = version.spreadsheet.ownerId === userId ||
-      await this.prisma.permission.findFirst({
+    const hasAccess =
+      version.spreadsheet.ownerId === userId ||
+      (await this.prisma.permission.findFirst({
         where: { spreadsheetId: version.spreadsheetId, userId },
-      });
+      }));
 
     if (!hasAccess) {
       throw new ForbiddenException('Access denied');
@@ -158,8 +177,10 @@ export class VersioningService {
       where: { spreadsheetId: version.spreadsheetId, userId },
     });
 
-    if (version.spreadsheet.ownerId !== userId && 
-        (!permission || !['EDITOR', 'OWNER'].includes(permission.role))) {
+    if (
+      version.spreadsheet.ownerId !== userId &&
+      (!permission || !['EDITOR', 'OWNER'].includes(permission.role))
+    ) {
       throw new ForbiddenException('You do not have edit access');
     }
 
@@ -182,7 +203,7 @@ export class VersioningService {
       // Recreate cells from snapshot
       if (snapshot.cells.length > 0) {
         await tx.cell.createMany({
-          data: snapshot.cells.map(cell => ({
+          data: snapshot.cells.map((cell) => ({
             sheetId: cell.sheetId,
             row: cell.row,
             col: cell.col,
@@ -192,6 +213,12 @@ export class VersioningService {
           })),
         });
       }
+
+      // Invalidate stale optimistic versions on every restored sheet.
+      await tx.sheet.updateMany({
+        where: { spreadsheetId: version.spreadsheetId },
+        data: { version: { increment: 1 } },
+      });
 
       // Update spreadsheet timestamp
       await tx.spreadsheet.update({
@@ -242,7 +269,11 @@ export class VersioningService {
   }
 
   // Get diff between two versions
-  async compareVersions(userId: string, versionId1: string, versionId2: string) {
+  async compareVersions(
+    userId: string,
+    versionId1: string,
+    versionId2: string,
+  ) {
     const [version1, version2] = await Promise.all([
       this.getVersion(userId, versionId1),
       this.getVersion(userId, versionId2),
@@ -255,8 +286,8 @@ export class VersioningService {
     const cellKey = (c: { sheetId: string; row: number; col: number }) =>
       `${c.sheetId}:${c.row}:${c.col}`;
 
-    const cells1 = new Map(snapshot1.cells.map(c => [cellKey(c), c]));
-    const cells2 = new Map(snapshot2.cells.map(c => [cellKey(c), c]));
+    const cells1 = new Map(snapshot1.cells.map((c) => [cellKey(c), c]));
+    const cells2 = new Map(snapshot2.cells.map((c) => [cellKey(c), c]));
 
     const changes: Array<{
       type: 'added' | 'removed' | 'modified';
@@ -304,8 +335,16 @@ export class VersioningService {
     }
 
     return {
-      version1: { id: version1.id, createdAt: version1.createdAt, name: version1.name },
-      version2: { id: version2.id, createdAt: version2.createdAt, name: version2.name },
+      version1: {
+        id: version1.id,
+        createdAt: version1.createdAt,
+        name: version1.name,
+      },
+      version2: {
+        id: version2.id,
+        createdAt: version2.createdAt,
+        name: version2.name,
+      },
       changes,
       totalChanges: changes.length,
     };
