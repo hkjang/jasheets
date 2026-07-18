@@ -45,7 +45,8 @@ interface SpreadsheetErrorStateProps {
   title: string;
   message: string;
   onRetry: () => void;
-  onBack: () => void;
+  onBack?: () => void;
+  backLabel?: string;
 }
 
 export function SpreadsheetErrorState({
@@ -53,6 +54,7 @@ export function SpreadsheetErrorState({
   message,
   onRetry,
   onBack,
+  backLabel = '대시보드로 이동',
 }: SpreadsheetErrorStateProps) {
   return (
     <main className="grid min-h-screen place-items-center bg-gray-50 px-5 py-12">
@@ -70,13 +72,15 @@ export function SpreadsheetErrorState({
         <p className="mt-2 text-sm leading-6 text-gray-600">{message}</p>
         <p className="mt-3 text-xs text-gray-400">입력 중이던 로컬 변경 사항은 삭제하지 않습니다.</p>
         <div className="mt-7 flex flex-col-reverse gap-3 sm:flex-row sm:justify-center">
-          <button
-            type="button"
-            onClick={onBack}
-            className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
-          >
-            대시보드로 이동
-          </button>
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="rounded-lg border border-gray-300 px-5 py-2.5 text-sm font-medium text-gray-700 transition hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+            >
+              {backLabel}
+            </button>
+          )}
           <button
             type="button"
             onClick={onRetry}
