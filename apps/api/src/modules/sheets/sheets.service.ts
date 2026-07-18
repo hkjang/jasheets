@@ -12,6 +12,7 @@ import { UpdateSpreadsheetDto } from './dto/update-spreadsheet.dto';
 import { PermissionRole, Prisma } from '@prisma/client';
 import { EventsService, CellChangeEvent } from '../events/events.service';
 import { createHash } from 'crypto';
+import { rewriteSheetReferences } from './sheet-reference.util';
 
 @Injectable()
 export class SheetsService {
@@ -319,6 +320,8 @@ export class SheetsService {
         );
       }
 
+      await this.assertUniqueSheetName(tx, spreadsheetId, name);
+
       const lastSheet = await tx.sheet.findFirst({
         where: { spreadsheetId },
         orderBy: { index: 'desc' },
@@ -331,7 +334,7 @@ export class SheetsService {
           index: (lastSheet?.index ?? -1) + 1,
         },
       });
-    });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   async updateSheet(userId: string, sheetId: string, data: { name: string }) {
@@ -345,10 +348,18 @@ export class SheetsService {
 
     await this.checkEditAccess(userId, sheet.spreadsheetId);
 
-    return this.prisma.sheet.update({
-      where: { id: sheetId },
-      data,
-    });
+    if (sheet.name === data.name) return sheet;
+
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertUniqueSheetName(tx, sheet.spreadsheetId, data.name, sheetId);
+      await this.rewriteStoredSheetReferences(
+        tx,
+        sheet.spreadsheetId,
+        sheet.name,
+        data.name,
+      );
+      return tx.sheet.update({ where: { id: sheetId }, data });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
   }
 
   async deleteSheet(userId: string, sheetId: string) {
@@ -362,18 +373,67 @@ export class SheetsService {
 
     await this.checkEditAccess(userId, sheet.spreadsheetId);
 
-    // Check if this is the last sheet
-    const sheetCount = await this.prisma.sheet.count({
-      where: { spreadsheetId: sheet.spreadsheetId },
-    });
+    return this.prisma.$transaction(async (tx) => {
+      const sheetCount = await tx.sheet.count({
+        where: { spreadsheetId: sheet.spreadsheetId },
+      });
+      if (sheetCount <= 1) {
+        throw new ForbiddenException('Cannot delete the last sheet');
+      }
+      await this.rewriteStoredSheetReferences(
+        tx,
+        sheet.spreadsheetId,
+        sheet.name,
+        undefined,
+        sheetId,
+      );
+      return tx.sheet.delete({ where: { id: sheetId } });
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  }
 
-    if (sheetCount <= 1) {
-      throw new ForbiddenException('Cannot delete the last sheet');
-    }
-
-    return this.prisma.sheet.delete({
-      where: { id: sheetId },
+  private async assertUniqueSheetName(
+    tx: Prisma.TransactionClient,
+    spreadsheetId: string,
+    name: string,
+    excludedSheetId?: string,
+  ) {
+    const duplicate = await tx.sheet.findFirst({
+      where: {
+        spreadsheetId,
+        name: { equals: name, mode: 'insensitive' },
+        ...(excludedSheetId ? { id: { not: excludedSheetId } } : {}),
+      },
+      select: { id: true },
     });
+    if (duplicate) throw new ConflictException('A sheet with this name already exists');
+  }
+
+  private async rewriteStoredSheetReferences(
+    tx: Prisma.TransactionClient,
+    spreadsheetId: string,
+    oldName: string,
+    newName?: string,
+    excludedSheetId?: string,
+  ) {
+    const formulaCells = await tx.cell.findMany({
+      where: {
+        sheet: { spreadsheetId },
+        formula: { not: null },
+        ...(excludedSheetId ? { sheetId: { not: excludedSheetId } } : {}),
+      },
+      select: { id: true, formula: true },
+    });
+    await Promise.all(formulaCells.map(({ id, formula }) => {
+      const rewritten = rewriteSheetReferences(formula!, oldName, newName);
+      if (rewritten === formula) return Promise.resolve();
+      return tx.cell.update({
+        where: { id },
+        data: {
+          formula: rewritten,
+          ...(newName === undefined ? { value: '#REF!' } : {}),
+        },
+      });
+    }));
   }
 
   async changeStructure(

@@ -11,8 +11,16 @@ import {
   SpreadsheetErrorState,
   SpreadsheetLoadingState,
 } from "@/components/ui/PageLoadState";
-import { DEFAULT_CONFIG, type ColumnDef, type RowDef, type SheetData } from "@/types/spreadsheet";
+import {
+  DEFAULT_CONFIG,
+  type CellData,
+  type ColumnDef,
+  type RowData,
+  type RowDef,
+  type SheetData,
+} from "@/types/spreadsheet";
 import { deserializeCellFormat } from "@/utils/cellPersistence";
+import { rewriteSheetNameReferences } from "@/utils/formulaReferences";
 
 function deserializeSheetData(sheet: SpreadsheetSheet): SheetData {
   const sheetData: SheetData = {};
@@ -25,6 +33,31 @@ function deserializeSheetData(sheet: SpreadsheetSheet): SheetData {
     };
   });
   return sheetData;
+}
+
+function rewriteWorkbookSheetReferences(
+  workbookData: Record<string, SheetData>,
+  sheetName: string,
+  replacement?: string,
+): Record<string, SheetData> {
+  return Object.fromEntries(Object.entries(workbookData).map(([sheetId, data]) => [
+    sheetId,
+    Object.fromEntries((Object.entries(data) as [string, RowData][]).map(([row, rowData]) => [
+      row,
+      Object.fromEntries((Object.entries(rowData) as [string, CellData][]).map(([col, cell]) => {
+        if (!cell.formula) return [col, cell];
+        const formula = rewriteSheetNameReferences(cell.formula, sheetName, replacement);
+        if (formula === cell.formula) return [col, cell];
+        return [col, {
+          ...cell,
+          formula,
+          ...(replacement === undefined
+            ? { value: '#REF!' as const, displayValue: '#REF!', error: '#REF!' }
+            : {}),
+        }];
+      })),
+    ])),
+  ]));
 }
 
 export default function SpreadsheetPage() {
@@ -128,21 +161,26 @@ export default function SpreadsheetPage() {
   }, [id, sheets]);
 
   const renameSheet = useCallback(async (sheetId: string, name: string) => {
+    const previousName = sheets.find(({ id: candidateId }) => candidateId === sheetId)?.name;
     const updated = await api.spreadsheets.renameSheet(sheetId, name);
+    if (previousName) {
+      setSheetData((current) => rewriteWorkbookSheetReferences(current, previousName, updated.name));
+    }
     setSheets((current) => current.map((sheet) => (
       sheet.id === sheetId ? { ...sheet, name: updated.name } : sheet
     )));
-  }, []);
+  }, [sheets]);
 
   const deleteSheet = useCallback(async (sheetId: string) => {
     const deletedIndex = sheets.findIndex(({ id: candidateId }) => candidateId === sheetId);
     if (deletedIndex < 0 || sheets.length <= 1) return;
+    const deletedName = sheets[deletedIndex].name;
     await api.spreadsheets.deleteSheet(sheetId);
     const remaining = sheets.filter(({ id: candidateId }) => candidateId !== sheetId);
     const nextSheet = remaining[Math.min(deletedIndex, remaining.length - 1)];
     setSheets(remaining);
     setSheetData((current) => {
-      const next = { ...current };
+      const next = rewriteWorkbookSheetReferences(current, deletedName);
       delete next[sheetId];
       return next;
     });
@@ -213,6 +251,9 @@ export default function SpreadsheetPage() {
     });
     return nextCols;
   }, [activeSheet]);
+  const workbook = useMemo(() => Object.fromEntries(
+    sheets.map((sheet) => [sheet.name, sheetData[sheet.id] ?? deserializeSheetData(sheet)]),
+  ), [sheetData, sheets]);
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -260,6 +301,8 @@ export default function SpreadsheetPage() {
       initialCols={initialCols}
       initialFrozenRows={activeSheet?.frozenRows}
       initialFrozenCols={activeSheet?.frozenCols}
+      workbook={workbook}
+      currentSheetName={activeSheet?.name}
       title={title}
       sheets={sheets.map(({ id: sheetId, name }) => ({ id: sheetId, name }))}
       onSheetSelect={selectSheet}

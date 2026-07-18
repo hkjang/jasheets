@@ -12,7 +12,7 @@ workerScope.onmessage = ({ data }: MessageEvent<FormulaWorkerRequest>) => {
   try {
     const response: FormulaWorkerResponse = {
       id: data.id,
-      data: recalculate(data.data, data.namedRanges),
+      data: recalculate(data.data, data.namedRanges, undefined, data.workbook),
     };
     workerScope.postMessage(response);
   } catch (error) {

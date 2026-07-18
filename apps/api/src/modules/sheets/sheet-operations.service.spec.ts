@@ -1,4 +1,4 @@
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { EventsService } from '../events/events.service';
 import { SheetsService } from './sheets.service';
@@ -12,9 +12,10 @@ describe('SheetsService sheet operations', () => {
       create: jest.fn(),
       updateMany: jest.fn(),
       update: jest.fn(),
+      delete: jest.fn(),
       findUniqueOrThrow: jest.fn(),
     },
-    cell: { deleteMany: jest.fn() },
+    cell: { deleteMany: jest.fn(), findMany: jest.fn(), update: jest.fn() },
     rowMeta: { deleteMany: jest.fn(), createMany: jest.fn() },
     colMeta: { deleteMany: jest.fn(), createMany: jest.fn() },
     comment: { deleteMany: jest.fn() },
@@ -35,7 +36,7 @@ describe('SheetsService sheet operations', () => {
     jest.clearAllMocks();
     jest.spyOn(service, 'checkEditAccess').mockResolvedValue(undefined);
     tx.sheet.count.mockResolvedValue(2);
-    tx.sheet.findFirst.mockResolvedValue({ index: 4 });
+    tx.sheet.findFirst.mockReset().mockResolvedValueOnce(null).mockResolvedValue({ index: 4 });
     tx.sheet.create.mockResolvedValue({
       id: 'sheet-3',
       spreadsheetId,
@@ -48,6 +49,7 @@ describe('SheetsService sheet operations', () => {
       rowCount: 1000,
       colCount: 26,
       version: 3,
+      name: 'Revenue',
     });
     tx.sheet.updateMany.mockResolvedValue({ count: 1 });
     tx.sheet.update.mockResolvedValue({ id: 'sheet-1', version: 4 });
@@ -58,6 +60,9 @@ describe('SheetsService sheet operations', () => {
       version: 4,
     });
     tx.cell.deleteMany.mockResolvedValue({ count: 0 });
+    tx.cell.findMany.mockResolvedValue([]);
+    tx.cell.update.mockResolvedValue({});
+    tx.sheet.delete.mockResolvedValue({ id: 'sheet-1' });
     tx.rowMeta.deleteMany.mockResolvedValue({ count: 0 });
     tx.rowMeta.createMany.mockResolvedValue({ count: 1 });
     tx.colMeta.deleteMany.mockResolvedValue({ count: 0 });
@@ -82,6 +87,33 @@ describe('SheetsService sheet operations', () => {
       service.addSheet('user-1', spreadsheetId, 'Too many'),
     ).rejects.toBeInstanceOf(BadRequestException);
     expect(tx.sheet.create).not.toHaveBeenCalled();
+  });
+
+  it('renames stored cross-sheet formulas with the sheet', async () => {
+    tx.cell.findMany.mockResolvedValueOnce([
+      { id: 'cell-1', formula: '=Revenue!A1*2' },
+    ]);
+    tx.sheet.update.mockResolvedValueOnce({ id: 'sheet-1', name: 'Q1 Sales' });
+
+    await service.updateSheet('user-1', 'sheet-1', { name: 'Q1 Sales' });
+
+    expect(tx.cell.update).toHaveBeenCalledWith({
+      where: { id: 'cell-1' },
+      data: { formula: "='Q1 Sales'!A1*2" },
+    });
+    expect(tx.sheet.update).toHaveBeenCalledWith({
+      where: { id: 'sheet-1' },
+      data: { name: 'Q1 Sales' },
+    });
+  });
+
+  it('rejects duplicate sheet names case-insensitively', async () => {
+    tx.sheet.findFirst.mockReset().mockResolvedValueOnce({ id: 'sheet-2' });
+
+    await expect(
+      service.updateSheet('user-1', 'sheet-1', { name: 'revenue' }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.sheet.update).not.toHaveBeenCalled();
   });
 
   it('increments the row count and shifts rows for an insertion', async () => {

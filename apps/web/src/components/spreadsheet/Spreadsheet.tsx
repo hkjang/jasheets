@@ -79,6 +79,7 @@ import SnapshotManagerPanel from "./SnapshotManagerPanel";
 import CommandPalette from "./CommandPalette";
 import type { PersistedCellUpdate } from "@/utils/cellPersistence";
 import SheetTabs, { type SheetTab } from "./SheetTabs";
+import type { FormulaWorkbook } from "@/utils/FormulaEngine";
 
 interface SpreadsheetProps {
   initialData?: SheetData;
@@ -93,6 +94,8 @@ interface SpreadsheetProps {
   initialCols?: ColumnDef[];
   initialFrozenRows?: number;
   initialFrozenCols?: number;
+  workbook?: FormulaWorkbook;
+  currentSheetName?: string;
   title?: string;
   sheets?: SheetTab[];
   onSheetSelect?: (sheetId: string) => Promise<void> | void;
@@ -120,6 +123,8 @@ export default function Spreadsheet({
   initialCols,
   initialFrozenRows = 0,
   initialFrozenCols = 0,
+  workbook,
+  currentSheetName,
   title = "Untitled Spreadsheet",
   sheets = [],
   onSheetSelect,
@@ -213,6 +218,8 @@ export default function Spreadsheet({
     onDataChange,
     onLocalCellsChange: queueChanges,
     currentUserId: user?.id,
+    workbook,
+    currentSheetName,
   });
 
   // Selection

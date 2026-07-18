@@ -202,3 +202,44 @@ describe('text and scalar formulas', () => {
     expect(evaluateFormula('=A1&', textData)).toBe('#VALUE!');
   });
 });
+
+describe('cross-sheet formulas', () => {
+  const workbook = {
+    Summary: {},
+    Revenue: {
+      0: {
+        0: { value: 10 },
+        1: { value: 20 },
+        2: { value: 'paid' },
+      },
+      1: {
+        0: { value: 30 },
+        1: { value: 40 },
+      },
+    },
+    'Q1 Sales': {
+      0: { 0: { value: 7 } },
+    },
+  };
+
+  it('tokenizes quoted and unquoted sheet references and ranges', () => {
+    expect(tokenize("=Revenue!A1+'Q1 Sales'!$A$1+SUM(Revenue!A1:B2)")).toEqual(
+      expect.arrayContaining([
+        { type: 'SHEET_REF', value: 'Revenue!A1' },
+        { type: 'SHEET_REF', value: 'Q1 Sales!$A$1' },
+        { type: 'SHEET_RANGE', value: 'Revenue!A1:B2' },
+      ]),
+    );
+  });
+
+  it('evaluates scalar, arithmetic, range, lookup, and quoted-name references', () => {
+    expect(evaluateFormula('=Revenue!A1', {}, {}, 'en-US', workbook)).toBe(10);
+    expect(evaluateFormula("=Revenue!A1+'Q1 Sales'!A1", {}, {}, 'en-US', workbook)).toBe(17);
+    expect(evaluateFormula('=SUM(Revenue!A1:B2)', {}, {}, 'en-US', workbook)).toBe(100);
+    expect(evaluateFormula('=VLOOKUP(30,Revenue!A1:B2,2,FALSE)', {}, {}, 'en-US', workbook)).toBe(40);
+  });
+
+  it('returns a reference error for a missing sheet', () => {
+    expect(evaluateFormula('=Missing!A1+1', {}, {}, 'en-US', workbook)).toBe('#REF!');
+  });
+});

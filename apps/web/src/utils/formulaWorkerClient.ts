@@ -1,9 +1,11 @@
 import type { NamedRanges, SheetData } from '@/types/spreadsheet';
+import type { FormulaWorkbook } from './FormulaEngine';
 
 export interface FormulaWorkerRequest {
   id: number;
   data: SheetData;
   namedRanges: NamedRanges;
+  workbook?: FormulaWorkbook;
 }
 
 export interface FormulaWorkerResponse {
@@ -43,11 +45,15 @@ export class FormulaWorkerClient {
     };
   }
 
-  calculate(data: SheetData, namedRanges: NamedRanges = {}): Promise<SheetData> {
+  calculate(
+    data: SheetData,
+    namedRanges: NamedRanges = {},
+    workbook?: FormulaWorkbook,
+  ): Promise<SheetData> {
     const id = ++this.nextId;
     return new Promise((resolve, reject) => {
       this.pending.set(id, { resolve, reject });
-      this.worker.postMessage({ id, data, namedRanges });
+      this.worker.postMessage({ id, data, namedRanges, workbook });
     });
   }
 

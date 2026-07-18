@@ -1,5 +1,5 @@
 import { CellPosition, NamedRanges, SheetData } from '@/types/spreadsheet';
-import { tokenize, evaluateFormula } from './FormulaEngine';
+import { tokenize, evaluateFormula, type FormulaWorkbook } from './FormulaEngine';
 import { formatValue } from './formatting';
 
 // Helper to get cell key like "0:1" for row 0, col 1
@@ -97,6 +97,7 @@ export function recalculate(
     data: SheetData,
     namedRanges: NamedRanges = {},
     changedCells?: CellPosition[],
+    workbook?: FormulaWorkbook,
 ): SheetData {
     // 1. Build Graph
     const graph = new Map<string, string[]>(); // Key -> dependants (who depends on Key)
@@ -269,7 +270,7 @@ export function recalculate(
         if (cell && cell.formula) {
             try {
                 // Evaluate
-                const result = evaluateFormula(cell.formula, data, namedRanges);
+                const result = evaluateFormula(cell.formula, data, namedRanges, 'en-US', workbook);
                 const scalarResult = Array.isArray(result) ? (result[0]?.[0] ?? '#VALUE!') : result;
                  // Check if result changed?
                  // Update cell

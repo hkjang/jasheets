@@ -10,7 +10,7 @@ import { normalizeLocalizedFormula } from './localeNumber';
  * - References: A1, B2, A1:B2 (Ranges)
  */
 
-export type TokenType = 'NUMBER' | 'STRING' | 'REF' | 'RANGE' | 'NAME' | 'FUNCTION' | 'OPERATOR' | 'LPAREN' | 'RPAREN' | 'COMMA' | 'EOF';
+export type TokenType = 'NUMBER' | 'STRING' | 'REF' | 'RANGE' | 'SHEET_REF' | 'SHEET_RANGE' | 'NAME' | 'FUNCTION' | 'OPERATOR' | 'LPAREN' | 'RPAREN' | 'COMMA' | 'EOF';
 
 export interface Token {
   type: TokenType;
@@ -26,6 +26,48 @@ const FUNCTIONS = [
 ];
 
 export type FormulaResult = string | number | boolean | number[][];
+export type FormulaWorkbook = Record<string, SheetData>;
+
+interface QualifiedReference {
+  sheetName: string;
+  reference: string;
+}
+
+const CELL_REFERENCE_SOURCE = '\\$?[A-Za-z]+\\$?[1-9][0-9]*';
+const QUALIFIED_REFERENCE = new RegExp(
+  `^(?:'((?:[^']|'')+)'|([A-Za-z_][A-Za-z0-9_.]*))!(${CELL_REFERENCE_SOURCE}(?::${CELL_REFERENCE_SOURCE})?)`,
+);
+
+function readQualifiedReference(input: string): QualifiedReference | null {
+  const match = input.match(QUALIFIED_REFERENCE);
+  if (!match) return null;
+  return {
+    sheetName: (match[1] ? match[1].replace(/''/g, "'") : match[2]),
+    reference: match[3].toUpperCase(),
+  };
+}
+
+function parseQualifiedReference(input: string): QualifiedReference | null {
+  const match = input.match(QUALIFIED_REFERENCE);
+  return match?.[0].length === input.length ? readQualifiedReference(input) : null;
+}
+
+function resolveWorkbookSheet(workbook: FormulaWorkbook | undefined, sheetName: string): SheetData | null {
+  if (!workbook) return null;
+  if (workbook[sheetName]) return workbook[sheetName];
+  const normalized = sheetName.toLocaleLowerCase();
+  const match = Object.entries(workbook).find(([name]) => name.toLocaleLowerCase() === normalized);
+  return match?.[1] ?? null;
+}
+
+function qualifiedTokenValue(reference: QualifiedReference): string {
+  return `${reference.sheetName}!${reference.reference}`;
+}
+
+function splitQualifiedToken(value: string): QualifiedReference {
+  const separator = value.lastIndexOf('!');
+  return { sheetName: value.slice(0, separator), reference: value.slice(separator + 1) };
+}
 
 export function tokenize(formula: string): Token[] {
   const tokens: Token[] = [];
@@ -84,6 +126,19 @@ export function tokenize(formula: string): Token[] {
       continue;
     }
 
+    if (char === "'") {
+      const qualified = readQualifiedReference(formula.slice(i));
+      if (qualified) {
+        const consumed = formula.slice(i).match(QUALIFIED_REFERENCE)![0].length;
+        tokens.push({
+          type: qualified.reference.includes(':') ? 'SHEET_RANGE' : 'SHEET_REF',
+          value: qualifiedTokenValue(qualified),
+        });
+        i += consumed;
+        continue;
+      }
+    }
+
     if (char === '"' || char === "'") {
       const quote = char;
       let value = '';
@@ -106,6 +161,16 @@ export function tokenize(formula: string): Token[] {
     }
 
     if (/[A-Za-z$]/.test(char)) {
+      const qualified = readQualifiedReference(formula.slice(i));
+      if (qualified) {
+        const consumed = formula.slice(i).match(QUALIFIED_REFERENCE)![0].length;
+        tokens.push({
+          type: qualified.reference.includes(':') ? 'SHEET_RANGE' : 'SHEET_REF',
+          value: qualifiedTokenValue(qualified),
+        });
+        i += consumed;
+        continue;
+      }
       let word = '';
       while (i < formula.length && /[A-Za-z0-9:$]/.test(formula[i])) { // Include : and $ for ranges/references
         word += formula[i];
@@ -288,11 +353,21 @@ function parseStringLiteral(argument: string): string | undefined {
     return undefined;
 }
 
-function lookupValue(argument: string, data: SheetData): string | number | boolean | null {
+function lookupValue(
+    argument: string,
+    data: SheetData,
+    workbook?: FormulaWorkbook,
+): string | number | boolean | null {
     const stringLiteral = parseStringLiteral(argument);
     if (stringLiteral !== undefined) return stringLiteral;
     if (/^(TRUE|FALSE)$/i.test(argument)) return argument.toUpperCase() === 'TRUE';
     if (!Number.isNaN(Number(argument))) return Number(argument);
+    const qualified = parseQualifiedReference(argument);
+    if (qualified) {
+        const target = resolveWorkbookSheet(workbook, qualified.sheetName);
+        const ref = parseCellRef(qualified.reference);
+        return target && ref ? (target[ref.row]?.[ref.col]?.value ?? null) : '#REF!';
+    }
     const ref = parseCellRef(argument.toUpperCase());
     return ref ? (data[ref.row]?.[ref.col]?.value ?? null) : argument;
 }
@@ -394,23 +469,40 @@ function evaluateArgument(
     data: SheetData,
     namedRanges: NamedRanges,
     locale: string,
+    workbook?: FormulaWorkbook,
 ): FormulaResult {
     const trimmed = argument.trim();
     if (parseStringLiteral(trimmed) !== undefined || /^(?:TRUE|FALSE)$/i.test(trimmed) || !Number.isNaN(Number(trimmed))) {
-        return lookupValue(trimmed, data) ?? '';
+        return lookupValue(trimmed, data, workbook) ?? '';
+    }
+    const qualified = parseQualifiedReference(trimmed);
+    if (qualified) {
+        const target = resolveWorkbookSheet(workbook, qualified.sheetName);
+        const ref = parseCellRef(qualified.reference);
+        return target && ref ? (target[ref.row]?.[ref.col]?.value ?? 0) : '#REF!';
     }
     const ref = parseCellRef(trimmed.toUpperCase());
     if (ref) return data[ref.row]?.[ref.col]?.value ?? 0;
-    return evaluateFormula(`=${trimmed}`, data, namedRanges, locale);
+    return evaluateFormula(`=${trimmed}`, data, namedRanges, locale, workbook);
 }
 
-function evaluateLookupFormula(formula: string, data: SheetData, namedRanges: NamedRanges): FormulaResult | undefined {
+function evaluateLookupFormula(
+    formula: string,
+    data: SheetData,
+    namedRanges: NamedRanges,
+    workbook?: FormulaWorkbook,
+): FormulaResult | undefined {
     const match = formula.match(/^=(VLOOKUP|HLOOKUP|INDEX|MATCH|XLOOKUP)\((.*)\)$/i);
     if (!match) return undefined;
     const name = match[1].toUpperCase();
     const args = splitFunctionArgs(match[2]);
     const matrixFor = (argument: string) => {
         const named = namedRanges[argument.toUpperCase()];
+        const qualified = parseQualifiedReference(argument);
+        if (qualified) {
+            const target = resolveWorkbookSheet(workbook, qualified.sheetName);
+            return target ? getRangeMatrix(qualified.reference, target) : [];
+        }
         const range = named
             ? `${columnIndexToName(named.start.col)}${named.start.row + 1}:${columnIndexToName(named.end.col)}${named.end.row + 1}`
             : argument.toUpperCase();
@@ -419,21 +511,21 @@ function evaluateLookupFormula(formula: string, data: SheetData, namedRanges: Na
     const scalar = (value: string | number | boolean | null | undefined): FormulaResult => value ?? '#N/A';
 
     if (name === 'VLOOKUP') {
-        const key = lookupValue(args[0], data);
+        const key = lookupValue(args[0], data, workbook);
         const table = matrixFor(args[1]);
         const column = Number(args[2]) - 1;
         const row = table.find((candidate) => valuesEqual(candidate[0], key));
         return column < 0 || column >= (table[0]?.length ?? 0) ? '#REF!' : scalar(row?.[column]);
     }
     if (name === 'HLOOKUP') {
-        const key = lookupValue(args[0], data);
+        const key = lookupValue(args[0], data, workbook);
         const table = matrixFor(args[1]);
         const rowIndex = Number(args[2]) - 1;
         const column = table[0]?.findIndex((candidate) => valuesEqual(candidate, key)) ?? -1;
         return rowIndex < 0 || rowIndex >= table.length ? '#REF!' : scalar(column < 0 ? undefined : table[rowIndex][column]);
     }
     if (name === 'MATCH') {
-        const key = lookupValue(args[0], data);
+        const key = lookupValue(args[0], data, workbook);
         const values = matrixFor(args[1]).flat();
         const index = values.findIndex((candidate) => valuesEqual(candidate, key));
         return index < 0 ? '#N/A' : index + 1;
@@ -447,11 +539,11 @@ function evaluateLookupFormula(formula: string, data: SheetData, namedRanges: Na
             : scalar(table[row][col]);
     }
 
-    const key = lookupValue(args[0], data);
+    const key = lookupValue(args[0], data, workbook);
     const lookup = matrixFor(args[1]).flat();
     const returns = matrixFor(args[2]).flat();
     const index = lookup.findIndex((candidate) => valuesEqual(candidate, key));
-    return index < 0 ? scalar(args[3] ? lookupValue(args[3], data) : undefined) : scalar(returns[index]);
+    return index < 0 ? scalar(args[3] ? lookupValue(args[3], data, workbook) : undefined) : scalar(returns[index]);
 }
 
 export function evaluateFormula(
@@ -459,6 +551,7 @@ export function evaluateFormula(
     data: SheetData,
     namedRanges: NamedRanges = {},
     locale: string = 'en-US',
+    workbook?: FormulaWorkbook,
 ): FormulaResult {
     try {
         if (!formula.startsWith('=')) return formula;
@@ -466,7 +559,14 @@ export function evaluateFormula(
 
         const directValue = formula.slice(1).trim();
         if (parseStringLiteral(directValue) !== undefined || /^(?:TRUE|FALSE)$/i.test(directValue)) {
-            return lookupValue(directValue, data) ?? '';
+            return lookupValue(directValue, data, workbook) ?? '';
+        }
+        if (formula.includes('#REF!')) return '#REF!';
+        const directQualified = parseQualifiedReference(directValue);
+        if (directQualified) {
+            const target = resolveWorkbookSheet(workbook, directQualified.sheetName);
+            const ref = parseCellRef(directQualified.reference);
+            return target && ref ? (target[ref.row]?.[ref.col]?.value ?? 0) : '#REF!';
         }
         const directRef = parseCellRef(directValue.toUpperCase());
         if (directRef) return data[directRef.row]?.[directRef.col]?.value ?? 0;
@@ -475,29 +575,29 @@ export function evaluateFormula(
         if (conditional) {
             const args = splitFunctionArgs(conditional[1]);
             if (args.length < 2 || args.length > 3) return '#VALUE!';
-            const condition = evaluateArgument(args[0], data, namedRanges, locale);
+            const condition = evaluateArgument(args[0], data, namedRanges, locale, workbook);
             if (isFormulaError(condition)) return condition;
             const branch = condition ? args[1] : args[2];
-            return branch === undefined ? false : evaluateArgument(branch, data, namedRanges, locale);
+            return branch === undefined ? false : evaluateArgument(branch, data, namedRanges, locale, workbook);
         }
 
         const errorHandler = formula.match(/^=(IFERROR|IFNA)\((.*)\)$/i);
         if (errorHandler) {
             const args = splitFunctionArgs(errorHandler[2]);
             if (args.length !== 2) return '#VALUE!';
-            const result = evaluateFormula(`=${args[0]}`, data, namedRanges, locale);
+            const result = evaluateFormula(`=${args[0]}`, data, namedRanges, locale, workbook);
             const recover = errorHandler[1].toUpperCase() === 'IFERROR'
                 ? isFormulaError(result)
                 : result === '#N/A';
             if (!recover) return result;
-            return evaluateArgument(args[1], data, namedRanges, locale);
+            return evaluateArgument(args[1], data, namedRanges, locale, workbook);
         }
 
         const comparison = findTopLevelComparison(formula.slice(1));
         if (comparison) {
-            const left = evaluateArgument(comparison.left, data, namedRanges, locale);
+            const left = evaluateArgument(comparison.left, data, namedRanges, locale, workbook);
             if (isFormulaError(left)) return left;
-            const right = evaluateArgument(comparison.right, data, namedRanges, locale);
+            const right = evaluateArgument(comparison.right, data, namedRanges, locale, workbook);
             if (isFormulaError(right)) return right;
             if (Array.isArray(left) || Array.isArray(right)) return '#VALUE!';
             return compareValues(left, comparison.operator, right);
@@ -508,7 +608,7 @@ export function evaluateFormula(
             let result = '';
             for (const part of concatenation) {
                 if (!part) return '#VALUE!';
-                const value = evaluateArgument(part, data, namedRanges, locale);
+                const value = evaluateArgument(part, data, namedRanges, locale, workbook);
                 if (isFormulaError(value)) return value;
                 if (Array.isArray(value)) return '#VALUE!';
                 result += String(value ?? '');
@@ -516,7 +616,7 @@ export function evaluateFormula(
             return result;
         }
 
-        const lookupResult = evaluateLookupFormula(formula, data, namedRanges);
+        const lookupResult = evaluateLookupFormula(formula, data, namedRanges, workbook);
         if (lookupResult !== undefined) return lookupResult;
 
         const sequence = formula.match(/^=SEQUENCE\(\s*(\d+)\s*(?:,\s*(\d+)\s*)?(?:,\s*(-?\d+(?:\.\d+)?)\s*)?(?:,\s*(-?\d+(?:\.\d+)?)\s*)?\)$/i);
@@ -631,6 +731,18 @@ export function evaluateFormula(
                 return isNaN(num) ? 0 : num;
             }
 
+            if (token.type === 'SHEET_REF') {
+                consume();
+                const qualified = splitQualifiedToken(token.value);
+                const target = resolveWorkbookSheet(workbook, qualified.sheetName);
+                const coords = parseCellRef(qualified.reference);
+                if (!target || !coords) throw new Error('#REF!');
+                const val = target[coords.row]?.[coords.col]?.value;
+                if (isFormulaError(val)) throw new Error(val);
+                const num = parseFloat(String(val));
+                return isNaN(num) ? 0 : num;
+            }
+
             if (token.type === 'NAME') {
                 consume();
                 const range = namedRanges[token.value];
@@ -674,6 +786,12 @@ export function evaluateFormula(
                       consume();
                       const rangeVals = getRangeValues(t.value, data);
                       args.push(...rangeVals);
+                  } else if (t.type === 'SHEET_RANGE') {
+                      consume();
+                      const qualified = splitQualifiedToken(t.value);
+                      const target = resolveWorkbookSheet(workbook, qualified.sheetName);
+                      if (!target) throw new Error('#REF!');
+                      args.push(...getRangeValues(qualified.reference, target));
                   } else if (t.type === 'NAME') {
                       consume();
                       const range = namedRanges[t.value];

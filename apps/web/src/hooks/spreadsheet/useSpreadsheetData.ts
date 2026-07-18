@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { CellRange, DataValidationRule, NamedRanges, ProtectedRange, SheetData, CellStyle } from '@/types/spreadsheet';
 import { produce, applyPatches, Patch, enablePatches } from 'immer';
 // Use local FormulaEngine
-import { evaluateFormula } from '@/utils/FormulaEngine';
+import { evaluateFormula, type FormulaWorkbook } from '@/utils/FormulaEngine';
 import { formatValue } from '@/utils/formatting';
 import { parseInput } from '@/utils/inputParser';
 import { recalculate } from '@/utils/RecalculationEngine';
@@ -31,6 +31,8 @@ interface UseSpreadsheetDataProps {
     onDataChange?: (data: SheetData) => void;
     onLocalCellsChange?: (updates: PersistedCellUpdate[]) => void;
     currentUserId?: string;
+    workbook?: FormulaWorkbook;
+    currentSheetName?: string;
 }
 
 function spillArray(
@@ -76,16 +78,31 @@ function rewriteFormulas(data: SheetData, change: StructuralChange): void {
     });
 }
 
-export function useSpreadsheetData({ initialData = {}, onDataChange, onLocalCellsChange, currentUserId }: UseSpreadsheetDataProps) {
+export function useSpreadsheetData({
+    initialData = {},
+    onDataChange,
+    onLocalCellsChange,
+    currentUserId,
+    workbook,
+    currentSheetName,
+}: UseSpreadsheetDataProps) {
     // Note: initialData is only used for initial state.
     // External updates should use updateData() directly to avoid infinite loops.
-    const [data, setData] = useState<SheetData>(() => initialData || {});
+    const [data, setData] = useState<SheetData>(() => produce(initialData || {}, (draft) => {
+        const calculationWorkbook = currentSheetName
+            ? { ...workbook, [currentSheetName]: draft as unknown as SheetData }
+            : workbook;
+        recalculate(draft as unknown as SheetData, {}, undefined, calculationWorkbook);
+    }));
     const [history, setHistory] = useState<Commit[]>([]);
     const [historyIndex, setHistoryIndex] = useState(-1);
     const [namedRanges, setNamedRanges] = useState<NamedRanges>({});
     const [protectedRanges, setProtectedRanges] = useState<ProtectedRange[]>([]);
     const formulaWorkerRef = useRef<FormulaWorkerClient | null>(null);
     const workerGenerationRef = useRef(0);
+    const workbookFor = useCallback((current: SheetData): FormulaWorkbook | undefined => (
+        currentSheetName ? { ...workbook, [currentSheetName]: current } : workbook
+    ), [currentSheetName, workbook]);
 
     useEffect(() => {
         if (typeof Worker === 'undefined') return;
@@ -129,14 +146,14 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, onLocalCell
         setData(newData);
         const worker = formulaWorkerRef.current;
         if (!worker) return;
-        void worker.calculate(newData, namedRanges).then((calculated) => {
+        void worker.calculate(newData, namedRanges, workbookFor(newData)).then((calculated) => {
             if (generation !== workerGenerationRef.current) return;
             setData(calculated);
             onDataChange?.(calculated);
         }).catch(() => {
             // Keep the server-provided values when worker calculation fails.
         });
-    }, [namedRanges, onDataChange]);
+    }, [namedRanges, onDataChange, workbookFor]);
 
 
 
@@ -168,7 +185,8 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, onLocalCell
             if (isFormula) {
                 try {
                     // ... formula eval ...
-                    const result = evaluateFormula(value, draft as unknown as SheetData, namedRanges);
+                    const currentData = draft as unknown as SheetData;
+                    const result = evaluateFormula(value, currentData, namedRanges, 'en-US', workbookFor(currentData));
                     if (Array.isArray(result)) {
                         arrayResult = result;
                         numValue = result[0]?.[0] ?? '#VALUE!';
@@ -221,9 +239,10 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, onLocalCell
             }
 
             // Trigger Recalculation
-            recalculate(draft, namedRanges, [{ row, col }]);
+            const currentData = draft as unknown as SheetData;
+            recalculate(currentData, namedRanges, [{ row, col }], workbookFor(currentData));
         });
-    }, [applyChange, namedRanges, protectedRanges, currentUserId]);
+    }, [applyChange, namedRanges, protectedRanges, currentUserId, workbookFor]);
 
     const updateCells = useCallback((updates: { row: number; col: number; value: string }[]) => {
         applyChange((draft) => {
@@ -251,7 +270,8 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, onLocalCell
 
                 if (isFormula) {
                     try {
-                        const result = evaluateFormula(value, draft as unknown as SheetData, namedRanges);
+                        const currentData = draft as unknown as SheetData;
+                        const result = evaluateFormula(value, currentData, namedRanges, 'en-US', workbookFor(currentData));
                         if (Array.isArray(result)) {
                             arrayResult = result;
                             numValue = result[0]?.[0] ?? '#VALUE!';
@@ -295,9 +315,10 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, onLocalCell
                     }
                 }
             });
-            recalculate(draft, namedRanges, updates.map(({ row, col }) => ({ row, col })));
+            const currentData = draft as unknown as SheetData;
+            recalculate(currentData, namedRanges, updates.map(({ row, col }) => ({ row, col })), workbookFor(currentData));
         });
-    }, [applyChange, namedRanges, protectedRanges, currentUserId]);
+    }, [applyChange, namedRanges, protectedRanges, currentUserId, workbookFor]);
 
     const updateCellFormat = useCallback((range: { start: { row: number, col: number }, end: { row: number, col: number } } | null, format: string) => {
         if (!range) return;
@@ -422,9 +443,10 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, onLocalCell
             // Ensure the new row is empty (it might have been deleted above, or didn't exist)
             draft[rowIndex] = {};
             rewriteFormulas(draft, { axis: 'row', type: 'insert', index: rowIndex });
-            recalculate(draft, namedRanges);
+            const currentData = draft as unknown as SheetData;
+            recalculate(currentData, namedRanges, undefined, workbookFor(currentData));
         });
-    }, [applyChange, namedRanges]);
+    }, [applyChange, namedRanges, workbookFor]);
 
     const deleteRow = useCallback((rowIndex: number) => {
         applyChange((draft) => {
@@ -440,9 +462,10 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, onLocalCell
                 }
             }
             rewriteFormulas(draft, { axis: 'row', type: 'delete', index: rowIndex });
-            recalculate(draft, namedRanges);
+            const currentData = draft as unknown as SheetData;
+            recalculate(currentData, namedRanges, undefined, workbookFor(currentData));
         });
-    }, [applyChange, namedRanges]);
+    }, [applyChange, namedRanges, workbookFor]);
 
     const insertColumn = useCallback((colIndex: number) => {
         applyChange((draft) => {
@@ -461,9 +484,10 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, onLocalCell
                 }
             }
             rewriteFormulas(draft, { axis: 'column', type: 'insert', index: colIndex });
-            recalculate(draft, namedRanges);
+            const currentData = draft as unknown as SheetData;
+            recalculate(currentData, namedRanges, undefined, workbookFor(currentData));
         });
-    }, [applyChange, namedRanges]);
+    }, [applyChange, namedRanges, workbookFor]);
 
     const deleteColumn = useCallback((colIndex: number) => {
         applyChange((draft) => {
@@ -485,9 +509,10 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, onLocalCell
                 }
             }
             rewriteFormulas(draft, { axis: 'column', type: 'delete', index: colIndex });
-            recalculate(draft, namedRanges);
+            const currentData = draft as unknown as SheetData;
+            recalculate(currentData, namedRanges, undefined, workbookFor(currentData));
         });
-    }, [applyChange, namedRanges]);
+    }, [applyChange, namedRanges, workbookFor]);
 
     return {
         data,
@@ -513,7 +538,8 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, onLocalCell
             const next = { ...namedRanges, [normalizedName]: range };
             setNamedRanges(next);
             setData((currentData) => produce(currentData, (draft) => {
-                recalculate(draft, next);
+                const currentData = draft as unknown as SheetData;
+                recalculate(currentData, next, undefined, workbookFor(currentData));
             }));
         },
         deleteNamedRange: (name: string) => {
@@ -521,7 +547,8 @@ export function useSpreadsheetData({ initialData = {}, onDataChange, onLocalCell
             delete next[name.toUpperCase()];
             setNamedRanges(next);
             setData((currentData) => produce(currentData, (draft) => {
-                recalculate(draft, next);
+                const currentData = draft as unknown as SheetData;
+                recalculate(currentData, next, undefined, workbookFor(currentData));
             }));
         },
         setData,
