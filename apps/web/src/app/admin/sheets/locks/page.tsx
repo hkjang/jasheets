@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import { AdminHeader } from '../../../../components/admin/AdminHeader';
 import styles from '../permissions/page.module.css';
 
@@ -25,7 +26,7 @@ export default function LocksPage() {
 
     const fetchLocks = async () => {
         try {
-            const res = await fetch('/api/admin/sheet-locks', {
+            const res = await boundedFetch('/api/admin/sheet-locks', {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });
             if (res.ok) {
@@ -43,7 +44,7 @@ export default function LocksPage() {
         if (!confirm('정말 강제로 잠금을 해제하시겠습니까?')) return;
 
         try {
-            const res = await fetch(`/api/admin/sheet-locks/${sheetId}/force`, {
+            const res = await boundedFetch(`/api/admin/sheet-locks/${sheetId}/force`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });
@@ -58,7 +59,7 @@ export default function LocksPage() {
 
     const handleCleanup = async () => {
         try {
-            const res = await fetch('/api/admin/sheet-locks/cleanup', {
+            const res = await boundedFetch('/api/admin/sheet-locks/cleanup', {
                 method: 'POST',
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import { AdminHeader } from '../../../../components/admin/AdminHeader';
 import styles from './page.module.css';
 
@@ -49,7 +50,7 @@ export default function PermissionsPage() {
 
     const fetchPolicies = async () => {
         try {
-            const res = await fetch('/api/admin/permission-policies', {
+            const res = await boundedFetch('/api/admin/permission-policies', {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });
             if (res.ok) {
@@ -71,7 +72,7 @@ export default function PermissionsPage() {
                 : '/api/admin/permission-policies';
             const method = editingPolicy ? 'PUT' : 'POST';
 
-            const res = await fetch(url, {
+            const res = await boundedFetch(url, {
                 method,
                 headers: {
                     'Content-Type': 'application/json',
@@ -95,7 +96,7 @@ export default function PermissionsPage() {
         if (!confirm('정말 삭제하시겠습니까?')) return;
 
         try {
-            const res = await fetch(`/api/admin/permission-policies/${id}`, {
+            const res = await boundedFetch(`/api/admin/permission-policies/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });

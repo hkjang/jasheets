@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import styles from './NormalizerDialog.module.css';
 
 interface NormalizationChange {
@@ -59,7 +60,7 @@ export default function NormalizerDialog({
             // Create a deep copy to avoid mutating original data
             const dataCopy = JSON.parse(JSON.stringify(data));
 
-            const response = await fetch(`${apiUrl}/normalizer/normalize`, {
+            const response = await boundedFetch(`${apiUrl}/normalizer/normalize`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

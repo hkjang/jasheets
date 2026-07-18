@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import styles from './FilterProfilesDropdown.module.css';
 
 export interface FilterProfile {
@@ -40,7 +41,7 @@ export default function FilterProfilesDropdown({
     const fetchProfiles = async () => {
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`/api/sheets/${sheetId}/filter-profiles`, {
+            const res = await boundedFetch(`/api/sheets/${sheetId}/filter-profiles`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {
@@ -73,7 +74,7 @@ export default function FilterProfilesDropdown({
 
         try {
             const token = localStorage.getItem('auth_token');
-            await fetch(`/api/sheets/${sheetId}/filter-profiles`, {
+            await boundedFetch(`/api/sheets/${sheetId}/filter-profiles`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -96,7 +97,7 @@ export default function FilterProfilesDropdown({
     const handleSetDefault = async (profileId: string) => {
         try {
             const token = localStorage.getItem('auth_token');
-            await fetch(`/api/sheets/${sheetId}/filter-profiles/${profileId}/set-default`, {
+            await boundedFetch(`/api/sheets/${sheetId}/filter-profiles/${profileId}/set-default`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -111,7 +112,7 @@ export default function FilterProfilesDropdown({
 
         try {
             const token = localStorage.getItem('auth_token');
-            await fetch(`/api/sheets/${sheetId}/filter-profiles/${profileId}`, {
+            await boundedFetch(`/api/sheets/${sheetId}/filter-profiles/${profileId}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` },
             });

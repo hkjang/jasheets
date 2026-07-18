@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import styles from './DocumentationDialog.module.css';
 
 interface SheetDocumentation {
@@ -55,7 +56,7 @@ export default function DocumentationDialog({
 
         try {
             const token = localStorage.getItem('auth_token');
-            const response = await fetch(`${apiUrl}/documentation/sheet/markdown`, {
+            const response = await boundedFetch(`${apiUrl}/documentation/sheet/markdown`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

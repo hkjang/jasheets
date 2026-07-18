@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import styles from './CommandPalette.module.css';
 
 interface Command {
@@ -45,7 +46,7 @@ export default function CommandPalette({
     const fetchCommands = async () => {
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`/api/spreadsheets/${spreadsheetId}/commands`, {
+            const res = await boundedFetch(`/api/spreadsheets/${spreadsheetId}/commands`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {
@@ -60,7 +61,7 @@ export default function CommandPalette({
     const fetchBuiltInCommands = async () => {
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`/api/spreadsheets/${spreadsheetId}/commands/built-in`, {
+            const res = await boundedFetch(`/api/spreadsheets/${spreadsheetId}/commands/built-in`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {
@@ -111,7 +112,7 @@ export default function CommandPalette({
                 return;
             }
 
-            const res = await fetch(`/api/spreadsheets/${spreadsheetId}/commands/execute/${command.name}`, {
+            const res = await boundedFetch(`/api/spreadsheets/${spreadsheetId}/commands/execute/${command.name}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

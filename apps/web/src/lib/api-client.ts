@@ -31,7 +31,11 @@ const RETRYABLE_STATUSES = new Set([408, 429, 500, 502, 503, 504]);
 function combineSignals(signal: AbortSignal | null | undefined, timeoutMs: number) {
   const controller = new AbortController();
   const abort = () => controller.abort(signal?.reason);
-  signal?.addEventListener('abort', abort, { once: true });
+  if (signal?.aborted) {
+    abort();
+  } else {
+    signal?.addEventListener('abort', abort, { once: true });
+  }
   const timeout = setTimeout(() => controller.abort(new DOMException('Request timed out', 'TimeoutError')), timeoutMs);
 
   return {
@@ -41,6 +45,39 @@ function combineSignals(signal: AbortSignal | null | undefined, timeoutMs: numbe
       signal?.removeEventListener('abort', abort);
     },
   };
+}
+
+async function fetchWithPolicy(
+  apiUrl: string,
+  input: RequestInfo | URL,
+  options: ApiRequestOptions = {},
+  defaults: Pick<ApiRequestOptions, 'timeoutMs' | 'retries' | 'retryDelayMs'> = {},
+): Promise<Response> {
+  const {
+    timeoutMs = defaults.timeoutMs ?? 15_000,
+    retries,
+    retryDelayMs = defaults.retryDelayMs ?? 150,
+    ...init
+  } = options;
+  const method = (init.method || 'GET').toUpperCase();
+  const attempts = retries ?? (RETRYABLE_METHODS.has(method) ? defaults.retries ?? 2 : 0);
+
+  for (let attempt = 0; ; attempt += 1) {
+    const combined = combineSignals(init.signal, timeoutMs);
+    try {
+      const response = await authenticatedFetch(apiUrl, input, { ...init, signal: combined.signal });
+      if (attempt < attempts && RETRYABLE_STATUSES.has(response.status)) {
+        await new Promise((resolve) => setTimeout(resolve, retryDelayMs * 2 ** attempt));
+        continue;
+      }
+      return response;
+    } catch (error) {
+      if (combined.signal.aborted || attempt >= attempts) throw error;
+      await new Promise((resolve) => setTimeout(resolve, retryDelayMs * 2 ** attempt));
+    } finally {
+      combined.dispose();
+    }
+  }
 }
 
 async function errorFromResponse(response: Response, url: string): Promise<ApiError> {
@@ -66,27 +103,8 @@ export class ApiClient {
   }
 
   async fetch(path: string, options: ApiRequestOptions = {}): Promise<Response> {
-    const { timeoutMs = this.defaults.timeoutMs ?? 15_000, retries, retryDelayMs = this.defaults.retryDelayMs ?? 150, ...init } = options;
-    const method = (init.method || 'GET').toUpperCase();
-    const attempts = retries ?? (RETRYABLE_METHODS.has(method) ? this.defaults.retries ?? 2 : 0);
     const url = this.url(path);
-
-    for (let attempt = 0; ; attempt += 1) {
-      const combined = combineSignals(init.signal, timeoutMs);
-      try {
-        const response = await authenticatedFetch(this.baseUrl, url, { ...init, signal: combined.signal });
-        if (attempt < attempts && RETRYABLE_STATUSES.has(response.status)) {
-          await new Promise((resolve) => setTimeout(resolve, retryDelayMs * 2 ** attempt));
-          continue;
-        }
-        return response;
-      } catch (error) {
-        if (combined.signal.aborted || attempt >= attempts) throw error;
-        await new Promise((resolve) => setTimeout(resolve, retryDelayMs * 2 ** attempt));
-      } finally {
-        combined.dispose();
-      }
-    }
+    return fetchWithPolicy(this.baseUrl, url, options, this.defaults);
   }
 
   async request<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
@@ -104,3 +122,11 @@ export class ApiClient {
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 export const apiClient = new ApiClient(API_URL);
+
+/**
+ * Fetches absolute or same-origin URLs without changing them while applying the
+ * same authentication, timeout, cancellation, and safe retry policy as ApiClient.
+ */
+export function boundedFetch(input: RequestInfo | URL, options: ApiRequestOptions = {}) {
+  return fetchWithPolicy(API_URL, input, options);
+}

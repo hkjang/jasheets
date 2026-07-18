@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import styles from './SheetAutomationDialog.module.css';
 
 interface Automation {
@@ -50,7 +51,7 @@ export default function SheetAutomationDialog({
         setLoading(true);
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`/api/sheets/${sheetId}/automations`, {
+            const res = await boundedFetch(`/api/sheets/${sheetId}/automations`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {
@@ -67,7 +68,7 @@ export default function SheetAutomationDialog({
     const handleToggle = async (automation: Automation) => {
         try {
             const token = localStorage.getItem('auth_token');
-            await fetch(`/api/sheets/${sheetId}/automations/${automation.id}/toggle`, {
+            await boundedFetch(`/api/sheets/${sheetId}/automations/${automation.id}/toggle`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -82,7 +83,7 @@ export default function SheetAutomationDialog({
 
         try {
             const token = localStorage.getItem('auth_token');
-            await fetch(`/api/sheets/${sheetId}/automations/${id}`, {
+            await boundedFetch(`/api/sheets/${sheetId}/automations/${id}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -112,7 +113,7 @@ export default function SheetAutomationDialog({
                 : `/api/sheets/${sheetId}/automations`;
             const method = editingAutomation ? 'PUT' : 'POST';
 
-            const res = await fetch(url, {
+            const res = await boundedFetch(url, {
                 method,
                 headers: {
                     'Content-Type': 'application/json',

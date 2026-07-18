@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import styles from './SheetBuilderDialog.module.css';
 
 interface SheetTemplate {
@@ -58,7 +59,7 @@ export default function SheetBuilderDialog({
     const loadTemplates = async () => {
         try {
             const token = localStorage.getItem('auth_token');
-            const response = await fetch(`${apiUrl}/ai/sheet/templates`, {
+            const response = await boundedFetch(`${apiUrl}/ai/sheet/templates`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                 },
@@ -79,7 +80,7 @@ export default function SheetBuilderDialog({
 
         try {
             const token = localStorage.getItem('auth_token');
-            const response = await fetch(`${apiUrl}/ai/sheet/templates/${key}`, {
+            const response = await boundedFetch(`${apiUrl}/ai/sheet/templates/${key}`, {
                 headers: {
                     'Authorization': `Bearer ${token}`,
                 },
@@ -107,7 +108,7 @@ export default function SheetBuilderDialog({
 
         try {
             const token = localStorage.getItem('auth_token');
-            const response = await fetch(`${apiUrl}/ai/sheet/generate`, {
+            const response = await boundedFetch(`${apiUrl}/ai/sheet/generate`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

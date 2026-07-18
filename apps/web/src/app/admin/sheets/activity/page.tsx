@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import { AdminHeader } from '../../../../components/admin/AdminHeader';
 import styles from './page.module.css';
 
@@ -42,10 +43,10 @@ export default function ActivityPage() {
     const fetchData = async () => {
         try {
             const [sessionsRes, summariesRes] = await Promise.all([
-                fetch('/api/admin/activity/sessions/active', {
+                boundedFetch('/api/admin/activity/sessions/active', {
                     headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
                 }),
-                fetch('/api/admin/activity/all', {
+                boundedFetch('/api/admin/activity/all', {
                     headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
                 }),
             ]);

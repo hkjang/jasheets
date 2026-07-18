@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import styles from './ProfilerPanel.module.css';
 
 interface ColumnProfile {
@@ -79,7 +80,7 @@ export default function ProfilerPanel({
 
         try {
             const token = localStorage.getItem('auth_token');
-            const response = await fetch(`${apiUrl}/profiler/sheet`, {
+            const response = await boundedFetch(`${apiUrl}/profiler/sheet`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import styles from './UDFEditorDialog.module.css';
 
 interface ParameterDef {
@@ -103,7 +104,7 @@ export default function UDFEditorDialog({
             const args = JSON.parse(`[${testArgs}]`);
             const token = localStorage.getItem('auth_token');
 
-            const response = await fetch(`${apiUrl}/udf/test`, {
+            const response = await boundedFetch(`${apiUrl}/udf/test`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -142,7 +143,7 @@ export default function UDFEditorDialog({
 
         try {
             const token = localStorage.getItem('auth_token');
-            const response = await fetch(`${apiUrl}/udf/spreadsheet/${spreadsheetId}`, {
+            const response = await boundedFetch(`${apiUrl}/udf/spreadsheet/${spreadsheetId}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',

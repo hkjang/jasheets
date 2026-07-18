@@ -1,4 +1,4 @@
-import { ApiClient, ApiError } from './api-client';
+import { ApiClient, ApiError, boundedFetch } from './api-client';
 
 jest.mock('./auth-fetch', () => ({
   authenticatedFetch: jest.fn((_: string, input: RequestInfo | URL, init?: RequestInit) =>
@@ -68,5 +68,25 @@ describe('ApiClient', () => {
     const pending = client.request('/slow', { signal: controller.signal, retries: 0 });
     controller.abort(new DOMException('Cancelled', 'AbortError'));
     await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+  });
+
+  it('rejects immediately when the caller signal is already cancelled', async () => {
+    const fetchMock = jest.mocked(globalThis.fetch).mockImplementation((_, init) => {
+      if (init?.signal?.aborted) return Promise.reject(init.signal.reason);
+      return Promise.resolve(response(200));
+    });
+    const controller = new AbortController();
+    controller.abort(new DOMException('Cancelled', 'AbortError'));
+
+    await expect(client.request('/slow', { signal: controller.signal })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps same-origin URLs unchanged when using boundedFetch', async () => {
+    const fetchMock = jest.mocked(globalThis.fetch).mockResolvedValue(response(200));
+
+    await boundedFetch('/api/admin/activity');
+
+    expect(fetchMock).toHaveBeenCalledWith('/api/admin/activity', expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 });

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import styles from './SnapshotManagerPanel.module.css';
 
 interface Snapshot {
@@ -48,7 +49,7 @@ export default function SnapshotManagerPanel({
         setLoading(true);
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`/api/sheets/${sheetId}/snapshots`, {
+            const res = await boundedFetch(`/api/sheets/${sheetId}/snapshots`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {
@@ -67,7 +68,7 @@ export default function SnapshotManagerPanel({
 
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`/api/sheets/${sheetId}/snapshots`, {
+            const res = await boundedFetch(`/api/sheets/${sheetId}/snapshots`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -91,7 +92,7 @@ export default function SnapshotManagerPanel({
 
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`/api/sheets/${sheetId}/snapshots/${snapshotId}/restore`, {
+            const res = await boundedFetch(`/api/sheets/${sheetId}/snapshots/${snapshotId}/restore`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -110,7 +111,7 @@ export default function SnapshotManagerPanel({
 
         try {
             const token = localStorage.getItem('auth_token');
-            await fetch(`/api/sheets/${sheetId}/snapshots/${snapshotId}`, {
+            await boundedFetch(`/api/sheets/${sheetId}/snapshots/${snapshotId}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` },
             });
@@ -133,7 +134,7 @@ export default function SnapshotManagerPanel({
 
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(
+            const res = await boundedFetch(
                 `/api/sheets/${sheetId}/snapshots/${selectedForCompare[0]}/compare/${selectedForCompare[1]}`,
                 { headers: { Authorization: `Bearer ${token}` } }
             );

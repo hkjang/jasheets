@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import { AdminHeader } from '../../../../components/admin/AdminHeader';
 import styles from '../permissions/page.module.css';
 
@@ -47,7 +48,7 @@ export default function QuotasPage() {
         try {
             const token = localStorage.getItem('auth_token');
             const url = filter === 'all' ? '/api/admin/quotas' : `/api/admin/quotas?type=${filter}`;
-            const res = await fetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await boundedFetch(url, { headers: { 'Authorization': `Bearer ${token}` } });
             if (res.ok) setQuotas(await res.json());
         } catch (error) {
             console.error('Failed to fetch quotas:', error);
@@ -59,7 +60,7 @@ export default function QuotasPage() {
     const fetchDefaults = async () => {
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch('/api/admin/quotas/defaults', { headers: { 'Authorization': `Bearer ${token}` } });
+            const res = await boundedFetch('/api/admin/quotas/defaults', { headers: { 'Authorization': `Bearer ${token}` } });
             if (res.ok) setDefaults(await res.json());
         } catch (error) {
             console.error('Failed to fetch defaults:', error);
@@ -72,7 +73,7 @@ export default function QuotasPage() {
         const method = editingQuota ? 'PUT' : 'POST';
 
         try {
-            const res = await fetch(url, {
+            const res = await boundedFetch(url, {
                 method,
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify(form),
@@ -91,7 +92,7 @@ export default function QuotasPage() {
         if (!confirm('정말 삭제하시겠습니까?')) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`/api/admin/quotas/${id}`, {
+            const res = await boundedFetch(`/api/admin/quotas/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` },
             });

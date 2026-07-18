@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import { AdminHeader } from '../../../../components/admin/AdminHeader';
 import styles from '../udf/page.module.css';
 
@@ -37,7 +38,7 @@ export default function MacrosPage() {
             const url = filter === 'all'
                 ? '/api/admin/macro-approvals'
                 : `/api/admin/macro-approvals?status=${filter}`;
-            const res = await fetch(url, {
+            const res = await boundedFetch(url, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });
             if (res.ok) {
@@ -55,7 +56,7 @@ export default function MacrosPage() {
         if (!selectedApproval) return;
 
         try {
-            const res = await fetch(`/api/admin/macro-approvals/${selectedApproval.id}/review`, {
+            const res = await boundedFetch(`/api/admin/macro-approvals/${selectedApproval.id}/review`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

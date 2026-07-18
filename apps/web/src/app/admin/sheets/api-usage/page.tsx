@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import { AdminHeader } from '../../../../components/admin/AdminHeader';
 import styles from './page.module.css';
 
@@ -32,10 +33,10 @@ export default function APIUsagePage() {
         setLoading(true);
         try {
             const [statsRes, timeSeriesRes] = await Promise.all([
-                fetch('/api/admin/api-usage/stats', {
+                boundedFetch('/api/admin/api-usage/stats', {
                     headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
                 }),
-                fetch(`/api/admin/api-usage/timeseries?hours=${hours}`, {
+                boundedFetch(`/api/admin/api-usage/timeseries?hours=${hours}`, {
                     headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
                 }),
             ]);

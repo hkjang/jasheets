@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import styles from './SheetPermissionsDialog.module.css';
 
 interface SheetPermission {
@@ -46,7 +47,7 @@ export default function SheetPermissionsDialog({
         setLoading(true);
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`/api/sheets/${sheetId}/permissions`, {
+            const res = await boundedFetch(`/api/sheets/${sheetId}/permissions`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {
@@ -69,7 +70,7 @@ export default function SheetPermissionsDialog({
         setError('');
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`/api/sheets/${sheetId}/permissions`, {
+            const res = await boundedFetch(`/api/sheets/${sheetId}/permissions`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -93,7 +94,7 @@ export default function SheetPermissionsDialog({
     const handleUpdateRole = async (permissionId: string, role: string) => {
         try {
             const token = localStorage.getItem('auth_token');
-            await fetch(`/api/sheets/${sheetId}/permissions/${permissionId}`, {
+            await boundedFetch(`/api/sheets/${sheetId}/permissions/${permissionId}`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',
@@ -112,7 +113,7 @@ export default function SheetPermissionsDialog({
 
         try {
             const token = localStorage.getItem('auth_token');
-            await fetch(`/api/sheets/${sheetId}/permissions/${permissionId}`, {
+            await boundedFetch(`/api/sheets/${sheetId}/permissions/${permissionId}`, {
                 method: 'DELETE',
                 headers: { Authorization: `Bearer ${token}` },
             });

@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import { AdminHeader } from '../../../../components/admin/AdminHeader';
 import styles from './page.module.css';
 
@@ -38,7 +39,7 @@ export default function UDFApprovalPage() {
             const url = filter === 'all'
                 ? '/api/admin/udf-approvals'
                 : `/api/admin/udf-approvals?status=${filter}`;
-            const res = await fetch(url, {
+            const res = await boundedFetch(url, {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });
             if (res.ok) {
@@ -54,7 +55,7 @@ export default function UDFApprovalPage() {
 
     const fetchStats = async () => {
         try {
-            const res = await fetch('/api/admin/udf-approvals/stats', {
+            const res = await boundedFetch('/api/admin/udf-approvals/stats', {
                 headers: { 'Authorization': `Bearer ${localStorage.getItem('auth_token')}` },
             });
             if (res.ok) {
@@ -70,7 +71,7 @@ export default function UDFApprovalPage() {
         if (!selectedApproval) return;
 
         try {
-            const res = await fetch(`/api/admin/udf-approvals/${selectedApproval.id}/review`, {
+            const res = await boundedFetch(`/api/admin/udf-approvals/${selectedApproval.id}/review`, {
                 method: 'PUT',
                 headers: {
                     'Content-Type': 'application/json',

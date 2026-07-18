@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import styles from './AIAssistant.module.css';
 
 interface FormulaResult {
@@ -59,7 +60,7 @@ export default function AIAssistant({
 
     try {
       const endpoint = mode === 'formula' ? '/ai/formula/generate' : '/ai/data/analyze';
-      const response = await fetch(`${apiUrl}${endpoint}`, {
+      const response = await boundedFetch(`${apiUrl}${endpoint}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

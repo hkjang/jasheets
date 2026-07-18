@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import { AdminHeader } from '../../../../components/admin/AdminHeader';
 import styles from '../udf/page.module.css';
 
@@ -65,8 +66,8 @@ export default function AISettingsPage() {
         try {
             const token = localStorage.getItem('auth_token');
             const [modelsRes, templatesRes] = await Promise.all([
-                fetch(`${API_URL}/admin/ai-configs`, { headers: { 'Authorization': `Bearer ${token}` } }),
-                fetch(`${API_URL}/admin/prompt-templates`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                boundedFetch(`${API_URL}/admin/ai-configs`, { headers: { 'Authorization': `Bearer ${token}` } }),
+                boundedFetch(`${API_URL}/admin/prompt-templates`, { headers: { 'Authorization': `Bearer ${token}` } }),
             ]);
 
             if (modelsRes.ok) setModels(await modelsRes.json());
@@ -85,7 +86,7 @@ export default function AISettingsPage() {
         const method = editingModel ? 'PUT' : 'POST';
 
         try {
-            const res = await fetch(url, {
+            const res = await boundedFetch(url, {
                 method,
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify(modelForm),
@@ -104,7 +105,7 @@ export default function AISettingsPage() {
         if (!confirm('정말 삭제하시겠습니까?')) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_URL}/admin/ai-configs/${id}`, {
+            const res = await boundedFetch(`${API_URL}/admin/ai-configs/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` },
             });
@@ -136,7 +137,7 @@ export default function AISettingsPage() {
         const method = editingTemplate ? 'PUT' : 'POST';
 
         try {
-            const res = await fetch(url, {
+            const res = await boundedFetch(url, {
                 method,
                 headers: { 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -158,7 +159,7 @@ export default function AISettingsPage() {
         if (!confirm('정말 삭제하시겠습니까?')) return;
         const token = localStorage.getItem('auth_token');
         try {
-            const res = await fetch(`${API_URL}/admin/prompt-templates/${id}`, {
+            const res = await boundedFetch(`${API_URL}/admin/prompt-templates/${id}`, {
                 method: 'DELETE',
                 headers: { 'Authorization': `Bearer ${token}` },
             });

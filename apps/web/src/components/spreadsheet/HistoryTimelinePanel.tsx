@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { boundedFetch } from '@/lib/api-client';
 import styles from './HistoryTimelinePanel.module.css';
 
 interface Revision {
@@ -59,7 +60,7 @@ export default function HistoryTimelinePanel({
             const url = filter
                 ? `/api/sheets/${sheetId}/revisions?action=${filter}`
                 : `/api/sheets/${sheetId}/revisions`;
-            const res = await fetch(url, {
+            const res = await boundedFetch(url, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {
@@ -76,7 +77,7 @@ export default function HistoryTimelinePanel({
     const fetchStats = async () => {
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`/api/sheets/${sheetId}/revisions/stats`, {
+            const res = await boundedFetch(`/api/sheets/${sheetId}/revisions/stats`, {
                 headers: { Authorization: `Bearer ${token}` },
             });
             if (res.ok) {
@@ -94,7 +95,7 @@ export default function HistoryTimelinePanel({
         setRolling(true);
         try {
             const token = localStorage.getItem('auth_token');
-            const res = await fetch(`/api/sheets/${sheetId}/revisions/${revisionId}/rollback`, {
+            const res = await boundedFetch(`/api/sheets/${sheetId}/revisions/${revisionId}/rollback`, {
                 method: 'POST',
                 headers: { Authorization: `Bearer ${token}` },
             });
