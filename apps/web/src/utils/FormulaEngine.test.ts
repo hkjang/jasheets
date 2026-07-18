@@ -171,3 +171,34 @@ describe('spreadsheet operator precedence', () => {
     expect(evaluateFormula('=50%^2', {})).toBe(0.25);
   });
 });
+
+describe('text and scalar formulas', () => {
+  const textData: SheetData = {
+    0: {
+      0: { value: 'JaSheets' },
+      1: { value: 2026 },
+      2: { value: true },
+      3: { value: '#REF!' },
+    },
+  };
+
+  it('preserves direct string, boolean, and text-cell values', () => {
+    expect(evaluateFormula('="ready"', textData)).toBe('ready');
+    expect(evaluateFormula('="He said ""yes"""', textData)).toBe('He said "yes"');
+    expect(evaluateFormula('=TRUE', textData)).toBe(true);
+    expect(evaluateFormula('=A1', textData)).toBe('JaSheets');
+    expect(evaluateFormula('=C1', textData)).toBe(true);
+  });
+
+  it('concatenates expressions using spreadsheet coercion', () => {
+    expect(evaluateFormula('=A1&" "&B1', textData)).toBe('JaSheets 2026');
+    expect(evaluateFormula('="total="&(B1+1)', textData)).toBe('total=2027');
+    expect(evaluateFormula('=IF(TRUE,A1&"!","no")', textData)).toBe('JaSheets!');
+  });
+
+  it('does not split ampersands inside strings and propagates errors', () => {
+    expect(evaluateFormula('="R&D"&" team"', textData)).toBe('R&D team');
+    expect(evaluateFormula('=A1&D1', textData)).toBe('#REF!');
+    expect(evaluateFormula('=A1&', textData)).toBe('#VALUE!');
+  });
+});

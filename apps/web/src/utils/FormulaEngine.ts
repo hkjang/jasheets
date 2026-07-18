@@ -17,7 +17,7 @@ export interface Token {
   value: string;
 }
 
-const OPERATORS = ['+', '-', '*', '/', '^', '%', '=', '<', '>'];
+const OPERATORS = ['+', '-', '*', '/', '^', '%', '&', '=', '<', '>'];
 const FUNCTIONS = [
   'SUM', 'AVERAGE', 'MIN', 'MAX', 'COUNT', 'SEQUENCE',
   'DATE', 'TIME', 'YEAR', 'MONTH', 'DAY', 'HOUR', 'MINUTE', 'SECOND', 'TODAY', 'NOW',
@@ -81,6 +81,27 @@ export function tokenize(formula: string): Token[] {
     if (char === ',') {
       tokens.push({ type: 'COMMA', value: ',' });
       i++;
+      continue;
+    }
+
+    if (char === '"' || char === "'") {
+      const quote = char;
+      let value = '';
+      i++;
+      while (i < formula.length) {
+        if (formula[i] === quote) {
+          if (formula[i + 1] === quote) {
+            value += quote;
+            i += 2;
+            continue;
+          }
+          i++;
+          break;
+        }
+        value += formula[i];
+        i++;
+      }
+      tokens.push({ type: 'STRING', value });
       continue;
     }
 
@@ -248,8 +269,28 @@ function splitFunctionArgs(input: string): string[] {
     return args;
 }
 
+function parseStringLiteral(argument: string): string | undefined {
+    const quote = argument[0];
+    if ((quote !== '"' && quote !== "'") || argument.length < 2) return undefined;
+    let value = '';
+    for (let i = 1; i < argument.length; i++) {
+        if (argument[i] !== quote) {
+            value += argument[i];
+            continue;
+        }
+        if (argument[i + 1] === quote) {
+            value += quote;
+            i++;
+            continue;
+        }
+        return i === argument.length - 1 ? value : undefined;
+    }
+    return undefined;
+}
+
 function lookupValue(argument: string, data: SheetData): string | number | boolean | null {
-    if (/^(["']).*\1$/.test(argument)) return argument.slice(1, -1);
+    const stringLiteral = parseStringLiteral(argument);
+    if (stringLiteral !== undefined) return stringLiteral;
     if (/^(TRUE|FALSE)$/i.test(argument)) return argument.toUpperCase() === 'TRUE';
     if (!Number.isNaN(Number(argument))) return Number(argument);
     const ref = parseCellRef(argument.toUpperCase());
@@ -300,6 +341,37 @@ function findTopLevelComparison(input: string): { left: string; operator: string
     return null;
 }
 
+function splitTopLevelConcatenation(input: string): string[] | null {
+    const parts: string[] = [];
+    let start = 0;
+    let depth = 0;
+    let quote: string | null = null;
+    for (let i = 0; i < input.length; i++) {
+        const char = input[i];
+        if (quote) {
+            if (char === quote && input[i + 1] === quote) {
+                i++;
+            } else if (char === quote) {
+                quote = null;
+            }
+            continue;
+        }
+        if (char === '"' || char === "'") {
+            quote = char;
+        } else if (char === '(') {
+            depth++;
+        } else if (char === ')') {
+            depth--;
+        } else if (char === '&' && depth === 0) {
+            parts.push(input.slice(start, i).trim());
+            start = i + 1;
+        }
+    }
+    if (parts.length === 0) return null;
+    parts.push(input.slice(start).trim());
+    return parts;
+}
+
 function compareValues(left: string | number | boolean | null, operator: string, right: string | number | boolean | null): boolean {
     if (operator === '=') return valuesEqual(left, right);
     if (operator === '<>') return !valuesEqual(left, right);
@@ -324,7 +396,7 @@ function evaluateArgument(
     locale: string,
 ): FormulaResult {
     const trimmed = argument.trim();
-    if (/^(?:["']).*(?:["'])$/.test(trimmed) || /^(?:TRUE|FALSE)$/i.test(trimmed) || !Number.isNaN(Number(trimmed))) {
+    if (parseStringLiteral(trimmed) !== undefined || /^(?:TRUE|FALSE)$/i.test(trimmed) || !Number.isNaN(Number(trimmed))) {
         return lookupValue(trimmed, data) ?? '';
     }
     const ref = parseCellRef(trimmed.toUpperCase());
@@ -392,6 +464,13 @@ export function evaluateFormula(
         if (!formula.startsWith('=')) return formula;
         formula = normalizeLocalizedFormula(formula, locale);
 
+        const directValue = formula.slice(1).trim();
+        if (parseStringLiteral(directValue) !== undefined || /^(?:TRUE|FALSE)$/i.test(directValue)) {
+            return lookupValue(directValue, data) ?? '';
+        }
+        const directRef = parseCellRef(directValue.toUpperCase());
+        if (directRef) return data[directRef.row]?.[directRef.col]?.value ?? 0;
+
         const conditional = formula.match(/^=IF\((.*)\)$/i);
         if (conditional) {
             const args = splitFunctionArgs(conditional[1]);
@@ -422,6 +501,19 @@ export function evaluateFormula(
             if (isFormulaError(right)) return right;
             if (Array.isArray(left) || Array.isArray(right)) return '#VALUE!';
             return compareValues(left, comparison.operator, right);
+        }
+
+        const concatenation = splitTopLevelConcatenation(formula.slice(1));
+        if (concatenation) {
+            let result = '';
+            for (const part of concatenation) {
+                if (!part) return '#VALUE!';
+                const value = evaluateArgument(part, data, namedRanges, locale);
+                if (isFormulaError(value)) return value;
+                if (Array.isArray(value)) return '#VALUE!';
+                result += String(value ?? '');
+            }
+            return result;
         }
 
         const lookupResult = evaluateLookupFormula(formula, data, namedRanges);

@@ -101,4 +101,20 @@ describe('incremental recalculation', () => {
     expect(data[0][1].value).toBe(0);
     expect(data[0][2].value).toBe(0);
   });
+
+  it('preserves text results through dependent formulas', () => {
+    const data: SheetData = {
+      0: {
+        0: { value: 'Q3' },
+        1: { value: 2026 },
+        2: formula('=A1&" "&B1'),
+        3: formula('=IF(C1="Q3 2026","ready","waiting")'),
+      },
+    };
+
+    recalculate(data, {}, [{ row: 0, col: 0 }]);
+
+    expect(data[0][2]).toMatchObject({ value: 'Q3 2026', displayValue: 'Q3 2026' });
+    expect(data[0][3]).toMatchObject({ value: 'ready', displayValue: 'ready' });
+  });
 });
