@@ -27,6 +27,14 @@ describe('structural formula reference rewriting', () => {
     expect(rewriteFormulaForStructuralChange('="A2"&A2', { axis: 'row', type: 'delete', index: 1 }))
       .toBe('="A2"&#REF!');
   });
+
+  it('does not mistake numbered sheet names for cell references', () => {
+    expect(rewriteFormulaForStructuralChange('=Sheet1!A2+\'Q1\'!B2', {
+      axis: 'row',
+      type: 'insert',
+      index: 0,
+    })).toBe('=Sheet1!A3+\'Q1\'!B3');
+  });
 });
 
 describe('sheet name references', () => {

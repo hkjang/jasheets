@@ -54,7 +54,10 @@ interface ParsedReference {
 }
 
 const REFERENCE = '(\\$?[A-Z]+\\$?[1-9][0-9]*)';
-const REFERENCE_OR_RANGE = new RegExp(`(^|[^A-Z0-9_])${REFERENCE}(?::${REFERENCE})?(?![A-Z0-9_])`, 'gi');
+const REFERENCE_OR_RANGE = new RegExp(
+  `(^|[^A-Z0-9_])${REFERENCE}(?::${REFERENCE})?(?![A-Z0-9_])(?!\\s*!)`,
+  'gi',
+);
 
 function parseReference(value: string): ParsedReference {
   const match = value.match(/^(\$?)([A-Z]+)(\$?)([1-9][0-9]*)$/i)!;
