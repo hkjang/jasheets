@@ -25,7 +25,13 @@ export function validateCellInput(
   }
 
   if (rule.type === 'number') {
-    const value = parseLocaleNumber(input, locale);
+    const trimmed = input.trim();
+    const isPercentage = trimmed.endsWith('%');
+    const parsed = parseLocaleNumber(
+      isPercentage ? trimmed.slice(0, -1) : trimmed,
+      locale,
+    );
+    const value = parsed !== null && isPercentage ? parsed / 100 : parsed;
     if (value === null) return { valid: false, message: '숫자를 입력해주세요.' };
     if (rule.min !== undefined && value < rule.min) {
       return { valid: false, message: `${rule.min} 이상의 값을 입력해주세요.` };
