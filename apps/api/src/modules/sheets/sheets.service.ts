@@ -226,6 +226,7 @@ export class SheetsService {
             colMeta: true,
             charts: true,
             pivotTables: true,
+            conditionalRules: { orderBy: { priority: 'asc' } },
           },
         },
         owner: {
@@ -482,6 +483,7 @@ export class SheetsService {
             colMeta: true,
             charts: true,
             pivotTables: true,
+            conditionalRules: { orderBy: { priority: 'asc' } },
           },
         });
       },

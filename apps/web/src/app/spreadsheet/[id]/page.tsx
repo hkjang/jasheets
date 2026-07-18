@@ -21,6 +21,7 @@ import {
 } from "@/types/spreadsheet";
 import { deserializeCellFormat } from "@/utils/cellPersistence";
 import { rewriteSheetNameReferences } from "@/utils/formulaReferences";
+import { deserializeConditionalRule } from "@/utils/conditionalRulePersistence";
 
 function deserializeSheetData(sheet: SpreadsheetSheet): SheetData {
   const sheetData: SheetData = {};
@@ -371,6 +372,13 @@ export default function SpreadsheetPage() {
       ),
     [sheetData, sheets],
   );
+  const initialConditionalRules = useMemo(
+    () =>
+      (activeSheet?.conditionalRules ?? [])
+        .map(deserializeConditionalRule)
+        .filter((rule) => rule !== null),
+    [activeSheet],
+  );
 
   useEffect(() => {
     if (authLoading || !user) return;
@@ -404,6 +412,7 @@ export default function SpreadsheetPage() {
       key={activeSheetId}
       initialData={data}
       initialCharts={initialCharts}
+      initialConditionalRules={initialConditionalRules}
       onDataChange={handleDataChange}
       spreadsheetId={id}
       activeSheetId={activeSheetId}

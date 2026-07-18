@@ -1,5 +1,6 @@
 import { API_URL, apiClient } from "./api-client";
 import type { CellValue } from "@/types/spreadsheet";
+import type { PersistedConditionalRule } from "@/utils/conditionalRulePersistence";
 
 export interface SpreadsheetSummary {
   id: string;
@@ -37,6 +38,7 @@ export interface SpreadsheetSheet {
     format?: unknown;
   }>;
   charts?: unknown[];
+  conditionalRules?: PersistedConditionalRule[];
 }
 
 export interface SpreadsheetVersion {
@@ -94,6 +96,24 @@ export const api = {
       });
       if (!res.ok) throw new Error("버전을 복원하지 못했습니다.");
     },
+  },
+  conditionalRules: {
+    list: (sheetId: string) =>
+      apiClient.request<PersistedConditionalRule[]>(
+        `/sheets/${sheetId}/conditional-rules`,
+      ),
+    create: (
+      sheetId: string,
+      rule: Omit<PersistedConditionalRule, "id">,
+    ) =>
+      apiClient.request<PersistedConditionalRule>(
+        `/sheets/${sheetId}/conditional-rules`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(rule),
+        },
+      ),
   },
   users: {
     list: async () => {

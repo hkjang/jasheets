@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, ForbiddenException } from '@nestjs/common';
+import {
+    BadRequestException,
+    Injectable,
+    NotFoundException,
+    ForbiddenException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateConditionalRuleDto, UpdateConditionalRuleDto } from './dto/conditional-rule.dto';
 
@@ -154,6 +159,21 @@ export class ConditionalRulesService {
      */
     async reorderRules(userId: string, sheetId: string, ruleIds: string[]) {
         await this.checkSheetAccess(userId, sheetId, true);
+
+        const existing = await this.prisma.conditionalRule.findMany({
+            where: { sheetId },
+            select: { id: true },
+        });
+        const uniqueIds = new Set(ruleIds);
+        if (
+            uniqueIds.size !== ruleIds.length
+            || existing.length !== ruleIds.length
+            || existing.some(({ id }) => !uniqueIds.has(id))
+        ) {
+            throw new BadRequestException(
+                'Rule order must contain every rule from this sheet exactly once',
+            );
+        }
 
         await this.prisma.$transaction(
             ruleIds.map((id, index) =>

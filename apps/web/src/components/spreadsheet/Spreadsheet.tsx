@@ -82,10 +82,15 @@ import CommandPalette from "./CommandPalette";
 import type { PersistedCellUpdate } from "@/utils/cellPersistence";
 import SheetTabs, { type SheetTab } from "./SheetTabs";
 import type { FormulaWorkbook } from "@/utils/FormulaEngine";
+import {
+  deserializeConditionalRule,
+  serializeConditionalRule,
+} from "@/utils/conditionalRulePersistence";
 
 interface SpreadsheetProps {
   initialData?: SheetData;
   initialCharts?: any[];
+  initialConditionalRules?: ConditionalRule[];
   onDataChange?: (data: SheetData) => void;
   spreadsheetId?: string;
   activeSheetId?: string | null;
@@ -117,6 +122,7 @@ interface SpreadsheetProps {
 export default function Spreadsheet({
   initialData = {},
   initialCharts = [],
+  initialConditionalRules = [],
   onDataChange,
   spreadsheetId,
   activeSheetId,
@@ -918,7 +924,7 @@ export default function Spreadsheet({
 
   // Conditional Formatting state
   const [conditionalRules, setConditionalRules] = useState<ConditionalRule[]>(
-    [],
+    initialConditionalRules,
   );
   const [isConditionalDialogOpen, setIsConditionalDialogOpen] = useState(false);
 
@@ -1302,9 +1308,26 @@ export default function Spreadsheet({
   );
 
   // Feature Handlers
-  const handleAddConditionalRule = useCallback((rule: ConditionalRule) => {
-    setConditionalRules((prev) => [...prev, rule]);
-  }, []);
+  const handleAddConditionalRule = useCallback(
+    async (rule: ConditionalRule) => {
+      if (!activeSheetId) {
+        setConditionalRules((prev) => [...prev, rule]);
+        return;
+      }
+      try {
+        const saved = await api.conditionalRules.create(
+          activeSheetId,
+          serializeConditionalRule(rule),
+        );
+        const persisted = deserializeConditionalRule(saved);
+        if (persisted) setConditionalRules((prev) => [...prev, persisted]);
+      } catch (error) {
+        console.error("Failed to save conditional rule", error);
+        setToastMessage("조건부 서식을 저장하지 못했습니다.");
+      }
+    },
+    [activeSheetId],
+  );
 
   const handleOpenConditionalDialog = useCallback(() => {
     if (selection) {
@@ -1906,7 +1929,7 @@ export default function Spreadsheet({
         <ConditionalFormattingDialog
           isOpen={isConditionalDialogOpen}
           onClose={() => setIsConditionalDialogOpen(false)}
-          onSave={handleAddConditionalRule}
+          onSave={(rule) => void handleAddConditionalRule(rule)}
           selection={{
             startRow: selection.start.row,
             startCol: selection.start.col,
