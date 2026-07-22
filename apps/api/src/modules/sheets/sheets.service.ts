@@ -513,6 +513,74 @@ export class SheetsService {
     };
   }
 
+  async getAppendTarget(
+    userId: string,
+    sheetId: string,
+    appendRows: number,
+    startCol: number,
+    appendCols: number,
+  ) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+      select: {
+        spreadsheetId: true,
+        rowCount: true,
+        colCount: true,
+        version: true,
+      },
+    });
+    if (!sheet) throw new NotFoundException('Sheet not found');
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+
+    const lastUsedCell = await this.prisma.cell.findFirst({
+      where: {
+        sheetId,
+        OR: [{ formula: { not: null } }, { value: { not: Prisma.AnyNull } }],
+      },
+      select: { row: true },
+      orderBy: { row: 'desc' },
+    });
+    const startRow = (lastUsedCell?.row ?? -1) + 1;
+    if (startRow + appendRows > sheet.rowCount) {
+      throw new BadRequestException(
+        'Appended rows exceed the current sheet row capacity',
+      );
+    }
+    if (startCol + appendCols > sheet.colCount) {
+      throw new BadRequestException(
+        'Appended values exceed the current sheet column capacity',
+      );
+    }
+    return { startRow, version: sheet.version };
+  }
+
+  async getCellMutationReplay(
+    userId: string,
+    sheetId: string,
+    idempotencyKey: string,
+  ) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+      select: { spreadsheetId: true },
+    });
+    if (!sheet) throw new NotFoundException('Sheet not found');
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+    const mutation = await this.prisma.cellMutation.findUnique({
+      where: {
+        sheetId_userId_idempotencyKey: { sheetId, userId, idempotencyKey },
+      },
+      select: { version: true, metadata: true },
+    });
+    return mutation
+      ? {
+          cells: [],
+          version: mutation.version,
+          replayed: true as const,
+          metadata: mutation.metadata,
+        }
+      : null;
+  }
+
   private columnLabel(index: number): string {
     let value = index + 1;
     let label = '';
@@ -2057,6 +2125,7 @@ export class SheetsService {
     }>,
     expectedVersion?: number,
     idempotencyKey?: string,
+    mutationMetadata?: Prisma.InputJsonValue,
   ) {
     if (updates.length < 1 || updates.length > 1000) {
       throw new BadRequestException(
@@ -2142,7 +2211,12 @@ export class SheetsService {
             'Idempotency key was already used for a different request.',
           );
         }
-        return { cells: [], version: existingMutation.version, replayed: true };
+        return {
+          cells: [],
+          version: existingMutation.version,
+          replayed: true,
+          metadata: existingMutation.metadata,
+        };
       }
     }
 
@@ -2156,6 +2230,7 @@ export class SheetsService {
               idempotencyKey,
               requestHash,
               version: versionToMatch + 1,
+              metadata: mutationMetadata,
             },
           });
         }
@@ -2233,6 +2308,7 @@ export class SheetsService {
           cells: [],
           existingCells: [],
           replayedVersion: concurrentMutation.version,
+          replayedMetadata: concurrentMutation.metadata,
         };
       });
     if ('replayedVersion' in transactionResult) {
@@ -2240,6 +2316,7 @@ export class SheetsService {
         cells: transactionResult.cells,
         version: transactionResult.replayedVersion,
         replayed: true,
+        metadata: transactionResult.replayedMetadata,
       };
     }
     const existingMap = new Map(
@@ -2290,7 +2367,11 @@ export class SheetsService {
     this.logger.log(
       `[updateCells] Completed, returning ${transactionResult.cells.length} updated cells`,
     );
-    return { cells: transactionResult.cells, version: versionToMatch + 1 };
+    return {
+      cells: transactionResult.cells,
+      version: versionToMatch + 1,
+      metadata: mutationMetadata,
+    };
   }
 
   private async assertMergedCellWriteAllowed(

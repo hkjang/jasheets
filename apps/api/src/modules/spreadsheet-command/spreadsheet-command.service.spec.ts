@@ -5,6 +5,8 @@ describe('SpreadsheetCommandService', () => {
   const sheets = {
     updateCells: jest.fn(),
     changeStructure: jest.fn(),
+    getAppendTarget: jest.fn(),
+    getCellMutationReplay: jest.fn(),
   };
   const service = new SpreadsheetCommandService(
     sheets as unknown as SheetsService,
@@ -114,6 +116,83 @@ describe('SpreadsheetCommandService', () => {
         },
       ),
     ).rejects.toThrow('must be rectangular');
+    expect(sheets.updateCells).not.toHaveBeenCalled();
+  });
+
+  it('appends after the last used row using its observed version', async () => {
+    sheets.getCellMutationReplay.mockResolvedValue(null);
+    sheets.getAppendTarget.mockResolvedValue({ startRow: 8, version: 20 });
+    sheets.updateCells.mockResolvedValue({ version: 21, cells: [] });
+
+    await expect(
+      service.execute(
+        { userId: 'user-1', actorType: 'MCP' },
+        {
+          type: 'APPEND_ROWS',
+          sheetId: 'sheet-1',
+          startCol: 1,
+          values: [
+            ['Ada', 10],
+            ['Grace', 20],
+          ],
+          idempotencyKey: 'append-request-1',
+        },
+      ),
+    ).resolves.toMatchObject({
+      version: 21,
+      range: { startRow: 8, startCol: 1, endRow: 9, endCol: 2 },
+    });
+
+    expect(sheets.getAppendTarget).toHaveBeenCalledWith(
+      'user-1',
+      'sheet-1',
+      2,
+      1,
+      2,
+    );
+    expect(sheets.updateCells).toHaveBeenCalledWith(
+      'user-1',
+      'sheet-1',
+      [
+        { row: 8, col: 1, value: 'Ada' },
+        { row: 8, col: 2, value: 10 },
+        { row: 9, col: 1, value: 'Grace' },
+        { row: 9, col: 2, value: 20 },
+      ],
+      20,
+      'append-request-1',
+      {
+        range: { startRow: 8, startCol: 1, endRow: 9, endCol: 2 },
+      },
+    );
+  });
+
+  it('replays an append without recalculating or writing another range', async () => {
+    sheets.getCellMutationReplay.mockResolvedValue({
+      cells: [],
+      version: 21,
+      replayed: true,
+      metadata: {
+        range: { startRow: 8, startCol: 1, endRow: 9, endCol: 2 },
+      },
+    });
+
+    await expect(
+      service.execute(
+        { userId: 'user-1', actorType: 'MCP' },
+        {
+          type: 'APPEND_ROWS',
+          sheetId: 'sheet-1',
+          values: [['retry']],
+          idempotencyKey: 'append-request-1',
+        },
+      ),
+    ).resolves.toMatchObject({
+      version: 21,
+      replayed: true,
+      range: { startRow: 8, startCol: 1, endRow: 9, endCol: 2 },
+    });
+    expect(sheets.getAppendTarget).not.toHaveBeenCalled();
     expect(sheets.updateCells).not.toHaveBeenCalled();
   });
 });

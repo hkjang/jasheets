@@ -190,6 +190,7 @@ model CellMutation {
   idempotencyKey String
   requestHash    String
   version        Int
+  metadata       Json?
   createdAt      DateTime @default(now())
 
   @@unique([sheetId, userId, idempotencyKey])

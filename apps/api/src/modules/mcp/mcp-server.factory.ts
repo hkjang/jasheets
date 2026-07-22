@@ -187,6 +187,37 @@ export class McpServerFactory {
         ),
     );
 
+    server.registerTool(
+      'append_rows',
+      {
+        description:
+          'Append rectangular rows after the last non-empty row through the shared SpreadsheetCommand boundary.',
+        inputSchema: {
+          sheetId: z.string().uuid(),
+          startCol: z.number().int().min(0).optional().default(0),
+          values: z
+            .array(z.array(z.unknown()).min(1).max(1000))
+            .min(1)
+            .max(1000),
+          formulas: z
+            .array(z.array(z.string().nullable()).min(1).max(1000))
+            .min(1)
+            .max(1000)
+            .optional(),
+          expectedVersion: z.number().int().min(0).optional(),
+          idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+        },
+        annotations: { readOnlyHint: false, idempotentHint: true },
+      },
+      async (input) =>
+        jsonResult(
+          await this.commands.execute(
+            { userId, actorType: 'MCP' },
+            { type: 'APPEND_ROWS', ...input },
+          ),
+        ),
+    );
+
     const registerStructureTool = (
       name: 'insert_row' | 'delete_row',
       operation: 'insert' | 'delete',

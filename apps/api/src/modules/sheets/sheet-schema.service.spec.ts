@@ -151,6 +151,37 @@ describe('SheetsService sheet schema', () => {
     expect(prisma.sheet.findFirst).not.toHaveBeenCalled();
   });
 
+  it('finds the append row from non-empty cells and returns the CAS version', async () => {
+    const prisma = {
+      sheet: {
+        findUnique: jest.fn().mockResolvedValue({
+          spreadsheetId: 'workbook-1',
+          rowCount: 100,
+          colCount: 20,
+          version: 12,
+        }),
+      },
+      cell: {
+        findFirst: jest.fn().mockResolvedValue({ row: 6 }),
+      },
+    };
+    const service = new SheetsService(
+      prisma as unknown as PrismaService,
+      {} as EventsService,
+    );
+    jest.spyOn(service, 'checkEditAccess').mockResolvedValue(undefined);
+
+    await expect(
+      service.getAppendTarget('user-1', 'sheet-1', 2, 1, 3),
+    ).resolves.toEqual({ startRow: 7, version: 12 });
+    expect(prisma.cell.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ sheetId: 'sheet-1' }),
+        orderBy: { row: 'desc' },
+      }),
+    );
+  });
+
   it('does not query cells when access is denied', async () => {
     const prisma = {
       sheet: {

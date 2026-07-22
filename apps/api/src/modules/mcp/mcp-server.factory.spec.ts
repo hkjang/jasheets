@@ -39,6 +39,7 @@ describe('McpServerFactory', () => {
         'get_range',
         'set_cells',
         'write_range',
+        'append_rows',
         'insert_row',
         'delete_row',
       ]),
@@ -156,6 +157,30 @@ describe('McpServerFactory', () => {
         ],
         expectedVersion: 2,
         idempotencyKey: 'range-request-1',
+      },
+    );
+
+    commands.execute.mockResolvedValueOnce({
+      version: 4,
+      range: { startRow: 5, startCol: 0, endRow: 5, endCol: 1 },
+    });
+    const appendedRows = await client.callTool({
+      name: 'append_rows',
+      arguments: {
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        values: [['Grace', 20]],
+        idempotencyKey: 'append-request-1',
+      },
+    });
+    expect(appendedRows.isError).not.toBe(true);
+    expect(commands.execute).toHaveBeenLastCalledWith(
+      { userId: 'user-1', actorType: 'MCP' },
+      {
+        type: 'APPEND_ROWS',
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        startCol: 0,
+        values: [['Grace', 20]],
+        idempotencyKey: 'append-request-1',
       },
     );
 

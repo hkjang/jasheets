@@ -32,6 +32,7 @@ endpoint only through TLS-enabled Ingress.
 | `get_range` | Compatibility alias for `read_range` | No |
 | `set_cells` | Write values, formulas, or formats | Yes |
 | `write_range` | Write a rectangular 2D value/formula matrix | Yes |
+| `append_rows` | Append rows after the last non-empty data row | Yes |
 | `insert_row` | Insert one row at a zero-based index | Yes |
 | `delete_row` | Delete one row at a zero-based index | Yes |
 
