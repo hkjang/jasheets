@@ -195,4 +195,42 @@ describe('SpreadsheetCommandService', () => {
     expect(sheets.getAppendTarget).not.toHaveBeenCalled();
     expect(sheets.updateCells).not.toHaveBeenCalled();
   });
+
+  it('fills formulas with relative and absolute references', async () => {
+    sheets.updateCells.mockResolvedValue({ version: 31, cells: [] });
+
+    await expect(
+      service.execute(
+        { userId: 'user-1', actorType: 'MCP' },
+        {
+          type: 'APPLY_FORMULA',
+          sheetId: 'sheet-1',
+          startRow: 4,
+          startCol: 2,
+          endRow: 5,
+          endCol: 3,
+          formula: '=A1+$B$2+C$3+$D4',
+          expectedVersion: 30,
+          idempotencyKey: 'formula-request-1',
+        },
+      ),
+    ).resolves.toMatchObject({
+      version: 31,
+      appliedCells: 4,
+      range: { startRow: 4, startCol: 2, endRow: 5, endCol: 3 },
+    });
+
+    expect(sheets.updateCells).toHaveBeenCalledWith(
+      'user-1',
+      'sheet-1',
+      [
+        { row: 4, col: 2, value: null, formula: '=A1+$B$2+C$3+$D4' },
+        { row: 4, col: 3, value: null, formula: '=B1+$B$2+D$3+$D4' },
+        { row: 5, col: 2, value: null, formula: '=A2+$B$2+C$3+$D5' },
+        { row: 5, col: 3, value: null, formula: '=B2+$B$2+D$3+$D5' },
+      ],
+      30,
+      'formula-request-1',
+    );
+  });
 });

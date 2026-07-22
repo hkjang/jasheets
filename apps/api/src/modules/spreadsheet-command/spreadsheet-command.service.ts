@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
+import { shiftFormulaReferences } from '@jasheets/formula-engine';
 import { SheetsService } from '../sheets/sheets.service';
 import {
   SpreadsheetCommand,
@@ -112,6 +113,64 @@ export class SpreadsheetCommandService {
         return {
           ...result,
           range,
+        };
+      }
+      case 'APPLY_FORMULA': {
+        if (!command.formula.startsWith('=')) {
+          throw new BadRequestException('Formula must start with =');
+        }
+        if (command.formula.length > 8192) {
+          throw new BadRequestException('Formula exceeds 8,192 characters');
+        }
+        const rowCount = command.endRow - command.startRow + 1;
+        const colCount = command.endCol - command.startCol + 1;
+        if (
+          command.startRow < 0 ||
+          command.startCol < 0 ||
+          rowCount < 1 ||
+          colCount < 1 ||
+          ![
+            command.startRow,
+            command.startCol,
+            command.endRow,
+            command.endCol,
+          ].every(Number.isInteger)
+        ) {
+          throw new BadRequestException('Formula range is invalid');
+        }
+        if (rowCount * colCount > 1000) {
+          throw new BadRequestException(
+            'Formula application is limited to 1,000 cells',
+          );
+        }
+        const updates = Array.from({ length: rowCount }, (_, rowOffset) =>
+          Array.from({ length: colCount }, (_, colOffset) => ({
+            row: command.startRow + rowOffset,
+            col: command.startCol + colOffset,
+            value: null,
+            formula: shiftFormulaReferences(
+              command.formula,
+              rowOffset,
+              colOffset,
+            ),
+          })),
+        ).flat();
+        const result = await this.sheetsService.updateCells(
+          context.userId,
+          command.sheetId,
+          updates,
+          command.expectedVersion,
+          command.idempotencyKey,
+        );
+        return {
+          ...result,
+          range: {
+            startRow: command.startRow,
+            startCol: command.startCol,
+            endRow: command.endRow,
+            endCol: command.endCol,
+          },
+          appliedCells: updates.length,
         };
       }
       case 'CHANGE_STRUCTURE':

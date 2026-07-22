@@ -42,6 +42,18 @@ export interface AppendRowsCommand {
   idempotencyKey: string;
 }
 
+export interface ApplyFormulaCommand {
+  type: 'APPLY_FORMULA';
+  sheetId: string;
+  startRow: number;
+  startCol: number;
+  endRow: number;
+  endCol: number;
+  formula: string;
+  expectedVersion?: number;
+  idempotencyKey: string;
+}
+
 export interface ChangeStructureCommand {
   type: 'CHANGE_STRUCTURE';
   sheetId: string;
@@ -54,4 +66,5 @@ export type SpreadsheetCommand =
   | SetCellsCommand
   | WriteRangeCommand
   | AppendRowsCommand
+  | ApplyFormulaCommand
   | ChangeStructureCommand;

@@ -40,6 +40,7 @@ describe('McpServerFactory', () => {
         'set_cells',
         'write_range',
         'append_rows',
+        'apply_formula',
         'insert_row',
         'delete_row',
       ]),
@@ -181,6 +182,36 @@ describe('McpServerFactory', () => {
         startCol: 0,
         values: [['Grace', 20]],
         idempotencyKey: 'append-request-1',
+      },
+    );
+
+    commands.execute.mockResolvedValueOnce({ version: 5, appliedCells: 4 });
+    const formula = await client.callTool({
+      name: 'apply_formula',
+      arguments: {
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        startRow: 1,
+        startCol: 1,
+        endRow: 2,
+        endCol: 2,
+        formula: '=A1*$A$10',
+        expectedVersion: 4,
+        idempotencyKey: 'formula-request-1',
+      },
+    });
+    expect(formula.isError).not.toBe(true);
+    expect(commands.execute).toHaveBeenLastCalledWith(
+      { userId: 'user-1', actorType: 'MCP' },
+      {
+        type: 'APPLY_FORMULA',
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        startRow: 1,
+        startCol: 1,
+        endRow: 2,
+        endCol: 2,
+        formula: '=A1*$A$10',
+        expectedVersion: 4,
+        idempotencyKey: 'formula-request-1',
       },
     );
 

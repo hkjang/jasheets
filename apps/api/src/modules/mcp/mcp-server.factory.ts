@@ -218,6 +218,32 @@ export class McpServerFactory {
         ),
     );
 
+    server.registerTool(
+      'apply_formula',
+      {
+        description:
+          'Fill a selected range from a top-left formula, shifting relative A1 references while preserving absolute references.',
+        inputSchema: {
+          sheetId: z.string().uuid(),
+          startRow: z.number().int().min(0),
+          startCol: z.number().int().min(0),
+          endRow: z.number().int().min(0),
+          endCol: z.number().int().min(0),
+          formula: z.string().min(2).max(8192).startsWith('='),
+          expectedVersion: z.number().int().min(0).optional(),
+          idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+        },
+        annotations: { readOnlyHint: false, idempotentHint: true },
+      },
+      async (input) =>
+        jsonResult(
+          await this.commands.execute(
+            { userId, actorType: 'MCP' },
+            { type: 'APPLY_FORMULA', ...input },
+          ),
+        ),
+    );
+
     const registerStructureTool = (
       name: 'insert_row' | 'delete_row',
       operation: 'insert' | 'delete',
