@@ -82,11 +82,14 @@ describe('ApiClient', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('keeps same-origin URLs unchanged when using boundedFetch', async () => {
+  it('resolves legacy /api paths against the configured API server', async () => {
     const fetchMock = jest.mocked(globalThis.fetch).mockResolvedValue(response(200));
 
     await boundedFetch('/api/admin/activity');
 
-    expect(fetchMock).toHaveBeenCalledWith('/api/admin/activity', expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://localhost:4000/api/admin/activity',
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 });

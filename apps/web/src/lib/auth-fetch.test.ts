@@ -36,6 +36,23 @@ describe("authenticatedFetch", () => {
     expect(headers.get("Authorization")).toBe("Bearer access-1");
   });
 
+  it("never sends API credentials or refreshes sessions for external URLs", async () => {
+    saveAuthSession({
+      accessToken: "secret-access",
+      refreshToken: "secret-refresh",
+      user: { id: "1", email: "user@example.com" },
+    });
+    const fetchMock = jest.fn().mockResolvedValue(response(401));
+    globalThis.fetch = fetchMock;
+
+    const result = await authenticatedFetch(API_URL, "https://example.com/webhook");
+
+    expect(result.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(new Headers(fetchMock.mock.calls[0][1]?.headers).has("Authorization")).toBe(false);
+    expect(localStorage.getItem("auth_token")).toBe("secret-access");
+  });
+
   it("refreshes once after a 401 and retries with the new token", async () => {
     saveAuthSession({
       accessToken: "expired",

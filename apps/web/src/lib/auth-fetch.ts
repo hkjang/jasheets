@@ -15,6 +15,23 @@ function withAccessToken(init: RequestInit, token: string | null): RequestInit {
   return { ...init, headers };
 }
 
+function requestUrl(input: RequestInfo | URL): string {
+  if (typeof Request !== "undefined" && input instanceof Request) return input.url;
+  return String(input);
+}
+
+function isApiRequest(apiUrl: string, input: RequestInfo | URL): boolean {
+  try {
+    const api = new URL(apiUrl);
+    const request = new URL(requestUrl(input), api);
+    const apiPath = api.pathname.replace(/\/$/, "");
+    return request.origin === api.origin
+      && (request.pathname === apiPath || request.pathname.startsWith(`${apiPath}/`));
+  } catch {
+    return false;
+  }
+}
+
 async function refreshSession(apiUrl: string): Promise<AuthSession> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) throw new Error("No refresh token available");
@@ -47,15 +64,16 @@ export async function authenticatedFetch(
   input: RequestInfo | URL,
   init: RequestInit = {},
 ): Promise<Response> {
-  const requestUrl = String(input);
+  const url = requestUrl(input);
+  const targetsApi = isApiRequest(apiUrl, input);
   const isAuthRequest =
-    requestUrl.includes("/auth/login") || requestUrl.includes("/auth/register");
+    url.includes("/auth/login") || url.includes("/auth/register");
   const response = await globalThis.fetch(
     input,
-    withAccessToken(init, getAccessToken()),
+    targetsApi ? withAccessToken(init, getAccessToken()) : init,
   );
 
-  if (response.status !== 401 || isAuthRequest) return response;
+  if (response.status !== 401 || isAuthRequest || !targetsApi) return response;
 
   try {
     refreshRequest ??= refreshSession(apiUrl).finally(() => {

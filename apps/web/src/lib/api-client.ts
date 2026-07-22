@@ -123,10 +123,17 @@ export class ApiClient {
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000/api';
 export const apiClient = new ApiClient(API_URL);
 
+function resolveBoundedInput(input: RequestInfo | URL): RequestInfo | URL {
+  if (typeof input !== 'string') return input;
+  if (input === '/api') return API_URL;
+  if (input.startsWith('/api/')) return `${API_URL}${input.slice(4)}`;
+  return input;
+}
+
 /**
- * Fetches absolute or same-origin URLs without changing them while applying the
- * same authentication, timeout, cancellation, and safe retry policy as ApiClient.
+ * Applies the shared timeout and retry policy. Legacy `/api/...` paths are
+ * resolved against the configured API server instead of the Next.js origin.
  */
 export function boundedFetch(input: RequestInfo | URL, options: ApiRequestOptions = {}) {
-  return fetchWithPolicy(API_URL, input, options);
+  return fetchWithPolicy(API_URL, resolveBoundedInput(input), options);
 }
