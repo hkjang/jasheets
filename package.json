@@ -10,6 +10,7 @@
     "start:prod": "turbo run start:prod",
     "test": "turbo run test",
     "test:e2e": "playwright test",
+    "test:e2e:real": "bash scripts/run-real-e2e.sh",
     "test:performance": "pnpm --filter web test:performance",
     "lint": "turbo run lint",
     "clean": "turbo run clean && rimraf node_modules",

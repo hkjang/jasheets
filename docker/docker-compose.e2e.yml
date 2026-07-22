@@ -1,0 +1,17 @@
+services:
+  postgres-e2e:
+    image: postgres:16-alpine
+    container_name: jasheets-postgres-e2e
+    environment:
+      POSTGRES_DB: jasheets_e2e
+      POSTGRES_USER: jasheets
+      POSTGRES_PASSWORD: jasheets_e2e_password
+    ports:
+      - "55432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U jasheets -d jasheets_e2e"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+    tmpfs:
+      - /var/lib/postgresql/data
