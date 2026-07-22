@@ -1,6 +1,6 @@
 import fixtures from './__fixtures__/formula-conformance.json';
 import { NamedRanges, SheetData, letterToColIndex } from '@/types/spreadsheet';
-import { evaluateFormula } from './FormulaEngine';
+import { evaluateFormula } from '@jasheets/formula-engine';
 
 interface Fixture {
   name: string;

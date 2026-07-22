@@ -1,5 +1,5 @@
 import { CellRange, SheetData } from '@/types/spreadsheet';
-import { shiftFormulaReferences } from './FormulaEngine';
+import { shiftFormulaReferences } from '@jasheets/formula-engine';
 
 export interface FillUpdate { row: number; col: number; value: string }
 

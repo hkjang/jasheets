@@ -1,5 +1,5 @@
 import { CellPosition, NamedRanges, SheetData } from '@/types/spreadsheet';
-import { tokenize, evaluateFormula, type FormulaWorkbook } from './FormulaEngine';
+import { tokenize, evaluateFormula, type FormulaWorkbook } from '@jasheets/formula-engine';
 import { formatValue } from './formatting';
 
 // Helper to get cell key like "0:1" for row 0, col 1

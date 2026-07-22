@@ -1,6 +1,6 @@
 import { normalizeHyperlinkUrl } from '@/utils/hyperlink';
 import { CellData, CellPosition, CellRange, CellStyle, DataValidationRule, SheetData } from '@/types/spreadsheet';
-import { shiftFormulaReferences } from '@/utils/FormulaEngine';
+import { shiftFormulaReferences } from '@jasheets/formula-engine';
 
 export const JASHEETS_CLIPBOARD_MIME = 'application/x-jasheets-cells+json';
 export const JASHEETS_CLIPBOARD_VERSION = 1;

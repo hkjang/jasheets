@@ -1,4 +1,4 @@
-import { NamedRanges, SheetData } from '@/types/spreadsheet';
+import { NamedRanges, SheetData } from './model';
 import { datePartsToSerial, dateToSerial, serialToDate, timePartsToSerial } from './dateSerial';
 import { normalizeLocalizedFormula } from './localeNumber';
 
@@ -1224,7 +1224,6 @@ export function evaluateFormula(
         
     } catch (e) {
         if (e instanceof Error && isFormulaError(e.message)) return e.message;
-        console.error("Formula Error", e);
         return '#ERROR';
     }
 }

@@ -1,4 +1,4 @@
-import { evaluateFormula, shiftFormulaReferences, tokenize } from './FormulaEngine';
+import { evaluateFormula, shiftFormulaReferences, tokenize } from '@jasheets/formula-engine';
 import { SheetData } from '@/types/spreadsheet';
 
 const data: SheetData = {

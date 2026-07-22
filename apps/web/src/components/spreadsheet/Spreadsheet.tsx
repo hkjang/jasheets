@@ -97,7 +97,7 @@ import SnapshotManagerPanel from "./SnapshotManagerPanel";
 import CommandPalette from "./CommandPalette";
 import type { PersistedCellUpdate } from "@/utils/cellPersistence";
 import SheetTabs, { type SheetTab } from "./SheetTabs";
-import type { FormulaWorkbook } from "@/utils/FormulaEngine";
+import type { FormulaWorkbook } from "@jasheets/formula-engine";
 import type { PersistedMergedRange } from "@/lib/api";
 import {
   findMergedRange,

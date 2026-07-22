@@ -1,5 +1,5 @@
 import { CellRange, CellValue, NamedRanges, SheetData } from '@/types/spreadsheet';
-import { FormulaWorkbook } from './FormulaEngine';
+import { FormulaWorkbook } from '@jasheets/formula-engine';
 import { recalculate } from './RecalculationEngine';
 
 function compareValues(a: CellValue | undefined, b: CellValue | undefined, ascending: boolean): number {

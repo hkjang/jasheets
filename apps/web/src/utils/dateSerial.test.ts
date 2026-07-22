@@ -1,4 +1,4 @@
-import { evaluateFormula } from './FormulaEngine';
+import { evaluateFormula } from '@jasheets/formula-engine';
 import { formatValue } from './formatting';
 import { parseInput } from './inputParser';
 

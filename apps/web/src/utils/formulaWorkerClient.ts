@@ -1,5 +1,5 @@
 import type { NamedRanges, SheetData } from '@/types/spreadsheet';
-import type { FormulaWorkbook } from './FormulaEngine';
+import type { FormulaWorkbook } from '@jasheets/formula-engine';
 
 export interface FormulaWorkerRequest {
   id: number;

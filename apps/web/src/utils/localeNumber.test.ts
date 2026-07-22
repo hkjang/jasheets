@@ -1,4 +1,4 @@
-import { evaluateFormula } from './FormulaEngine';
+import { evaluateFormula } from '@jasheets/formula-engine';
 import { parseInput } from './inputParser';
 import { getLocaleSeparators, normalizeLocalizedFormula, parseLocaleNumber } from './localeNumber';
 

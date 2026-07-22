@@ -10,8 +10,7 @@ import {
   CellStyle,
 } from "@/types/spreadsheet";
 import { produce, applyPatches, Patch, enablePatches } from "immer";
-// Use local FormulaEngine
-import { evaluateFormula, type FormulaWorkbook } from "@/utils/FormulaEngine";
+import { evaluateFormula, type FormulaWorkbook } from "@jasheets/formula-engine";
 import { formatValue } from "@/utils/formatting";
 import { parseInput } from "@/utils/inputParser";
 import { recalculate } from "@/utils/RecalculationEngine";
