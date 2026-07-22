@@ -25,7 +25,9 @@ RUN pnpm --filter @jasheets/shared build \
  && pnpm --filter @jasheets/crdt build \
  && pnpm --filter api build \
  && pnpm --filter web build
-RUN pnpm --filter api deploy --prod /prod/api
+RUN pnpm --filter api deploy --prod /prod/api \
+ && cd /prod/api \
+ && ./node_modules/.bin/prisma generate --schema ./prisma/schema.prisma
 
 FROM node:20-alpine AS runner
 

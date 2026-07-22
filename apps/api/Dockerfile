@@ -33,7 +33,9 @@ RUN pnpm --filter api build
 
 # Create a self-contained production dependency tree. Copying pnpm workspace
 # symlinks alone leaves broken links in the runtime image.
-RUN pnpm --filter api deploy --prod /prod/api
+RUN pnpm --filter api deploy --prod /prod/api \
+ && cd /prod/api \
+ && ./node_modules/.bin/prisma generate --schema ./prisma/schema.prisma
 
 # Production stage
 FROM node:20-alpine AS runner
