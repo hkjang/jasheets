@@ -11,6 +11,7 @@ import {
   rejectNonAnchorMergedUpdates,
   resolveMergedNavigationTarget,
   resolveMergedCell,
+  sortRangeIntersectsMergedRanges,
   shiftMergedRanges,
   type MergedRange,
 } from './mergedRanges';
@@ -118,6 +119,25 @@ describe('mergedRanges', () => {
   test('detects viewport intersections even when the merge anchor is offscreen', () => {
     expect(mergedRangeIntersects(range, 3, 8, 4, 8)).toBe(true);
     expect(mergedRangeIntersects(range, 5, 8, 4, 8)).toBe(false);
+  });
+
+  test('rejects sort rectangles that touch or cross a merged range', () => {
+    expect(sortRangeIntersectsMergedRanges({
+      start: { row: 4, col: 5 },
+      end: { row: 8, col: 8 },
+    }, [range])).toBe(true);
+    expect(sortRangeIntersectsMergedRanges({
+      start: { row: 8, col: 8 },
+      end: { row: 4, col: 5 },
+    }, [range])).toBe(true);
+    expect(sortRangeIntersectsMergedRanges({
+      start: { row: 0, col: 0 },
+      end: { row: 1, col: 10 },
+    }, [range])).toBe(false);
+    expect(sortRangeIntersectsMergedRanges({
+      start: { row: 2, col: 0 },
+      end: { row: 4, col: 2 },
+    }, [range])).toBe(false);
   });
 
   test('moves ranges after an insertion and expands ranges containing it', () => {

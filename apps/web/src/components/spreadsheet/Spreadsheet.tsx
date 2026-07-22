@@ -77,7 +77,13 @@ import FilterProfilesDropdown, {
 } from "./FilterProfilesDropdown";
 import { getHiddenRowsForFilterView } from "@/utils/filterViews";
 import { createFillUpdates } from "@/utils/fillHandle";
-import { createPasteUpdates, serializeRangeToTsv } from "@/utils/clipboard";
+import {
+  createPasteUpdates,
+  createRichPasteUpdates,
+  JASHEETS_CLIPBOARD_MIME,
+  serializeRangeToRichClipboard,
+  serializeRangeToTsv,
+} from "@/utils/clipboard";
 import SnapshotManagerPanel from "./SnapshotManagerPanel";
 import CommandPalette from "./CommandPalette";
 import type { PersistedCellUpdate } from "@/utils/cellPersistence";
@@ -91,6 +97,7 @@ import {
   resolveMergedCell,
   resolveMergedNavigationTarget,
   shiftMergedRanges,
+  sortRangeIntersectsMergedRanges,
 } from "@/utils/mergedRanges";
 import {
   deserializeConditionalRule,
@@ -166,6 +173,7 @@ export default function Spreadsheet({
 }: SpreadsheetProps) {
   const [sheetTitle, setSheetTitle] = useState(title);
   const [sheetVersion, setSheetVersion] = useState(initialVersion);
+  const sheetVersionRef = useRef(initialVersion);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [sheetActionPending, setSheetActionPending] = useState(false);
   const { user, loading } = useAuth();
@@ -176,6 +184,7 @@ export default function Spreadsheet({
   const mergedRangesRef = useRef<PersistedMergedRange[]>(initialMergedRanges);
   const handleAutosaveSaved = useCallback(
     (version: number) => {
+      sheetVersionRef.current = version;
       setSheetVersion(version);
       if (activeSheetId) onVersionChange?.(activeSheetId, version);
     },
@@ -245,6 +254,7 @@ export default function Spreadsheet({
     replaceAll,
     updateCellFormat,
     updateCells,
+    updateRichCells,
     applyTableFormat,
     sortRange,
     removeDuplicates,
@@ -288,9 +298,17 @@ export default function Spreadsheet({
     if (!selection) return;
 
     const text = serializeRangeToTsv(data, selection);
+    const rich = serializeRangeToRichClipboard(data, selection);
 
     try {
-      await navigator.clipboard.writeText(text);
+      if (rich && navigator.clipboard.write && typeof ClipboardItem !== "undefined") {
+        await navigator.clipboard.write([new ClipboardItem({
+          "text/plain": new Blob([text], { type: "text/plain" }),
+          [JASHEETS_CLIPBOARD_MIME]: new Blob([rich], { type: JASHEETS_CLIPBOARD_MIME }),
+        })]);
+      } else {
+        await navigator.clipboard.writeText(text);
+      }
       setToastMessage("Copied to clipboard");
     } catch (err) {
       console.error("Failed to copy", err);
@@ -320,14 +338,25 @@ export default function Spreadsheet({
     if (!selectedCell) return;
 
     try {
-      const text = await navigator.clipboard.readText();
-      if (!text) return;
-
       const origin = resolveMergedCell(
         mergedRangesRef.current,
         selectedCell.row,
         selectedCell.col,
       ).position;
+      if (navigator.clipboard.read) {
+        const items = await navigator.clipboard.read();
+        const richItem = items.find((item) => item.types.includes(JASHEETS_CLIPBOARD_MIME));
+        if (richItem) {
+          const richText = await (await richItem.getType(JASHEETS_CLIPBOARD_MIME)).text();
+          const richUpdates = createRichPasteUpdates(richText, origin);
+          const accepted = richUpdates && rejectNonAnchorMergedUpdates(richUpdates, mergedRangesRef.current);
+          if (!accepted) setToastMessage("병합된 셀의 일부에는 붙여넣을 수 없습니다.");
+          else if (accepted.length > 0) updateRichCells(accepted.map(({ row, col, cell }) => ({ row, col, cell })));
+          if (richUpdates) return;
+        }
+      }
+      const text = await navigator.clipboard.readText();
+      if (!text) return;
       const updates = rejectNonAnchorMergedUpdates(
         createPasteUpdates(text, origin),
         mergedRangesRef.current,
@@ -344,7 +373,7 @@ export default function Spreadsheet({
       // Often triggered if permission denied or not focused
       alert("Failed to paste from clipboard. Please allow clipboard access.");
     }
-  }, [selectedCell, updateCells]);
+  }, [selectedCell, updateCells, updateRichCells]);
 
   useEffect(() => {
     const handleCopy = (e: ClipboardEvent) => {
@@ -354,6 +383,8 @@ export default function Spreadsheet({
       e.preventDefault();
       const text = serializeRangeToTsv(data, selection);
       e.clipboardData?.setData("text/plain", text);
+      const rich = serializeRangeToRichClipboard(data, selection);
+      if (rich) e.clipboardData?.setData(JASHEETS_CLIPBOARD_MIME, rich);
     };
 
     const handleCut = (e: ClipboardEvent) => {
@@ -371,6 +402,19 @@ export default function Spreadsheet({
       e.preventDefault();
 
       // For paste event, we can access data directly which is better than readText() permission-wise within the event
+      const origin = resolveMergedCell(
+        mergedRangesRef.current,
+        selectedCell.row,
+        selectedCell.col,
+      ).position;
+      const rich = e.clipboardData?.getData(JASHEETS_CLIPBOARD_MIME);
+      const richUpdates = rich ? createRichPasteUpdates(rich, origin) : null;
+      if (richUpdates) {
+        const accepted = rejectNonAnchorMergedUpdates(richUpdates, mergedRangesRef.current);
+        if (!accepted) setToastMessage("병합된 셀의 일부에는 붙여넣을 수 없습니다.");
+        else if (accepted.length > 0) updateRichCells(accepted.map(({ row, col, cell }) => ({ row, col, cell })));
+        return;
+      }
       const text = e.clipboardData?.getData("text/plain");
       if (text) {
         // Reuse logic? Or just duplicate the parsing for the event version?
@@ -379,11 +423,6 @@ export default function Spreadsheet({
         // Refactoring parsing to separate function is cleaner but for now let's just duplicate the parsing logic
         // or updates logic.
 
-        const origin = resolveMergedCell(
-          mergedRangesRef.current,
-          selectedCell.row,
-          selectedCell.col,
-        ).position;
         const updates = rejectNonAnchorMergedUpdates(
           createPasteUpdates(text, origin),
           mergedRangesRef.current,
@@ -412,6 +451,7 @@ export default function Spreadsheet({
     copyToClipboard,
     cutoffToClipboard,
     updateCells,
+    updateRichCells,
   ]);
 
   // Collaboration
@@ -615,6 +655,7 @@ export default function Spreadsheet({
             : [],
         ),
       });
+      sheetVersionRef.current = result.version;
       setSheetVersion(result.version);
       onVersionChange?.(activeSheetId, result.version);
     } catch (error) {
@@ -676,6 +717,7 @@ export default function Spreadsheet({
           type,
           index,
         });
+        sheetVersionRef.current = result.version;
         setSheetVersion(result.version);
         onVersionChange?.(activeSheetId, result.version);
         onStructureChange?.(activeSheetId, {
@@ -1011,6 +1053,18 @@ export default function Spreadsheet({
   useEffect(() => {
     mergedRangesRef.current = mergedRanges;
   }, [mergedRanges]);
+  const trySortRows = useCallback((colIndex: number, ascending: boolean): boolean => {
+    const populatedRows = Object.keys(data).map(Number).filter(Number.isFinite);
+    if (populatedRows.length > 0 && sortRangeIntersectsMergedRanges({
+      start: { row: Math.min(...populatedRows), col: 0 },
+      end: { row: Math.max(...populatedRows), col: Number.MAX_SAFE_INTEGER },
+    }, mergedRanges)) {
+      setToastMessage("병합된 셀이 포함된 범위는 정렬할 수 없습니다. 먼저 병합을 해제해주세요.");
+      return false;
+    }
+    sortRows(colIndex, ascending);
+    return true;
+  }, [data, mergedRanges, sortRows]);
   const [isConditionalDialogOpen, setIsConditionalDialogOpen] = useState(false);
 
   // Pivot Table state
@@ -1173,9 +1227,13 @@ export default function Spreadsheet({
     ) {
       sortCol = selectedCell.col;
     }
+    if (sortRangeIntersectsMergedRanges(selection, mergedRanges)) {
+      setToastMessage("병합된 셀이 포함된 범위는 정렬할 수 없습니다. 먼저 병합을 해제해주세요.");
+      return;
+    }
     sortRange(selection, sortCol, true);
     setToastMessage("범위 정렬 완료 (오름차순)");
-  }, [selection, selectedCell, sortRange]);
+  }, [mergedRanges, selection, selectedCell, sortRange]);
 
   const handleSortRangeDesc = useCallback(() => {
     if (!selection) {
@@ -1190,9 +1248,13 @@ export default function Spreadsheet({
     ) {
       sortCol = selectedCell.col;
     }
+    if (sortRangeIntersectsMergedRanges(selection, mergedRanges)) {
+      setToastMessage("병합된 셀이 포함된 범위는 정렬할 수 없습니다. 먼저 병합을 해제해주세요.");
+      return;
+    }
     sortRange(selection, sortCol, false);
     setToastMessage("범위 정렬 완료 (내림차순)");
-  }, [selection, selectedCell, sortRange]);
+  }, [mergedRanges, selection, selectedCell, sortRange]);
 
   const handleRemoveDuplicates = useCallback(() => {
     if (!selection) {
@@ -1481,21 +1543,24 @@ export default function Spreadsheet({
       "병합하면 왼쪽 위 셀을 제외한 값이 삭제됩니다. 계속하시겠습니까?",
     )) return;
 
+    if (sheetActionPending) return;
+    setSheetActionPending(true);
     try {
+      await persistActiveSheet();
       const result = await api.spreadsheets.mergeCells(
         activeSheetId,
         range,
-        sheetVersion,
+        sheetVersionRef.current,
       );
       setMergedRanges((current) => {
         const next = [...current, result.mergedRange];
         onMergedRangesChange?.(activeSheetId, next);
         return next;
       });
+      sheetVersionRef.current = result.version;
       setSheetVersion(result.version);
       onVersionChange?.(activeSheetId, result.version);
-      setData((current) => {
-        const next = { ...current };
+      const next = { ...data };
         for (let row = range.startRow; row <= range.endRow; row++) {
           if (!next[row]) continue;
           next[row] = { ...next[row] };
@@ -1503,13 +1568,14 @@ export default function Spreadsheet({
             if (row !== range.startRow || col !== range.startCol) delete next[row][col];
           }
         }
-        return next;
-      });
+      updateData(next);
       setToastMessage("셀을 병합했습니다.");
     } catch (error) {
       setToastMessage(error instanceof Error ? error.message : "셀 병합에 실패했습니다.");
+    } finally {
+      setSheetActionPending(false);
     }
-  }, [activeSheetId, data, onMergedRangesChange, onVersionChange, selection, setData, sheetVersion]);
+  }, [activeSheetId, data, onMergedRangesChange, onVersionChange, persistActiveSheet, selection, sheetActionPending, updateData]);
 
   const handleUnmergeCells = useCallback(async () => {
     if (!activeSheetId || !selectedCell) return;
@@ -1520,24 +1586,30 @@ export default function Spreadsheet({
       setToastMessage("선택한 셀은 병합되어 있지 않습니다.");
       return;
     }
+    if (sheetActionPending) return;
+    setSheetActionPending(true);
     try {
+      await persistActiveSheet();
       const result = await api.spreadsheets.unmergeCells(
         activeSheetId,
         range,
-        sheetVersion,
+        sheetVersionRef.current,
       );
       setMergedRanges((current) => {
         const next = current.filter(({ id }) => id !== range.id);
         onMergedRangesChange?.(activeSheetId, next);
         return next;
       });
+      sheetVersionRef.current = result.version;
       setSheetVersion(result.version);
       onVersionChange?.(activeSheetId, result.version);
       setToastMessage("셀 병합을 해제했습니다.");
     } catch (error) {
       setToastMessage(error instanceof Error ? error.message : "병합 해제에 실패했습니다.");
+    } finally {
+      setSheetActionPending(false);
     }
-  }, [activeSheetId, mergedRanges, onMergedRangesChange, onVersionChange, selectedCell, sheetVersion]);
+  }, [activeSheetId, mergedRanges, onMergedRangesChange, onVersionChange, persistActiveSheet, selectedCell, sheetActionPending]);
 
   if (loading || !user) {
     return (
@@ -1671,22 +1743,24 @@ export default function Spreadsheet({
         }}
         onSortAsc={() => {
           if (selectedCell) {
-            sortRows(selectedCell.col, true);
-            profileSortingsRef.current = [{
-              column: selectedCell.col,
-              direction: "asc",
-            }];
+            if (trySortRows(selectedCell.col, true)) {
+              profileSortingsRef.current = [{
+                column: selectedCell.col,
+                direction: "asc",
+              }];
+            }
           } else {
             alert("정렬할 열의 셀을 선택해주세요.");
           }
         }}
         onSortDesc={() => {
           if (selectedCell) {
-            sortRows(selectedCell.col, false);
-            profileSortingsRef.current = [{
-              column: selectedCell.col,
-              direction: "desc",
-            }];
+            if (trySortRows(selectedCell.col, false)) {
+              profileSortingsRef.current = [{
+                column: selectedCell.col,
+                direction: "desc",
+              }];
+            }
           } else {
             alert("정렬할 열의 셀을 선택해주세요.");
           }
@@ -1890,10 +1964,10 @@ export default function Spreadsheet({
             );
             profileHiddenRowsRef.current = hiddenRows;
             profileHiddenColsRef.current = hiddenCols;
-            for (const sorting of profile.sortings ?? []) {
-              sortRows(sorting.column, sorting.direction === "asc");
-            }
-            profileSortingsRef.current = profile.sortings ?? [];
+            const appliedSortings = (profile.sortings ?? []).filter((sorting) =>
+              trySortRows(sorting.column, sorting.direction === "asc"),
+            );
+            profileSortingsRef.current = appliedSortings;
           }}
           getProfileSnapshot={() => ({
             hiddenRows: rows.flatMap((row, index) => row.hidden ? [index] : []),

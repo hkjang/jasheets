@@ -20,7 +20,10 @@ import {
   getVisibleRange,
 } from '@/utils/viewportGeometry';
 import styles from './SpreadsheetCanvas.module.css';
-import { describeSpreadsheetCell } from '@/utils/spreadsheetAccessibility';
+import {
+  describeSpreadsheetCell,
+  getAccessibleCellHyperlink,
+} from '@/utils/spreadsheetAccessibility';
 import { isDoubleTap, isTap, PointerSample } from '@/utils/mobileGestures';
 import { normalizeHyperlinkUrl } from '@/utils/hyperlink';
 import {
@@ -859,9 +862,23 @@ export default function SpreadsheetCanvas({
   // Calculate total content size for scrolling
   const totalWidth = config.headerWidth + columnGeometry.totalSize;
   const totalHeight = config.headerHeight + rowGeometry.totalSize;
+  const accessibleHyperlink = useMemo(
+    () => getAccessibleCellHyperlink(data, selectedCell, { mergedRanges }),
+    [data, mergedRanges, selectedCell],
+  );
   const cellDescription = useMemo(
-    () => describeSpreadsheetCell(data, selectedCell, selection),
-    [data, selectedCell, selection],
+    () => describeSpreadsheetCell(data, selectedCell, selection, { mergedRanges }),
+    [data, mergedRanges, selectedCell, selection],
+  );
+  const handleAccessibilityKeyDown = useCallback(
+    (event: React.KeyboardEvent<HTMLCanvasElement>) => {
+      if (event.altKey && event.key === 'Enter' && accessibleHyperlink) {
+        event.preventDefault();
+        event.stopPropagation();
+        window.open(accessibleHyperlink, '_blank', 'noopener,noreferrer');
+      }
+    },
+    [accessibleHyperlink],
   );
 
   return (
@@ -883,6 +900,7 @@ export default function SpreadsheetCanvas({
           aria-owns={selectedCell ? activeRowId : undefined}
           aria-rowcount={config.totalRows}
           aria-colcount={config.totalCols}
+          aria-keyshortcuts={accessibleHyperlink ? 'Alt+Enter' : undefined}
           role="grid"
           className={styles.canvas}
           onPointerDown={handlePointerDown}
@@ -892,10 +910,11 @@ export default function SpreadsheetCanvas({
           onPointerLeave={handleMouseUp}
           onDoubleClick={handleDoubleClick}
           onContextMenu={handleContextMenu}
+          onKeyDown={handleAccessibilityKeyDown}
         />
         <div id={instructionsId} className={styles.srOnly}>
           Use arrow keys to move between cells, Shift plus arrow keys to select a range,
-          Enter to move down, and type to edit the selected cell.
+          Enter to move down, type to edit the selected cell, and Alt plus Enter to open a selected link.
         </div>
         {selectedCell && (
           <div id={activeRowId} role="row" className={styles.srOnly}>
@@ -905,6 +924,7 @@ export default function SpreadsheetCanvas({
               aria-rowindex={selectedCell.row + 1}
               aria-colindex={selectedCell.col + 1}
               aria-selected="true"
+              aria-keyshortcuts={accessibleHyperlink ? 'Alt+Enter' : undefined}
             >
               {cellDescription}
             </div>

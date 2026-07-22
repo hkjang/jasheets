@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { CellData, CellRange, DataValidationRule, NamedRanges, ProtectedRange, SheetData, CellStyle } from '@/types/spreadsheet';
+import { CellData, CellPosition, CellRange, DataValidationRule, NamedRanges, ProtectedRange, SheetData, CellStyle } from '@/types/spreadsheet';
 import { produce, applyPatches, Patch, enablePatches } from 'immer';
 // Use local FormulaEngine
 import { evaluateFormula, type FormulaWorkbook } from '@/utils/FormulaEngine';
@@ -323,6 +323,27 @@ export function useSpreadsheetData({
         });
     }, [applyChange, namedRanges, protectedRanges, currentUserId, workbookFor]);
 
+    const updateRichCells = useCallback((updates: { row: number; col: number; cell: CellData }[]) => {
+        applyChange((draft) => {
+            const changed: CellPosition[] = [];
+            updates.forEach(({ row, col, cell }) => {
+                if (!canEditCell(protectedRanges, { row, col }, currentUserId)) return;
+                if (!draft[row]) draft[row] = {};
+                draft[row][col] = {
+                    value: cell.value,
+                    formula: cell.formula,
+                    style: cell.style ? { ...cell.style } : undefined,
+                    format: cell.format,
+                    validation: cell.validation ? structuredClone(cell.validation) : undefined,
+                    link: cell.link ? { ...cell.link } : undefined,
+                };
+                changed.push({ row, col });
+            });
+            const currentData = draft as unknown as SheetData;
+            recalculate(currentData, namedRanges, changed, workbookFor(currentData));
+        });
+    }, [applyChange, namedRanges, protectedRanges, currentUserId, workbookFor]);
+
     const updateCellFormat = useCallback((range: { start: { row: number, col: number }, end: { row: number, col: number } } | null, format: string) => {
         if (!range) return;
 
@@ -558,6 +579,7 @@ export function useSpreadsheetData({
         updateData, // External update
         setCellValue,
         updateCells,
+        updateRichCells,
         updateCellStyle,
         updateCellValidation: (range: CellRange, validation?: DataValidationRule) => {
             applyChange((draft) => {

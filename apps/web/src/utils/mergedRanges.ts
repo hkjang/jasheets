@@ -10,6 +10,11 @@ export interface CellPosition {
   col: number;
 }
 
+export interface CellRangeLike {
+  start: CellPosition;
+  end: CellPosition;
+}
+
 export interface MergedCellUpdate extends CellPosition {
   value: string;
 }
@@ -216,6 +221,30 @@ export function mergedRangeIntersects(
     normalized.startRow > endRow ||
     normalized.endCol < startCol ||
     normalized.startCol > endCol
+  );
+}
+
+/**
+ * Sorting moves cells independently from persisted merge geometry. Until merge
+ * geometry can be moved atomically with the sorted rows, reject every sort
+ * rectangle that touches a merge (including a merge that only crosses an edge).
+ */
+export function sortRangeIntersectsMergedRanges(
+  sortRange: CellRangeLike,
+  ranges: readonly MergedRange[],
+): boolean {
+  const startRow = Math.min(sortRange.start.row, sortRange.end.row);
+  const endRow = Math.max(sortRange.start.row, sortRange.end.row);
+  const startCol = Math.min(sortRange.start.col, sortRange.end.col);
+  const endCol = Math.max(sortRange.start.col, sortRange.end.col);
+
+  assertGridIndex(startRow, 'sortRange.startRow');
+  assertGridIndex(endRow, 'sortRange.endRow');
+  assertGridIndex(startCol, 'sortRange.startCol');
+  assertGridIndex(endCol, 'sortRange.endCol');
+
+  return ranges.some((range) =>
+    mergedRangeIntersects(range, startRow, endRow, startCol, endCol),
   );
 }
 
