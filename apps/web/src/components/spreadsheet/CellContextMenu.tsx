@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useLayoutEffect, useRef } from 'react';
 import styles from './CellContextMenu.module.css';
 
 interface CellContextMenuProps {
@@ -72,18 +72,22 @@ export default function CellContextMenu({
     }, [onClose]);
 
     // Adjust position to keep menu in viewport
-    useEffect(() => {
+    useLayoutEffect(() => {
         if (!menuRef.current) return;
         const rect = menuRef.current.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
-
-        if (rect.right > viewportWidth) {
-            menuRef.current.style.left = `${x - rect.width}px`;
-        }
-        if (rect.bottom > viewportHeight) {
-            menuRef.current.style.top = `${y - rect.height}px`;
-        }
+        const margin = 8;
+        const left = Math.max(
+            margin,
+            Math.min(x, viewportWidth - rect.width - margin),
+        );
+        const top = Math.max(
+            margin,
+            Math.min(y, viewportHeight - rect.height - margin),
+        );
+        menuRef.current.style.left = `${left}px`;
+        menuRef.current.style.top = `${top}px`;
     }, [x, y]);
 
     const MenuItem = ({ label, onClick, shortcut, danger }: { label: string; onClick: () => void; shortcut?: string; danger?: boolean }) => (

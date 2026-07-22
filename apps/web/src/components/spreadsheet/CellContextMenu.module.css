@@ -8,6 +8,9 @@
     min-width: 200px;
     padding: 8px 0;
     font-size: 13px;
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
 }
 
 .menuItem {

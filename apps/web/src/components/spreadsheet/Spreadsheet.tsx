@@ -928,18 +928,17 @@ export default function Spreadsheet({
           totalRows: result.rowCount,
           totalCols: result.colCount,
         }));
-        setMergedRanges((current) => {
-          const shifted = current.flatMap((range) => {
-            const next = shiftMergedRanges([range], {
-              axis: axis === "column" ? "col" : "row",
-              type,
-              index,
-            })[0];
-            return next ? [{ ...range, ...next }] : [];
-          });
-          onMergedRangesChange?.(activeSheetId, shifted);
-          return shifted;
+        const shiftedMergedRanges = mergedRangesRef.current.flatMap((range) => {
+          const next = shiftMergedRanges([range], {
+            axis: axis === "column" ? "col" : "row",
+            type,
+            index,
+          })[0];
+          return next ? [{ ...range, ...next }] : [];
         });
+        mergedRangesRef.current = shiftedMergedRanges;
+        setMergedRanges(shiftedMergedRanges);
+        onMergedRangesChange?.(activeSheetId, shiftedMergedRanges);
 
         if (axis === "row") {
           setRows((current) => {
@@ -2078,11 +2077,13 @@ export default function Spreadsheet({
         range,
         sheetVersionRef.current,
       );
-      setMergedRanges((current) => {
-        const next = [...current, result.mergedRange];
-        onMergedRangesChange?.(activeSheetId, next);
-        return next;
-      });
+      const nextMergedRanges = [
+        ...mergedRangesRef.current,
+        result.mergedRange,
+      ];
+      mergedRangesRef.current = nextMergedRanges;
+      setMergedRanges(nextMergedRanges);
+      onMergedRangesChange?.(activeSheetId, nextMergedRanges);
       sheetVersionRef.current = result.version;
       setSheetVersion(result.version);
       onVersionChange?.(activeSheetId, result.version);
@@ -2135,11 +2136,12 @@ export default function Spreadsheet({
         range,
         sheetVersionRef.current,
       );
-      setMergedRanges((current) => {
-        const next = current.filter(({ id }) => id !== range.id);
-        onMergedRangesChange?.(activeSheetId, next);
-        return next;
-      });
+      const nextMergedRanges = mergedRangesRef.current.filter(
+        ({ id }) => id !== range.id,
+      );
+      mergedRangesRef.current = nextMergedRanges;
+      setMergedRanges(nextMergedRanges);
+      onMergedRangesChange?.(activeSheetId, nextMergedRanges);
       sheetVersionRef.current = result.version;
       setSheetVersion(result.version);
       onVersionChange?.(activeSheetId, result.version);
