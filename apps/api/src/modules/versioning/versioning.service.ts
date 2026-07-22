@@ -1,4 +1,6 @@
 import {
+  BadRequestException,
+  ConflictException,
   Injectable,
   NotFoundException,
   ForbiddenException,
@@ -6,6 +8,10 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 
 export interface VersionSnapshot {
+  schemaVersion?: 2;
+  spreadsheet?: {
+    name: string;
+  };
   cells: Array<{
     sheetId: string;
     row: number;
@@ -18,6 +24,56 @@ export interface VersionSnapshot {
     id: string;
     name: string;
     index: number;
+    rowCount?: number;
+    colCount?: number;
+    frozenRows?: number;
+    frozenCols?: number;
+    defaultRowHeight?: number;
+    defaultColWidth?: number;
+    version?: number;
+    rowMeta?: Array<{ row: number; height: number | null; hidden: boolean }>;
+    colMeta?: Array<{ col: number; width: number | null; hidden: boolean }>;
+    mergedRanges?: Array<{
+      id: string;
+      startRow: number;
+      startCol: number;
+      endRow: number;
+      endCol: number;
+    }>;
+    conditionalRules?: Array<{
+      id: string;
+      name: string;
+      priority: number;
+      ranges: string[];
+      conditions: any;
+      format: any;
+      active: boolean;
+    }>;
+    charts?: Array<{
+      id: string;
+      type: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      data: any;
+      options: any;
+    }>;
+    pivotTables?: Array<{
+      id: string;
+      name: string | null;
+      config: any;
+      sourceRange: string | null;
+      targetCell: string | null;
+    }>;
+  }>;
+  crossSheetReferences?: Array<{
+    id: string;
+    sourceSheetId: string;
+    sourceCell: string;
+    targetSheetId: string;
+    targetCell: string;
+    formula: string | null;
   }>;
 }
 
@@ -34,6 +90,13 @@ export class VersioningService {
         sheets: {
           include: {
             cells: true,
+            rowMeta: true,
+            colMeta: true,
+            mergedRanges: true,
+            conditionalRules: true,
+            charts: true,
+            pivotTables: true,
+            sourceReferences: true,
           },
         },
         permissions: {
@@ -61,6 +124,8 @@ export class VersioningService {
 
     // Create snapshot
     const snapshot: VersionSnapshot = {
+      schemaVersion: 2,
+      spreadsheet: { name: spreadsheet.name },
       cells: spreadsheet.sheets.flatMap((sheet: any) =>
         sheet.cells.map((cell: any) => ({
           sheetId: sheet.id,
@@ -75,7 +140,67 @@ export class VersioningService {
         id: sheet.id,
         name: sheet.name,
         index: sheet.index,
+        rowCount: sheet.rowCount,
+        colCount: sheet.colCount,
+        frozenRows: sheet.frozenRows,
+        frozenCols: sheet.frozenCols,
+        defaultRowHeight: sheet.defaultRowHeight,
+        defaultColWidth: sheet.defaultColWidth,
+        version: sheet.version,
+        rowMeta: sheet.rowMeta.map((meta: any) => ({
+          row: meta.row,
+          height: meta.height,
+          hidden: meta.hidden,
+        })),
+        colMeta: sheet.colMeta.map((meta: any) => ({
+          col: meta.col,
+          width: meta.width,
+          hidden: meta.hidden,
+        })),
+        mergedRanges: sheet.mergedRanges.map((range: any) => ({
+          id: range.id,
+          startRow: range.startRow,
+          startCol: range.startCol,
+          endRow: range.endRow,
+          endCol: range.endCol,
+        })),
+        conditionalRules: sheet.conditionalRules.map((rule: any) => ({
+          id: rule.id,
+          name: rule.name,
+          priority: rule.priority,
+          ranges: rule.ranges,
+          conditions: rule.conditions,
+          format: rule.format,
+          active: rule.active,
+        })),
+        charts: sheet.charts.map((chart: any) => ({
+          id: chart.id,
+          type: chart.type,
+          x: chart.x,
+          y: chart.y,
+          width: chart.width,
+          height: chart.height,
+          data: chart.data,
+          options: chart.options,
+        })),
+        pivotTables: sheet.pivotTables.map((pivot: any) => ({
+          id: pivot.id,
+          name: pivot.name,
+          config: pivot.config,
+          sourceRange: pivot.sourceRange,
+          targetCell: pivot.targetCell,
+        })),
       })),
+      crossSheetReferences: spreadsheet.sheets.flatMap((sheet: any) =>
+        sheet.sourceReferences.map((reference: any) => ({
+          id: reference.id,
+          sourceSheetId: reference.sourceSheetId,
+          sourceCell: reference.sourceCell,
+          targetSheetId: reference.targetSheetId,
+          targetCell: reference.targetCell,
+          formula: reference.formula,
+        })),
+      ),
     };
 
     return this.prisma.version.create({
@@ -116,8 +241,7 @@ export class VersioningService {
     }
 
     const hasAccess =
-      spreadsheet.ownerId === userId ||
-      spreadsheet.permissions.length > 0;
+      spreadsheet.ownerId === userId || spreadsheet.permissions.length > 0;
 
     if (!hasAccess) {
       throw new ForbiddenException('Access denied');
@@ -154,6 +278,10 @@ export class VersioningService {
       throw new NotFoundException('Version not found');
     }
 
+    if (version.spreadsheet.deletedAt) {
+      throw new NotFoundException('Spreadsheet not found');
+    }
+
     const hasAccess =
       version.spreadsheet.ownerId === userId ||
       (await this.prisma.permission.findFirst({
@@ -171,6 +299,46 @@ export class VersioningService {
   async restoreVersion(userId: string, versionId: string) {
     const version = await this.getVersion(userId, versionId);
     const snapshot = version.snapshot as unknown as VersionSnapshot;
+
+    if (
+      !snapshot ||
+      !Array.isArray(snapshot.sheets) ||
+      !Array.isArray(snapshot.cells)
+    ) {
+      throw new BadRequestException('Invalid version snapshot');
+    }
+    const snapshotSheetIds = snapshot.sheets.map((sheet) => sheet?.id);
+    if (
+      (snapshot.schemaVersion !== undefined && snapshot.schemaVersion !== 2) ||
+      snapshotSheetIds.some((id) => typeof id !== 'string') ||
+      new Set(snapshotSheetIds).size !== snapshotSheetIds.length ||
+      snapshot.cells.some((cell) => !snapshotSheetIds.includes(cell?.sheetId))
+    ) {
+      throw new BadRequestException('Invalid version snapshot');
+    }
+    if (snapshot.schemaVersion === 2) {
+      const indexes = snapshot.sheets.map((sheet) => sheet.index);
+      const referencesAreValid =
+        snapshot.crossSheetReferences === undefined ||
+        (Array.isArray(snapshot.crossSheetReferences) &&
+          snapshot.crossSheetReferences.every(
+            (reference) =>
+              snapshotSheetIds.includes(reference?.sourceSheetId) &&
+              snapshotSheetIds.includes(reference?.targetSheetId),
+          ));
+      if (
+        snapshot.sheets.some(
+          (sheet) =>
+            typeof sheet.name !== 'string' ||
+            !Number.isInteger(sheet.index) ||
+            sheet.index < 0,
+        ) ||
+        new Set(indexes).size !== indexes.length ||
+        !referencesAreValid
+      ) {
+        throw new BadRequestException('Invalid version snapshot');
+      }
+    }
 
     // Check edit access
     const permission = await this.prisma.permission.findFirst({
@@ -191,13 +359,182 @@ export class VersioningService {
       `Backup before restore to "${version.name || version.createdAt.toISOString()}"`,
     );
 
-    // Restore cells from snapshot
+    // Restore the captured workbook content atomically. Security and user-scoped
+    // metadata (permissions, filters, automations and comments) are intentionally
+    // not part of a version snapshot.
     return this.prisma.$transaction(async (tx: PrismaService) => {
-      // Delete existing cells
-      for (const sheet of snapshot.sheets) {
-        await tx.cell.deleteMany({
-          where: { sheetId: sheet.id },
+      const isFullSnapshot = snapshot.schemaVersion === 2;
+      const currentSheets = await tx.sheet.findMany({
+        where: { spreadsheetId: version.spreadsheetId },
+        select: { id: true, index: true, version: true },
+        orderBy: { index: 'asc' },
+      });
+      const claimedSheets = await tx.sheet.findMany({
+        where: { id: { in: snapshotSheetIds } },
+        select: { id: true, spreadsheetId: true },
+      });
+      if (
+        claimedSheets.some(
+          (sheet) => sheet.spreadsheetId !== version.spreadsheetId,
+        )
+      ) {
+        throw new BadRequestException('Invalid version snapshot');
+      }
+
+      // Claim optimistic versions before replacing content. A concurrent write
+      // aborts the transaction rather than producing a mixed workbook state.
+      for (const sheet of currentSheets.filter(
+        (candidate) =>
+          isFullSnapshot || snapshotSheetIds.includes(candidate.id),
+      )) {
+        const claimed = await tx.sheet.updateMany({
+          where: { id: sheet.id, version: sheet.version },
+          data: { version: { increment: 1 } },
         });
+        if (claimed.count !== 1) {
+          throw new ConflictException('Sheet changed during version restore');
+        }
+      }
+
+      if (isFullSnapshot) {
+        await tx.crossSheetReference.deleteMany({
+          where: {
+            OR: [
+              { sourceSheetId: { in: snapshotSheetIds } },
+              { targetSheetId: { in: snapshotSheetIds } },
+            ],
+          },
+        });
+
+        // Move current sheets out of the unique index range before restoring
+        // captured order. Tabs added later are preserved because deleting them
+        // would cascade into user-owned and security metadata.
+        const currentIds = currentSheets.map((sheet) => sheet.id);
+        for (const [offset, id] of currentIds.entries()) {
+          await tx.sheet.update({
+            where: { id },
+            data: { index: -(offset + 1) },
+          });
+        }
+
+        const retained = new Set(
+          currentIds.filter((id) => snapshotSheetIds.includes(id)),
+        );
+        for (const sheet of snapshot.sheets) {
+          const data = {
+            name: sheet.name,
+            index: sheet.index,
+            rowCount: sheet.rowCount ?? 1000,
+            colCount: sheet.colCount ?? 26,
+            frozenRows: sheet.frozenRows ?? 0,
+            frozenCols: sheet.frozenCols ?? 0,
+            defaultRowHeight: sheet.defaultRowHeight ?? 25,
+            defaultColWidth: sheet.defaultColWidth ?? 100,
+          };
+          if (retained.has(sheet.id)) {
+            await tx.sheet.update({
+              where: { id: sheet.id },
+              data,
+            });
+          } else {
+            await tx.sheet.create({
+              data: {
+                id: sheet.id,
+                spreadsheetId: version.spreadsheetId,
+                ...data,
+                version: (sheet.version ?? 0) + 1,
+              },
+            });
+          }
+        }
+
+        const addedAfterSnapshot = currentSheets.filter(
+          (sheet) => !snapshotSheetIds.includes(sheet.id),
+        );
+        const restoredMaxIndex = snapshot.sheets.reduce(
+          (max, sheet) => Math.max(max, sheet.index),
+          -1,
+        );
+        for (const [offset, sheet] of addedAfterSnapshot.entries()) {
+          await tx.sheet.update({
+            where: { id: sheet.id },
+            data: { index: restoredMaxIndex + offset + 1 },
+          });
+        }
+
+        const relationWhere = { sheetId: { in: snapshotSheetIds } };
+        await tx.cell.deleteMany({ where: relationWhere });
+        await tx.rowMeta.deleteMany({ where: relationWhere });
+        await tx.colMeta.deleteMany({ where: relationWhere });
+        await tx.mergedRange.deleteMany({ where: relationWhere });
+        await tx.conditionalRule.deleteMany({ where: relationWhere });
+        await tx.chart.deleteMany({ where: relationWhere });
+        await tx.pivotTable.deleteMany({ where: relationWhere });
+
+        for (const sheet of snapshot.sheets) {
+          if (sheet.rowMeta?.length) {
+            await tx.rowMeta.createMany({
+              data: sheet.rowMeta.map((meta) => ({
+                ...meta,
+                sheetId: sheet.id,
+              })),
+            });
+          }
+          if (sheet.colMeta?.length) {
+            await tx.colMeta.createMany({
+              data: sheet.colMeta.map((meta) => ({
+                ...meta,
+                sheetId: sheet.id,
+              })),
+            });
+          }
+          if (sheet.mergedRanges?.length) {
+            await tx.mergedRange.createMany({
+              data: sheet.mergedRanges.map((range) => ({
+                ...range,
+                sheetId: sheet.id,
+              })),
+            });
+          }
+          if (sheet.conditionalRules?.length) {
+            await tx.conditionalRule.createMany({
+              data: sheet.conditionalRules.map((rule) => ({
+                ...rule,
+                sheetId: sheet.id,
+              })),
+            });
+          }
+          if (sheet.charts?.length) {
+            await tx.chart.createMany({
+              data: sheet.charts.map((chart) => ({
+                ...chart,
+                sheetId: sheet.id,
+              })),
+            });
+          }
+          if (sheet.pivotTables?.length) {
+            await tx.pivotTable.createMany({
+              data: sheet.pivotTables.map((pivot) => ({
+                ...pivot,
+                sheetId: sheet.id,
+              })),
+            });
+          }
+        }
+
+        if (snapshot.crossSheetReferences?.length) {
+          await tx.crossSheetReference.createMany({
+            data: snapshot.crossSheetReferences,
+          });
+        }
+      } else {
+        // Legacy snapshots only owned cell state. Missing extended fields mean
+        // "preserve", not "wipe", for backward compatibility.
+        for (const sheet of snapshot.sheets) {
+          await tx.cell.deleteMany({
+            where: { sheetId: sheet.id },
+          });
+        }
       }
 
       // Recreate cells from snapshot
@@ -214,16 +551,15 @@ export class VersioningService {
         });
       }
 
-      // Invalidate stale optimistic versions on every restored sheet.
-      await tx.sheet.updateMany({
-        where: { spreadsheetId: version.spreadsheetId },
-        data: { version: { increment: 1 } },
-      });
-
       // Update spreadsheet timestamp
       await tx.spreadsheet.update({
         where: { id: version.spreadsheetId },
-        data: { updatedAt: new Date() },
+        data: {
+          updatedAt: new Date(),
+          ...(isFullSnapshot && snapshot.spreadsheet
+            ? { name: snapshot.spreadsheet.name }
+            : {}),
+        },
       });
 
       return { success: true, restoredVersionId: versionId };
