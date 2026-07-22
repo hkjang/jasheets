@@ -1,4 +1,4 @@
-import { getHiddenRowsForFilterView, matchesFilter } from './filterViews';
+import { getHiddenRowsForFilterView, matchesFilter, projectFilterViewAxes } from './filterViews';
 
 describe('personal filter views', () => {
   it('evaluates text and numeric conditions', () => {
@@ -45,5 +45,29 @@ describe('personal filter views', () => {
     expect(getHiddenRowsForFilterView(data, [
       { column: 0, operator: 'between', value: [10, 20] },
     ])).toEqual([0, 4]);
+  });
+
+  it('projects profile visibility without mutating manual hidden state', () => {
+    const rows = [{ height: 20 }, { height: 30, hidden: true }, { height: 40 }];
+    const columns = [{ width: 80, hidden: true }, { width: 90 }, { width: 100 }];
+
+    const projected = projectFilterViewAxes(rows, columns, new Set([0, 1]), new Set([1]));
+
+    expect(projected.rows.map((row) => row.hidden)).toEqual([true, true, undefined]);
+    expect(projected.columns.map((column) => column.hidden)).toEqual([true, true, undefined]);
+    expect(rows).toEqual([{ height: 20 }, { height: 30, hidden: true }, { height: 40 }]);
+    expect(columns).toEqual([{ width: 80, hidden: true }, { width: 90 }, { width: 100 }]);
+    expect(projected.rows[1]).not.toBe(rows[1]);
+    expect(projected.columns[0]).toBe(columns[0]);
+  });
+
+  it('reuses baseline entries when the profile hides nothing', () => {
+    const rows = [{ height: 20, hidden: true }];
+    const columns = [{ width: 80, hidden: true }];
+
+    const projected = projectFilterViewAxes(rows, columns, new Set(), new Set());
+
+    expect(projected.rows[0]).toBe(rows[0]);
+    expect(projected.columns[0]).toBe(columns[0]);
   });
 });

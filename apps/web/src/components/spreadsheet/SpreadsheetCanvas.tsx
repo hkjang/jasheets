@@ -352,15 +352,20 @@ export default function SpreadsheetCanvas({
     }
 
     // Draw selected cell border (skip when editing - CellEditor shows its own border)
-    if (!isEditing && selectedCell) {
+    if (
+      !isEditing &&
+      selectedCell &&
+      columnGeometry.sizes[selectedCell.col] > 0 &&
+      rowGeometry.sizes[selectedCell.row] > 0
+    ) {
       const selectedMerge = findMergedRange(mergedRanges, selectedCell.row, selectedCell.col);
       const selectedRect = selectedMerge
         ? getMergedRangeRect(selectedMerge, columnGeometry, rowGeometry, config.headerWidth - scrollX, config.headerHeight - scrollY)
         : null;
       const cellX = selectedRect?.x ?? getColX(selectedCell.col) - scrollX;
       const cellY = selectedRect?.y ?? getRowY(selectedCell.row) - scrollY;
-      const cellWidth = selectedRect?.width ?? columns[selectedCell.col]?.width ?? config.defaultColWidth;
-      const cellHeight = selectedRect?.height ?? rows[selectedCell.row]?.height ?? config.defaultRowHeight;
+      const cellWidth = selectedRect?.width ?? columnGeometry.sizes[selectedCell.col];
+      const cellHeight = selectedRect?.height ?? rowGeometry.sizes[selectedCell.row];
 
       ctx.strokeStyle = '#1a73e8';
       ctx.lineWidth = 2;
@@ -543,8 +548,8 @@ export default function SpreadsheetCanvas({
       const y = e.clientY - rect.top;
 
       if (e.button === 0 && selection) {
-        const handleX = getColX(selection.end.col) - viewport.scrollX + (columns[selection.end.col]?.width ?? config.defaultColWidth);
-        const handleY = getRowY(selection.end.row) - viewport.scrollY + (rows[selection.end.row]?.height ?? config.defaultRowHeight);
+        const handleX = getColX(selection.end.col) - viewport.scrollX + columnGeometry.sizes[selection.end.col];
+        const handleY = getRowY(selection.end.row) - viewport.scrollY + rowGeometry.sizes[selection.end.row];
         if (Math.abs(x - handleX) <= 7 && Math.abs(y - handleY) <= 7) {
           fillSourceRef.current = selection;
           fillTargetRef.current = selection;
@@ -557,8 +562,8 @@ export default function SpreadsheetCanvas({
         // Check Col Resize
         let currentX = config.headerWidth - viewport.scrollX;
         for (let i = 0; i < config.totalCols; i++) {
-          const width = columns[i]?.width ?? config.defaultColWidth;
-          if (Math.abs(x - (currentX + width)) < 5) {
+          const width = columnGeometry.sizes[i];
+          if (width > 0 && Math.abs(x - (currentX + width)) < 5) {
             resizingRef.current = { type: 'col', index: i, start: e.clientX, initialSize: width };
             return;
           }
@@ -571,8 +576,8 @@ export default function SpreadsheetCanvas({
         // Check Row Resize
         let currentY = config.headerHeight - viewport.scrollY;
         for (let i = 0; i < config.totalRows; i++) {
-          const height = rows[i]?.height ?? config.defaultRowHeight;
-          if (Math.abs(y - (currentY + height)) < 5) {
+          const height = rowGeometry.sizes[i];
+          if (height > 0 && Math.abs(y - (currentY + height)) < 5) {
             resizingRef.current = { type: 'row', index: i, start: e.clientY, initialSize: height };
             return;
           }
@@ -622,8 +627,8 @@ export default function SpreadsheetCanvas({
         let col = -1;
         let currentX = config.headerWidth - viewport.scrollX;
         for (let i = 0; i < config.totalCols; i++) {
-          const width = columns[i]?.width ?? config.defaultColWidth;
-          if (x >= currentX && x < currentX + width) {
+          const width = columnGeometry.sizes[i];
+          if (width > 0 && x >= currentX && x < currentX + width) {
             col = i;
             break;
           }
@@ -640,8 +645,8 @@ export default function SpreadsheetCanvas({
         let row = -1;
         let currentY = config.headerHeight - viewport.scrollY;
         for (let i = 0; i < config.totalRows; i++) {
-          const height = rows[i]?.height ?? config.defaultRowHeight;
-          if (y >= currentY && y < currentY + height) {
+          const height = rowGeometry.sizes[i];
+          if (height > 0 && y >= currentY && y < currentY + height) {
             row = i;
             break;
           }
@@ -654,7 +659,7 @@ export default function SpreadsheetCanvas({
         }
       }
     },
-    [data, getCellFromPoint, getColX, getRowY, onCellSelect, onSelectionChange, config, columns, rows, viewport, canvasSize, selection, mergedRanges]
+    [data, getCellFromPoint, getColX, getRowY, onCellSelect, onSelectionChange, config, columns, rows, viewport, canvasSize, selection, mergedRanges, columnGeometry, rowGeometry]
   );
 
   // Handle mouse move
@@ -704,8 +709,8 @@ export default function SpreadsheetCanvas({
       if (y < config.headerHeight && x > config.headerWidth) {
         let currentX = config.headerWidth - viewport.scrollX;
         for (let i = 0; i < config.totalCols; i++) {
-          const width = columns[i]?.width ?? config.defaultColWidth;
-          if (Math.abs(x - (currentX + width)) < 5) {
+          const width = columnGeometry.sizes[i];
+          if (width > 0 && Math.abs(x - (currentX + width)) < 5) {
             cursor = 'col-resize';
             break;
           }
@@ -719,8 +724,8 @@ export default function SpreadsheetCanvas({
       } else if (x < config.headerWidth && y > config.headerHeight) {
         let currentY = config.headerHeight - viewport.scrollY;
         for (let i = 0; i < config.totalRows; i++) {
-          const height = rows[i]?.height ?? config.defaultRowHeight;
-          if (Math.abs(y - (currentY + height)) < 5) {
+          const height = rowGeometry.sizes[i];
+          if (height > 0 && Math.abs(y - (currentY + height)) < 5) {
             cursor = 'row-resize';
             break;
           }
@@ -751,6 +756,7 @@ export default function SpreadsheetCanvas({
     [
       canvasSize,
       columns,
+      columnGeometry,
       config,
       getCellFromPoint,
       isSelecting,
@@ -758,6 +764,7 @@ export default function SpreadsheetCanvas({
       onRowResize,
       onSelectionChange,
       rows,
+      rowGeometry,
       selectionStart,
       viewport,
       mergedRanges,
@@ -824,8 +831,8 @@ export default function SpreadsheetCanvas({
       if (!onHeaderContextMenu) return;
       let currentX = config.headerWidth - viewport.scrollX;
       for (let i = 0; i < config.totalCols; i++) {
-        const width = columns[i]?.width ?? config.defaultColWidth;
-        if (x >= currentX && x < currentX + width) {
+        const width = columnGeometry.sizes[i];
+        if (width > 0 && x >= currentX && x < currentX + width) {
           onHeaderContextMenu(e.clientX, e.clientY, 'col', i);
           return;
         }
@@ -836,8 +843,8 @@ export default function SpreadsheetCanvas({
       if (!onHeaderContextMenu) return;
       let currentY = config.headerHeight - viewport.scrollY;
       for (let i = 0; i < config.totalRows; i++) {
-        const height = rows[i]?.height ?? config.defaultRowHeight;
-        if (y >= currentY && y < currentY + height) {
+        const height = rowGeometry.sizes[i];
+        if (height > 0 && y >= currentY && y < currentY + height) {
           onHeaderContextMenu(e.clientX, e.clientY, 'row', i);
           return;
         }
@@ -847,7 +854,7 @@ export default function SpreadsheetCanvas({
       // Cell area - trigger cell context menu
       onCellContextMenu?.(e.clientX, e.clientY);
     }
-  }, [config, viewport, onHeaderContextMenu, onCellContextMenu, columns, rows]);
+  }, [config, viewport, onHeaderContextMenu, onCellContextMenu, columnGeometry, rowGeometry]);
 
   // Handle double click for editing
   const handleDoubleClick = useCallback(

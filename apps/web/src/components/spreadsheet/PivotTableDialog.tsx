@@ -1,12 +1,13 @@
 
 import { useState, useMemo } from 'react';
 import { SheetData, CellRange, colIndexToLetter } from '@/types/spreadsheet';
+import type { PivotAggregation, PivotConfig } from '@/utils/pivotLogic';
 import styles from './PivotTableDialog.module.css';
 
 interface PivotTableDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onCreate: (config: any) => void;
+  onCreate: (config: PivotConfig) => void;
   selection: CellRange | null;
   data: SheetData;
 }
@@ -22,7 +23,9 @@ export default function PivotTableDialog({
 
   const [rows, setRows] = useState<string[]>([]);
   const [cols, setCols] = useState<string[]>([]);
-  const [values, setValues] = useState<{ field: string; aggregation: string }[]>([]);
+  const [values, setValues] = useState<
+    { field: string; aggregation: PivotAggregation }[]
+  >([]);
   
   // Target cell input (defaults to a safe spot or user can type)
   // For MVP we might just default to "A1 of a new sheet" if we supported new sheets, 
@@ -42,12 +45,13 @@ export default function PivotTableDialog({
   }, [selection, data]);
 
   const handleCreate = () => {
+    if (!selection || values.length === 0) return;
     onCreate({
       sourceRange: {
-        startRow: selection?.start.row,
-        startCol: selection?.start.col,
-        endRow: selection?.end.row,
-        endCol: selection?.end.col,
+        startRow: selection.start.row,
+        startCol: selection.start.col,
+        endRow: selection.end.row,
+        endCol: selection.end.col,
       },
       rows,
       cols,
@@ -82,6 +86,17 @@ export default function PivotTableDialog({
           newValues.splice(index, 1);
           setValues(newValues);
       }
+  };
+
+  const handleAggregationChange = (
+    index: number,
+    aggregation: PivotAggregation,
+  ) => {
+    setValues((current) =>
+      current.map((value, valueIndex) =>
+        valueIndex === index ? { ...value, aggregation } : value,
+      ),
+    );
   };
 
   return (
@@ -136,7 +151,25 @@ export default function PivotTableDialog({
                     <h4>값 (Values)</h4>
                     {values.map((v, i) => (
                         <div key={i} className={styles.zoneItem}>
-                            {v.field} ({v.aggregation})
+                            {v.field}{' '}
+                            <select
+                              aria-label={`${v.field} 집계 방식`}
+                              value={v.aggregation}
+                              onChange={(event) =>
+                                handleAggregationChange(
+                                  i,
+                                  event.target.value as PivotAggregation,
+                                )
+                              }
+                            >
+                              {(['SUM', 'COUNT', 'AVERAGE', 'MIN', 'MAX'] as const).map(
+                                (aggregation) => (
+                                  <option key={aggregation} value={aggregation}>
+                                    {aggregation}
+                                  </option>
+                                ),
+                              )}
+                            </select>
                              <button onClick={() => handleRemoveField(i, 'values')}>×</button>
                         </div>
                     ))}
@@ -147,7 +180,13 @@ export default function PivotTableDialog({
 
         <div className={styles.footer}>
           <button onClick={onClose} className={styles.cancelButton}>취소</button>
-          <button onClick={handleCreate} className={styles.createButton} disabled={!selection}>생성</button>
+          <button
+            onClick={handleCreate}
+            className={styles.createButton}
+            disabled={!selection || values.length === 0}
+          >
+            생성
+          </button>
         </div>
       </div>
     </div>

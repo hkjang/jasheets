@@ -37,10 +37,15 @@ export default function FilterProfilesDropdown({
     const [filterValue, setFilterValue] = useState('');
     const [activeProfile, setActiveProfile] = useState<string | null>(null);
     const onApplyProfileRef = useRef(onApplyProfile);
+    const onClearFiltersRef = useRef(onClearFilters);
 
     useEffect(() => {
         onApplyProfileRef.current = onApplyProfile;
     }, [onApplyProfile]);
+
+    useEffect(() => {
+        onClearFiltersRef.current = onClearFilters;
+    }, [onClearFilters]);
 
     const fetchProfiles = useCallback(async () => {
         try {
@@ -57,6 +62,7 @@ export default function FilterProfilesDropdown({
                     onApplyProfileRef.current(defaultProfile);
                 } else {
                     setActiveProfile(null);
+                    onClearFiltersRef.current();
                 }
             }
         } catch (err) {
@@ -150,6 +156,7 @@ export default function FilterProfilesDropdown({
             });
             if (activeProfile === profileId) {
                 setActiveProfile(null);
+                onClearFiltersRef.current();
             }
             fetchProfiles();
         } catch (err) {

@@ -22,7 +22,7 @@
   border-radius: 12px;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
   width: 90%;
-  max-width: 480px;
+  max-width: 560px;
   animation: slideUp 0.2s ease;
 }
 
@@ -167,3 +167,26 @@
 .error svg {
   flex-shrink: 0;
 }
+
+.preview { display: flex; flex-direction: column; gap: 18px; }
+.previewHeader { display: flex; align-items: center; justify-content: space-between; color: #374151; }
+.previewHeader span { color: #6b7280; }
+.changeFileBtn { border: 0; background: transparent; color: #0b8043; font-weight: 600; cursor: pointer; }
+.sheetList { max-height: 170px; overflow: auto; list-style: none; margin: 0; padding: 0; border: 1px solid #e5e7eb; border-radius: 8px; }
+.sheetList li { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 12px; border-bottom: 1px solid #f3f4f6; color: #1f2937; }
+.sheetList li:last-child { border-bottom: 0; }
+.sheetList small { color: #6b7280; white-space: nowrap; }
+.modeOptions { display: grid; gap: 8px; margin: 0; padding: 0; border: 0; }
+.modeOptions legend { margin-bottom: 8px; font-weight: 600; color: #374151; }
+.modeOptions label { display: flex; align-items: flex-start; gap: 10px; padding: 11px; border: 1px solid #e5e7eb; border-radius: 8px; cursor: pointer; }
+.modeOptions label:has(input:checked) { border-color: #0f9d58; background: #f0fdf4; }
+.modeOptions input { margin-top: 3px; accent-color: #0f9d58; }
+.modeOptions span { display: flex; flex-direction: column; gap: 3px; }
+.modeOptions small { color: #6b7280; }
+.confirmReplace { display: flex; align-items: flex-start; gap: 8px; padding: 11px; border-radius: 8px; background: #fff7ed; color: #9a3412; font-size: 13px; }
+.confirmReplace input { margin-top: 2px; accent-color: #c2410c; }
+.actions { display: flex; justify-content: flex-end; gap: 8px; }
+.cancelBtn, .importBtn { border-radius: 6px; padding: 9px 18px; font-weight: 600; cursor: pointer; }
+.cancelBtn { border: 1px solid #d1d5db; background: white; color: #374151; }
+.importBtn { border: 0; background: #0f9d58; color: white; }
+.importBtn:disabled { cursor: not-allowed; opacity: .55; }

@@ -24,6 +24,7 @@ import {
 import { StructuralChangeDto } from './dto/structural-change.dto';
 import { SheetViewDto } from './dto/sheet-view.dto';
 import { MergeCellsDto, UnmergeCellsDto } from './dto/merged-range.dto';
+import { ImportWorkbookDto } from './dto/import-workbook.dto';
 
 @Controller('sheets')
 @UseGuards(JwtAuthGuard)
@@ -38,6 +39,15 @@ export class SheetsController {
   @Post(':id/copy')
   copy(@Request() req: any, @Param('id') id: string) {
     return this.sheetsService.copy(req.user.id, id);
+  }
+
+  @Post(':id/import-workbook')
+  importWorkbook(
+    @Request() req: any,
+    @Param('id') spreadsheetId: string,
+    @Body() dto: ImportWorkbookDto,
+  ) {
+    return this.sheetsService.importWorkbook(req.user.id, spreadsheetId, dto);
   }
 
   @Get()

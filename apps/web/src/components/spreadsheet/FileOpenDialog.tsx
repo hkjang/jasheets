@@ -7,7 +7,7 @@ import { importSpreadsheetFile, validateImportFile, ImportResult } from '@/utils
 interface FileOpenDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  onFileImport: (result: ImportResult) => void;
+  onFileImport: (result: ImportResult, mode: 'append' | 'replace') => Promise<void> | void;
 }
 
 export default function FileOpenDialog({
@@ -18,6 +18,9 @@ export default function FileOpenDialog({
   const [isDragging, setIsDragging] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [preview, setPreview] = useState<ImportResult | null>(null);
+  const [mode, setMode] = useState<'append' | 'replace'>('append');
+  const [replaceConfirmed, setReplaceConfirmed] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = useCallback(async (file: File) => {
@@ -33,14 +36,36 @@ export default function FileOpenDialog({
     setIsLoading(true);
     try {
       const result = await importSpreadsheetFile(file);
-      onFileImport(result);
-      onClose();
+      setPreview(result);
     } catch (err) {
       setError(err instanceof Error ? err.message : '파일을 불러오는데 실패했습니다.');
     } finally {
       setIsLoading(false);
     }
-  }, [onFileImport, onClose]);
+  }, []);
+
+  const handleClose = useCallback(() => {
+    setPreview(null);
+    setMode('append');
+    setReplaceConfirmed(false);
+    setError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    onClose();
+  }, [onClose]);
+
+  const handleImport = useCallback(async () => {
+    if (!preview || (mode === 'replace' && !replaceConfirmed)) return;
+    setError(null);
+    setIsLoading(true);
+    try {
+      await onFileImport(preview, mode);
+      handleClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : '파일을 가져오는데 실패했습니다.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [handleClose, mode, onFileImport, preview, replaceConfirmed]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -79,11 +104,11 @@ export default function FileOpenDialog({
   if (!isOpen) return null;
 
   return (
-    <div className={styles.overlay} onClick={onClose}>
+    <div className={styles.overlay} onClick={handleClose}>
       <div className={styles.dialog} onClick={e => e.stopPropagation()}>
         <div className={styles.header}>
-          <h2>파일 열기</h2>
-          <button className={styles.closeBtn} onClick={onClose}>
+          <h2>파일 가져오기</h2>
+          <button className={styles.closeBtn} onClick={handleClose} aria-label="닫기">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
               <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
             </svg>
@@ -91,11 +116,16 @@ export default function FileOpenDialog({
         </div>
 
         <div className={styles.content}>
-          <div
+          {!preview ? <div
             className={`${styles.dropZone} ${isDragging ? styles.dragging : ''}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') handleBrowse();
+            }}
           >
             {isLoading ? (
               <div className={styles.loading}>
@@ -110,7 +140,7 @@ export default function FileOpenDialog({
                 <p className={styles.dropText}>
                   파일을 여기에 드래그하거나
                 </p>
-                <button className={styles.browseBtn} onClick={handleBrowse}>
+                <button type="button" className={styles.browseBtn} onClick={handleBrowse}>
                   파일 선택
                 </button>
                 <p className={styles.supportedFormats}>
@@ -118,7 +148,53 @@ export default function FileOpenDialog({
                 </p>
               </>
             )}
-          </div>
+          </div> : (
+            <div className={styles.preview}>
+              <div className={styles.previewHeader}>
+                <div>
+                  <strong>{preview.workbook?.sheets.length ?? 1}개 시트</strong>
+                  <span>를 가져옵니다</span>
+                </div>
+                <button type="button" className={styles.changeFileBtn} onClick={() => setPreview(null)}>
+                  다른 파일
+                </button>
+              </div>
+              <ul className={styles.sheetList} aria-label="가져올 시트">
+                {(preview.workbook?.sheets ?? [{ name: preview.sheetName, data: preview.data, mergedRanges: [], rows: {}, columns: {} }]).map((sheet) => {
+                  const cellCount = Object.values(sheet.data).reduce((sum, row) => sum + Object.keys(row).length, 0);
+                  return (
+                    <li key={sheet.name}>
+                      <span>{sheet.name}</span>
+                      <small>{cellCount.toLocaleString()}개 셀 · 병합 {sheet.mergedRanges.length}개</small>
+                    </li>
+                  );
+                })}
+              </ul>
+              <fieldset className={styles.modeOptions}>
+                <legend>가져오기 방식</legend>
+                <label>
+                  <input type="radio" name="import-mode" value="append" checked={mode === 'append'} onChange={() => { setMode('append'); setReplaceConfirmed(false); }} />
+                  <span><strong>새 탭으로 추가</strong><small>현재 탭은 그대로 유지합니다.</small></span>
+                </label>
+                <label>
+                  <input type="radio" name="import-mode" value="replace" checked={mode === 'replace'} onChange={() => setMode('replace')} />
+                  <span><strong>기존 탭 교체</strong><small>앞쪽 탭부터 가져온 내용으로 덮어씁니다.</small></span>
+                </label>
+              </fieldset>
+              {mode === 'replace' && (
+                <label className={styles.confirmReplace}>
+                  <input type="checkbox" checked={replaceConfirmed} onChange={(event) => setReplaceConfirmed(event.target.checked)} />
+                  기존 탭의 셀, 병합 및 행·열 설정이 교체되는 것을 확인했습니다.
+                </label>
+              )}
+              <div className={styles.actions}>
+                <button type="button" className={styles.cancelBtn} onClick={handleClose}>취소</button>
+                <button type="button" className={styles.importBtn} onClick={handleImport} disabled={isLoading || (mode === 'replace' && !replaceConfirmed)}>
+                  {isLoading ? '가져오는 중…' : '가져오기'}
+                </button>
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className={styles.error}>

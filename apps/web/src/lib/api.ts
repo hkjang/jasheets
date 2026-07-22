@@ -58,6 +58,35 @@ export interface SpreadsheetVersion {
     avatar?: string | null;
   };
 }
+
+export interface WorkbookImportPayload {
+  mode: "append" | "replace";
+  expectedSheetVersions: Array<{ sheetId: string; version: number }>;
+  sheets: Array<{
+    name: string;
+    rowCount: number;
+    colCount: number;
+    frozenRows: number;
+    frozenCols: number;
+    defaultRowHeight: number;
+    defaultColWidth: number;
+    cells: Array<{
+      row: number;
+      col: number;
+      value?: unknown;
+      formula?: string | null;
+      format?: Record<string, unknown>;
+    }>;
+    rowMeta: Array<{ row: number; height?: number; hidden: boolean }>;
+    colMeta: Array<{ col: number; width?: number; hidden: boolean }>;
+    mergedRanges: Array<{
+      startRow: number;
+      startCol: number;
+      endRow: number;
+      endCol: number;
+    }>;
+  }>;
+}
 const fetch = (input: RequestInfo | URL, init?: RequestInit) =>
   apiClient.fetch(String(input), init);
 
@@ -201,6 +230,18 @@ export const api = {
     get: async (id: string, signal?: AbortSignal) => {
       return apiClient.request<SpreadsheetDetail>(`/sheets/${id}`, { signal });
     },
+    importWorkbook: async (
+      id: string,
+      payload: WorkbookImportPayload,
+    ) => apiClient.request<{
+      mode: "append" | "replace";
+      imported: Array<{ id: string; name: string; version: number }>;
+      preservedSheetCount: number;
+    }>(`/sheets/${id}/import-workbook`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }),
     addSheet: async (spreadsheetId: string, name: string) => {
       return apiClient.request<SpreadsheetSheet>(
         `/sheets/${spreadsheetId}/sheets`,

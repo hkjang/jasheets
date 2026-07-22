@@ -55,7 +55,7 @@ describe('SheetsService merged ranges', () => {
       ),
     };
     service = new SheetsService(
-      prisma as PrismaService,
+      prisma as unknown as PrismaService,
       {
         detectCellChange: jest.fn(),
         detectMultiCellChange: jest.fn(),

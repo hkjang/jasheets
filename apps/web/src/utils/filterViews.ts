@@ -1,4 +1,4 @@
-import { CellValue, SheetData } from '@/types/spreadsheet';
+import { CellValue, ColumnDef, RowDef, SheetData } from '@/types/spreadsheet';
 
 export interface FilterCondition {
   column: number;
@@ -34,4 +34,21 @@ export function getHiddenRowsForFilterView(data: SheetData, filters: FilterCondi
   return Object.keys(data).map(Number).filter((row) =>
     !filters.every((filter) => matchesFilter(data[row]?.[filter.column]?.value ?? null, filter)),
   );
+}
+
+/** Adds private filter visibility without changing persisted axis metadata. */
+export function projectFilterViewAxes(
+  rows: readonly RowDef[],
+  columns: readonly ColumnDef[],
+  profileHiddenRows: ReadonlySet<number>,
+  profileHiddenColumns: ReadonlySet<number>,
+): { rows: RowDef[]; columns: ColumnDef[] } {
+  return {
+    rows: rows.map((row, index) => profileHiddenRows.has(index)
+      ? { ...row, hidden: true }
+      : row),
+    columns: columns.map((column, index) => profileHiddenColumns.has(index)
+      ? { ...column, hidden: true }
+      : column),
+  };
 }

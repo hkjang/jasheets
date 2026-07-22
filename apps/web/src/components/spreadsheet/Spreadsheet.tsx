@@ -49,7 +49,7 @@ import { useSpreadsheetCollaboration } from "@/hooks/spreadsheet/useSpreadsheetC
 import { useSpreadsheetCharts } from "@/hooks/spreadsheet/useSpreadsheetCharts";
 import { useSpreadsheetAutosave } from "@/hooks/spreadsheet/useSpreadsheetAutosave";
 import MenuBar from "./MenuBar";
-import { createXLSXWorksheet, exportToCSV } from "@/utils/export";
+import { createXLSXWorkbook, exportToCSV, type XLSXWorkbookSheet } from "@/utils/export";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -75,7 +75,10 @@ import SheetAutomationDialog from "./SheetAutomationDialog";
 import FilterProfilesDropdown, {
   FilterProfile,
 } from "./FilterProfilesDropdown";
-import { getHiddenRowsForFilterView } from "@/utils/filterViews";
+import {
+  getHiddenRowsForFilterView,
+  projectFilterViewAxes,
+} from "@/utils/filterViews";
 import { createFillUpdates } from "@/utils/fillHandle";
 import {
   createPasteUpdates,
@@ -140,6 +143,12 @@ interface SpreadsheetProps {
     sheetId: string,
     mergedRanges: PersistedMergedRange[],
   ) => void;
+  onWorkbookImport?: (
+    result: ImportResult,
+    mode: "append" | "replace",
+    activeVersion: number,
+  ) => Promise<void>;
+  workbookExportSheets?: XLSXWorkbookSheet[];
 }
 
 export default function Spreadsheet({
@@ -172,6 +181,8 @@ export default function Spreadsheet({
   onChartsChange,
   onStructureChange,
   onMergedRangesChange,
+  onWorkbookImport,
+  workbookExportSheets = [],
 }: SpreadsheetProps) {
   const [sheetTitle, setSheetTitle] = useState(title);
   const [sheetVersion, setSheetVersion] = useState(initialVersion);
@@ -620,9 +631,42 @@ export default function Spreadsheet({
   const viewStateRef = useRef({ rows, columns, config });
   const viewSaveTimerRef = useRef<number | null>(null);
   const viewDirtyRef = useRef(false);
-  const profileHiddenRowsRef = useRef<Set<number>>(new Set());
-  const profileHiddenColsRef = useRef<Set<number>>(new Set());
-  const profileSortingsRef = useRef<FilterProfile["sortings"]>([]);
+  const [activeFilterView, setActiveFilterView] = useState<{
+    sheetId: string;
+    profile: FilterProfile;
+  } | null>(null);
+  const manualSortingsRef = useRef<FilterProfile["sortings"]>([]);
+
+  const filterViewAxes = useMemo(() => {
+    if (!activeFilterView || activeFilterView.sheetId !== activeSheetId) {
+      return { rows, columns };
+    }
+    const { profile } = activeFilterView;
+    return projectFilterViewAxes(
+      rows,
+      columns,
+      new Set([
+        ...getHiddenRowsForFilterView(data, profile.filters),
+        ...(profile.hiddenRows ?? []),
+      ]),
+      new Set(profile.hiddenCols ?? []),
+    );
+  }, [activeFilterView, activeSheetId, columns, data, rows]);
+
+  useEffect(() => {
+    if (
+      !selectedCell ||
+      (!filterViewAxes.rows[selectedCell.row]?.hidden &&
+        !filterViewAxes.columns[selectedCell.col]?.hidden)
+    ) {
+      return;
+    }
+    // A filtered-out cell must never leave an editor visually over the next
+    // visible cell while commits still target the hidden coordinate.
+    cancelEditing();
+    setSelectedCell(null);
+    setSelection(null);
+  }, [cancelEditing, filterViewAxes, selectedCell, setSelectedCell, setSelection]);
 
   useEffect(() => {
     viewStateRef.current = { rows, columns, config };
@@ -939,15 +983,19 @@ export default function Spreadsheet({
     (row: number, col: number) => {
       let x = 50;
       for (let c = 0; c < col; c++)
-        x += columns[c]?.width || DEFAULT_CONFIG.defaultColWidth;
+        x += filterViewAxes.columns[c]?.hidden
+          ? 0
+          : filterViewAxes.columns[c]?.width || DEFAULT_CONFIG.defaultColWidth;
       let y = 30;
       for (let r = 0; r < row; r++)
-        y += rows[r]?.height || DEFAULT_CONFIG.defaultRowHeight;
-      const width = columns[col]?.width || DEFAULT_CONFIG.defaultColWidth;
-      const height = rows[row]?.height || DEFAULT_CONFIG.defaultRowHeight;
+        y += filterViewAxes.rows[r]?.hidden
+          ? 0
+          : filterViewAxes.rows[r]?.height || DEFAULT_CONFIG.defaultRowHeight;
+      const width = filterViewAxes.columns[col]?.width || DEFAULT_CONFIG.defaultColWidth;
+      const height = filterViewAxes.rows[row]?.height || DEFAULT_CONFIG.defaultRowHeight;
       return { x, y, width, height };
     },
-    [columns, rows],
+    [filterViewAxes],
   );
 
   // Wrap selection handlers
@@ -1317,14 +1365,20 @@ export default function Spreadsheet({
 
   // Handle file import
   const handleFileImport = useCallback(
-    (result: ImportResult) => {
+    async (result: ImportResult, mode: "append" | "replace") => {
+      if (spreadsheetId && onWorkbookImport) {
+        await persistActiveSheet();
+        await onWorkbookImport(result, mode, sheetVersionRef.current);
+        setToastMessage(`${result.sheetNames.length}개 시트를 가져왔습니다.`);
+        return;
+      }
       setData(result.data);
       if (result.sheetName && !spreadsheetId) {
         setSheetTitle(result.sheetName);
       }
       setToastMessage(`"${result.sheetName}" 파일을 불러왔습니다.`);
     },
-    [spreadsheetId],
+    [onWorkbookImport, persistActiveSheet, spreadsheetId],
   );
 
   // Derived
@@ -1620,9 +1674,22 @@ export default function Spreadsheet({
           exportToCSV(data, `${sheetTitle.trim() || "spreadsheet"}.csv`)
         }
         onDownloadXLSX={() => {
-          const wb = XLSX.utils.book_new();
-          const wsFull = createXLSXWorksheet(data);
-          XLSX.utils.book_append_sheet(wb, wsFull, "Sheet1");
+          const exportSheets = workbookExportSheets.length > 0
+            ? workbookExportSheets.map((sheet) => sheet.name === currentSheetName ? {
+                ...sheet,
+                data,
+                mergedRanges,
+                rows: Object.fromEntries(rows.map((row, index) => [index, row])),
+                columns: Object.fromEntries(columns.map((column, index) => [index, column])),
+              } : sheet)
+            : [{
+                name: currentSheetName || "Sheet1",
+                data,
+                mergedRanges,
+                rows: Object.fromEntries(rows.map((row, index) => [index, row])),
+                columns: Object.fromEntries(columns.map((column, index) => [index, column])),
+              }];
+          const wb = createXLSXWorkbook(exportSheets);
           XLSX.writeFile(wb, `${sheetTitle.trim() || "spreadsheet"}.xlsx`);
         }}
         onDownloadPDF={() => {
@@ -1731,7 +1798,7 @@ export default function Spreadsheet({
         onSortAsc={() => {
           if (selectedCell) {
             if (trySortRows(selectedCell.col, true)) {
-              profileSortingsRef.current = [{
+              manualSortingsRef.current = [{
                 column: selectedCell.col,
                 direction: "asc",
               }];
@@ -1743,7 +1810,7 @@ export default function Spreadsheet({
         onSortDesc={() => {
           if (selectedCell) {
             if (trySortRows(selectedCell.col, false)) {
-              profileSortingsRef.current = [{
+              manualSortingsRef.current = [{
                 column: selectedCell.col,
                 direction: "desc",
               }];
@@ -1922,61 +1989,20 @@ export default function Spreadsheet({
         <FilterProfilesDropdown
           sheetId={activeSheetId}
           onApplyProfile={(profile: FilterProfile) => {
-            const hiddenRows = new Set([
-              ...getHiddenRowsForFilterView(data, profile.filters),
-              ...(profile.hiddenRows ?? []),
-            ]);
-            const previouslyHiddenRows = profileHiddenRowsRef.current;
-            setRows((current) =>
-              current.map((row, index) => ({
-                ...row,
-                hidden: hiddenRows.has(index)
-                  ? true
-                  : previouslyHiddenRows.has(index)
-                    ? false
-                    : row.hidden,
-              })),
-            );
-            const hiddenCols = new Set(profile.hiddenCols ?? []);
-            const previouslyHiddenCols = profileHiddenColsRef.current;
-            setColumns((current) =>
-              current.map((column, index) => ({
-                ...column,
-                hidden: hiddenCols.has(index)
-                  ? true
-                  : previouslyHiddenCols.has(index)
-                    ? false
-                    : column.hidden,
-              })),
-            );
-            profileHiddenRowsRef.current = hiddenRows;
-            profileHiddenColsRef.current = hiddenCols;
-            const appliedSortings = (profile.sortings ?? []).filter((sorting) =>
-              trySortRows(sorting.column, sorting.direction === "asc"),
-            );
-            profileSortingsRef.current = appliedSortings;
+            setActiveFilterView({ sheetId: activeSheetId, profile });
+            if (profile.sortings?.length) {
+              setToastMessage("개인 필터 보기 정렬은 원본 데이터를 보호하기 위해 적용하지 않았습니다.");
+            }
           }}
           getProfileSnapshot={() => ({
             hiddenRows: rows.flatMap((row, index) => row.hidden ? [index] : []),
             hiddenCols: columns.flatMap((column, index) => column.hidden ? [index] : []),
-            sortings: profileSortingsRef.current,
+            sortings: activeFilterView?.sheetId === activeSheetId
+              ? activeFilterView.profile.sortings ?? []
+              : manualSortingsRef.current,
           })}
           onClearFilters={() => {
-            const previouslyHiddenRows = profileHiddenRowsRef.current;
-            const previouslyHiddenCols = profileHiddenColsRef.current;
-            setRows((current) =>
-              current.map((row, index) => previouslyHiddenRows.has(index)
-                ? { ...row, hidden: false }
-                : row),
-            );
-            setColumns((current) =>
-              current.map((column, index) => previouslyHiddenCols.has(index)
-                ? { ...column, hidden: false }
-                : column),
-            );
-            profileHiddenRowsRef.current = new Set();
-            profileHiddenColsRef.current = new Set();
-            profileSortingsRef.current = [];
+            setActiveFilterView(null);
           }}
         />
       )}
@@ -2025,8 +2051,8 @@ export default function Spreadsheet({
         />
         <SpreadsheetCanvas
           data={data}
-          columns={columns}
-          rows={rows}
+          columns={filterViewAxes.columns}
+          rows={filterViewAxes.rows}
           config={config}
           selectedCell={selectedCell}
           selection={selection}

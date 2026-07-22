@@ -2,10 +2,17 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import type { NextFunction, Request, Response } from 'express';
+import { json, urlencoded } from 'express';
 import { getCorsOrigins } from './config/cors.config';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bodyParser: false });
+
+  // Only the bounded workbook endpoint accepts a large structured payload;
+  // keep every other route at a conservative parser limit.
+  app.use('/api/sheets/:id/import-workbook', json({ limit: '17mb' }));
+  app.use(json({ limit: '1mb' }));
+  app.use(urlencoded({ extended: true, limit: '1mb' }));
 
   app.use((_req: Request, res: Response, next: NextFunction) => {
     res.setHeader(

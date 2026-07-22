@@ -1,5 +1,6 @@
+import { SheetData } from '@/types/spreadsheet';
 
-import { SheetData, CellData } from '@/types/spreadsheet';
+export type PivotAggregation = 'SUM' | 'COUNT' | 'AVERAGE' | 'MIN' | 'MAX';
 
 export interface PivotConfig {
   sourceRange: {
@@ -8,154 +9,175 @@ export interface PivotConfig {
     endRow: number;
     endCol: number;
   };
-  rows: string[]; // Header names for row grouping
-  cols: string[]; // Header names for col grouping
-  values: {
-    field: string;
-    aggregation: 'SUM' | 'COUNT' | 'AVERAGE' | 'MIN' | 'MAX';
-  }[];
+  rows: string[];
+  cols: string[];
+  values: Array<{ field: string; aggregation: PivotAggregation }>;
 }
 
-interface PivotNode {
-  key: string;
-  children: Map<string, PivotNode>;
-  values: any[]; // Raw values for aggregation
+type PivotValue = string | number | boolean | null | undefined;
+
+interface TupleKey {
+  encoded: string;
+  label: string;
+}
+
+const BLANK_LABEL = '(blank)';
+
+function tupleKey(values: PivotValue[]): TupleKey {
+  const normalized = values.map((value) =>
+    value === null || value === undefined || value === '' ? null : value,
+  );
+  return {
+    // JSON encoding avoids collisions caused by joining values containing the
+    // visual separator (for example ["A | B", "C"] and ["A", "B | C"]).
+    encoded: JSON.stringify(normalized),
+    label: normalized
+      .map((value) => {
+        if (value === null) return BLANK_LABEL;
+        const label = String(value);
+        return label.includes(' | ') ? JSON.stringify(label) : label;
+      })
+      .join(' | '),
+  };
+}
+
+function validateConfig(headers: string[], config: PivotConfig): void {
+  const { sourceRange, rows, cols, values } = config;
+  const coordinates = [
+    sourceRange.startRow,
+    sourceRange.startCol,
+    sourceRange.endRow,
+    sourceRange.endCol,
+  ];
+  if (
+    coordinates.some((coordinate) => !Number.isInteger(coordinate) || coordinate < 0) ||
+    sourceRange.startRow > sourceRange.endRow ||
+    sourceRange.startCol > sourceRange.endCol
+  ) {
+    throw new Error('Invalid pivot source range');
+  }
+  if (new Set(headers).size !== headers.length) {
+    throw new Error('Pivot source headers must be unique');
+  }
+  if (values.length === 0) throw new Error('Pivot requires at least one value field');
+
+  const headerSet = new Set(headers);
+  for (const field of [...rows, ...cols, ...values.map(({ field }) => field)]) {
+    if (!headerSet.has(field)) throw new Error(`Unknown pivot field: ${field}`);
+  }
 }
 
 export function calculatePivotData(data: SheetData, config: PivotConfig): SheetData {
   const { sourceRange, rows, cols, values } = config;
-  const result: SheetData = {};
-
-  // 1. Extract Data
   const headers: string[] = [];
-  const startRow = sourceRange.startRow;
-  const startCol = sourceRange.startCol;
-
-  // Read headers
-  for (let c = startCol; c <= sourceRange.endCol; c++) {
-    const val = data[startRow]?.[c]?.value;
-    headers.push(String(val ?? `Col ${c}`));
+  for (let col = sourceRange.startCol; col <= sourceRange.endCol; col++) {
+    headers.push(String(data[sourceRange.startRow]?.[col]?.value ?? `Col ${col}`));
   }
+  validateConfig(headers, config);
 
-  const rawData: Record<string, any>[] = [];
-  for (let r = startRow + 1; r <= sourceRange.endRow; r++) {
-    const rowObj: Record<string, any> = {};
+  const records: Record<string, PivotValue>[] = [];
+  for (let row = sourceRange.startRow + 1; row <= sourceRange.endRow; row++) {
+    const record: Record<string, PivotValue> = {};
     let hasData = false;
-    for (let c = startCol; c <= sourceRange.endCol; c++) {
-      const header = headers[c - startCol];
-      const val = data[r]?.[c]?.value;
-      rowObj[header] = val;
-      if (val !== null && val !== undefined && val !== '') hasData = true;
+    for (let col = sourceRange.startCol; col <= sourceRange.endCol; col++) {
+      const value = data[row]?.[col]?.value;
+      record[headers[col - sourceRange.startCol]] = value;
+      if (value !== null && value !== undefined && value !== '') hasData = true;
     }
-    if (hasData) rawData.push(rowObj);
+    if (hasData) records.push(record);
   }
 
-  // 2. Group Data
-  // This is a simplified implementation. A full pivot table supports nested rows/cols.
-  // For MVP, we'll support 1 row dimension and 1 column dimension effectively,
-  // or just flat grouping.
+  const rowTuples = new Map<string, TupleKey>();
+  const colTuples = new Map<string, TupleKey>();
+  const buckets = new Map<string, Map<string, PivotValue[]>>();
 
-  // Let's implement a map-based aggregation.
-  // Key format: "RowVal1|RowVal2...||ColVal1|ColVal2..."
-  
-  const aggregationMap = new Map<string, Record<string, any[]>>();
-  const rowKeysSet = new Set<string>();
-  const colKeysSet = new Set<string>();
+  for (const record of records) {
+    const rowTuple = tupleKey(rows.map((field) => record[field]));
+    const colTuple = cols.length
+      ? tupleKey(cols.map((field) => record[field]))
+      : { encoded: '[]', label: 'Total' };
+    rowTuples.set(rowTuple.encoded, rowTuple);
+    colTuples.set(colTuple.encoded, colTuple);
 
-  rawData.forEach(row => {
-    const rowKeyParts = rows.map(field => String(row[field] ?? '(blank)'));
-    const colKeyParts = cols.map(field => String(row[field] ?? ''));
-    
-    // For MVP, if no col field, we use a single key for col
-    const rowKey = rowKeyParts.join(' | ');
-    const colKey = cols.length > 0 ? colKeyParts.join(' | ') : 'Total';
-
-    rowKeysSet.add(rowKey);
-    colKeysSet.add(colKey);
-
-    const key = `${rowKey}||${colKey}`;
-    
-    let aggBucket = aggregationMap.get(key);
-    if (!aggBucket) {
-      aggBucket = {};
-      values.forEach(v => aggBucket![v.field] = []);
-      aggregationMap.set(key, aggBucket);
+    const bucketKey = JSON.stringify([rowTuple.encoded, colTuple.encoded]);
+    const bucket = buckets.get(bucketKey) ?? new Map<string, PivotValue[]>();
+    for (const value of values) {
+      const aggregationKey = JSON.stringify([value.field, value.aggregation]);
+      const entries = bucket.get(aggregationKey) ?? [];
+      entries.push(record[value.field]);
+      bucket.set(aggregationKey, entries);
     }
+    buckets.set(bucketKey, bucket);
+  }
 
-    values.forEach(v => {
-      aggBucket![v.field].push(row[v.field]);
+  const sortedRows = [...rowTuples.values()].sort((a, b) =>
+    a.label.localeCompare(b.label, undefined, { numeric: true }),
+  );
+  const sortedCols = [...colTuples.values()].sort((a, b) =>
+    a.label.localeCompare(b.label, undefined, { numeric: true }),
+  );
+  const result: SheetData = { 0: {} };
+  result[0][0] = {
+    value: rows.join(' / ') || 'Ref',
+    style: { fontWeight: 'bold' },
+  };
+
+  const outputColumns: Array<{ tuple: TupleKey; valueIndex: number }> = [];
+  for (const tuple of sortedCols) {
+    values.forEach((value, valueIndex) => {
+      outputColumns.push({ tuple, valueIndex });
+      const label =
+        values.length === 1
+          ? tuple.label
+          : `${tuple.label} / ${value.field} (${value.aggregation})`;
+      result[0][outputColumns.length] = {
+        value: label,
+        style: { fontWeight: 'bold', textAlign: 'center' },
+      };
     });
-  });
+  }
 
-  const sortedRowKeys = Array.from(rowKeysSet).sort();
-  const sortedColKeys = Array.from(colKeysSet).sort();
-
-  // 3. Construct Output Table
-
-  // Metadata for rendering
-  let currentRow = 0;
-  let currentCol = 0;
-
-  // Write Column Headers
-  // Top-left corner (Row Headers)
-  result[currentRow] = {};
-  result[currentRow][currentCol] = { value: rows.join(' / ') || 'Ref', style: { fontWeight: 'bold' } };
-
-  // Column Headers
-  sortedColKeys.forEach((colKey, index) => {
-    const targetCol = currentCol + 1 + index; // +1 for row labels column
-    if (!result[currentRow]) result[currentRow] = {};
-    result[currentRow][targetCol] = { value: colKey, style: { fontWeight: 'bold', textAlign: 'center' } };
-  });
-
-  currentRow++;
-
-  // Write Data Rows
-  sortedRowKeys.forEach(rowKey => {
-    result[currentRow] = {};
-    // Row Label
-    result[currentRow][currentCol] = { value: rowKey, style: { fontWeight: 'bold' } };
-
-    sortedColKeys.forEach((colKey, colIndex) => {
-      const targetCol = currentCol + 1 + colIndex;
-      const key = `${rowKey}||${colKey}`;
-      const bucket = aggregationMap.get(key);
-
-      if (bucket) {
-        // Aggregate
-        // Assuming single value field for simplicity in MVP cell rendering
-        // If multiple value fields, we'd need nested columns or concatenated string
-        const vConfig = values[0];
-        if (vConfig) {
-          const rawVals = bucket[vConfig.field];
-          const aggregatedVal = aggregate(rawVals, vConfig.aggregation);
-          result[currentRow][targetCol] = { value: aggregatedVal };
-        }
-      } else {
-        result[currentRow][targetCol] = { value: null };
-      }
+  sortedRows.forEach((rowTuple, rowIndex) => {
+    const outputRow = rowIndex + 1;
+    result[outputRow] = {
+      0: { value: rowTuple.label, style: { fontWeight: 'bold' } },
+    };
+    outputColumns.forEach(({ tuple: colTuple, valueIndex }, colIndex) => {
+      const value = values[valueIndex];
+      const bucket = buckets.get(
+        JSON.stringify([rowTuple.encoded, colTuple.encoded]),
+      );
+      const rawValues =
+        bucket?.get(JSON.stringify([value.field, value.aggregation])) ?? [];
+      result[outputRow][colIndex + 1] = {
+        value: bucket ? aggregate(rawValues, value.aggregation) : null,
+      };
     });
-    currentRow++;
   });
 
   return result;
 }
 
-function aggregate(values: any[], type: string): number | string {
-  const nums = values.map(v => parseFloat(v)).filter(n => !isNaN(n));
-  
+function aggregate(values: PivotValue[], type: PivotAggregation): number {
+  const nonBlank = values.filter(
+    (value) => value !== null && value !== undefined && value !== '',
+  );
+  const numbers = nonBlank
+    .map((value) => (typeof value === 'number' ? value : Number(value)))
+    .filter(Number.isFinite);
+
   switch (type) {
     case 'SUM':
-      return nums.reduce((a, b) => a + b, 0);
+      return numbers.reduce((sum, value) => sum + value, 0);
     case 'COUNT':
-      return values.length;
+      return nonBlank.length;
     case 'AVERAGE':
-      return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : 0;
+      return numbers.length
+        ? numbers.reduce((sum, value) => sum + value, 0) / numbers.length
+        : 0;
     case 'MIN':
-      return nums.length ? Math.min(...nums) : 0;
+      return numbers.length ? Math.min(...numbers) : 0;
     case 'MAX':
-      return nums.length ? Math.max(...nums) : 0;
-    default:
-      return 0;
+      return numbers.length ? Math.max(...numbers) : 0;
   }
 }

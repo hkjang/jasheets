@@ -79,4 +79,19 @@ describe('FilterProfilesDropdown', () => {
       isDefault: false,
     });
   });
+
+  it('clears the previous sheet overlay when the loaded sheet has no default profile', async () => {
+    fetchMock.mockResolvedValue(response([]));
+    const onClearFilters = jest.fn();
+
+    render(
+      <FilterProfilesDropdown
+        sheetId="sheet-2"
+        onApplyProfile={jest.fn()}
+        onClearFilters={onClearFilters}
+      />,
+    );
+
+    await waitFor(() => expect(onClearFilters).toHaveBeenCalledTimes(1));
+  });
 });

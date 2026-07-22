@@ -15,11 +15,78 @@ import { createHash } from 'crypto';
 import { rewriteSheetReferences } from './sheet-reference.util';
 import { rewriteConditionalRanges } from './conditional-range.util';
 import { rewriteMergedRange } from './merged-range.util';
+import {
+  ImportWorkbookDto,
+  WorkbookImportSheetDto,
+} from './dto/import-workbook.dto';
+
+class ColumnCoverageTree {
+  private readonly maximum: Int32Array;
+  private readonly lazy: Int32Array;
+
+  constructor(private readonly size: number) {
+    this.maximum = new Int32Array(size * 4);
+    this.lazy = new Int32Array(size * 4);
+  }
+
+  add(start: number, end: number, delta: number): void {
+    this.update(1, 0, this.size - 1, start, end, delta);
+  }
+
+  max(start: number, end: number): number {
+    return this.query(1, 0, this.size - 1, start, end);
+  }
+
+  private update(
+    node: number,
+    left: number,
+    right: number,
+    start: number,
+    end: number,
+    delta: number,
+  ): void {
+    if (start <= left && right <= end) {
+      this.maximum[node] += delta;
+      this.lazy[node] += delta;
+      return;
+    }
+    const middle = Math.floor((left + right) / 2);
+    if (start <= middle) this.update(node * 2, left, middle, start, end, delta);
+    if (end > middle)
+      this.update(node * 2 + 1, middle + 1, right, start, end, delta);
+    this.maximum[node] =
+      this.lazy[node] +
+      Math.max(this.maximum[node * 2], this.maximum[node * 2 + 1]);
+  }
+
+  private query(
+    node: number,
+    left: number,
+    right: number,
+    start: number,
+    end: number,
+  ): number {
+    if (start <= left && right <= end) return this.maximum[node];
+    const middle = Math.floor((left + right) / 2);
+    let result = 0;
+    if (start <= middle)
+      result = this.query(node * 2, left, middle, start, end);
+    if (end > middle)
+      result = Math.max(
+        result,
+        this.query(node * 2 + 1, middle + 1, right, start, end),
+      );
+    return this.lazy[node] + result;
+  }
+}
 
 @Injectable()
 export class SheetsService {
   private readonly logger = new Logger(SheetsService.name);
   private readonly maxSheetsPerSpreadsheet = 200;
+  private readonly maxWorkbookImportBytes = 16 * 1024 * 1024;
+  private readonly maxWorkbookImportCells = 100_000;
+  private readonly maxCellImportBytes = 256 * 1024;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -348,6 +415,463 @@ export class SheetsService {
         timeout: 60_000,
       },
     );
+  }
+
+  /**
+   * Imports parsed workbook data without deleting Sheet records. In replace
+   * mode imported tabs overwrite existing tabs by index, additional tabs are
+   * created, and surplus existing tabs are intentionally preserved. This keeps
+   * permissions, comments, revision logs, filters and automation ownership
+   * intact instead of relying on destructive cascades.
+   */
+  async importWorkbook(
+    userId: string,
+    spreadsheetId: string,
+    dto: ImportWorkbookDto,
+  ) {
+    await this.checkEditAccess(userId, spreadsheetId);
+    this.validateWorkbookImport(dto);
+
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          await this.assertImportEditAccess(tx, userId, spreadsheetId);
+          const currentSheets = await tx.sheet.findMany({
+            where: { spreadsheetId },
+            orderBy: { index: 'asc' },
+            select: { id: true, name: true, index: true, version: true },
+          });
+          this.assertExpectedSheetVersions(
+            currentSheets,
+            dto.expectedSheetVersions,
+          );
+
+          const createdCount =
+            dto.mode === 'append'
+              ? dto.sheets.length
+              : Math.max(0, dto.sheets.length - currentSheets.length);
+          if (
+            currentSheets.length + createdCount >
+            this.maxSheetsPerSpreadsheet
+          ) {
+            throw new BadRequestException(
+              `A spreadsheet can contain at most ${this.maxSheetsPerSpreadsheet} sheets`,
+            );
+          }
+
+          const preservedNames =
+            dto.mode === 'append'
+              ? currentSheets.map(({ name }) => name)
+              : currentSheets.map(({ name }) => name);
+          const createdNames =
+            dto.mode === 'append'
+              ? dto.sheets.map(({ name }) => name)
+              : dto.sheets
+                  .slice(currentSheets.length)
+                  .map(({ name }) => name);
+          this.assertUniqueImportedSheetNames([
+            ...preservedNames,
+            ...createdNames,
+          ]);
+
+          const imported: Array<{ id: string; name: string; version: number }> =
+            [];
+          let nextIndex =
+            currentSheets.reduce(
+              (maximum, sheet) => Math.max(maximum, sheet.index),
+              -1,
+            ) + 1;
+
+          for (let index = 0; index < dto.sheets.length; index += 1) {
+            const source = dto.sheets[index];
+            const target =
+              dto.mode === 'replace' ? currentSheets[index] : undefined;
+            if (target) {
+              const claimed = await tx.sheet.updateMany({
+                where: { id: target.id, version: target.version },
+                data: {
+                  rowCount: source.rowCount,
+                  colCount: source.colCount,
+                  frozenRows: source.frozenRows,
+                  frozenCols: source.frozenCols,
+                  defaultRowHeight: source.defaultRowHeight,
+                  defaultColWidth: source.defaultColWidth,
+                  version: { increment: 1 },
+                },
+              });
+              if (claimed.count !== 1) {
+                throw new ConflictException(
+                  'Spreadsheet changed while the workbook was being imported',
+                );
+              }
+              await this.replaceImportedSheetContent(tx, target.id, source);
+              imported.push({
+                id: target.id,
+                // Reusing an existing tab deliberately preserves its identity
+                // and name so formulas in surplus tabs never become stale.
+                name: target.name,
+                version: target.version + 1,
+              });
+            } else {
+              const created = await tx.sheet.create({
+                data: {
+                  spreadsheetId,
+                  name: source.name,
+                  index: nextIndex++,
+                  rowCount: source.rowCount,
+                  colCount: source.colCount,
+                  frozenRows: source.frozenRows,
+                  frozenCols: source.frozenCols,
+                  defaultRowHeight: source.defaultRowHeight,
+                  defaultColWidth: source.defaultColWidth,
+                },
+                select: { id: true, name: true, version: true },
+              });
+              await this.createImportedSheetContent(tx, created.id, source);
+              imported.push(created);
+            }
+          }
+
+          return {
+            mode: dto.mode,
+            imported,
+            preservedSheetCount:
+              dto.mode === 'replace'
+                ? Math.max(0, currentSheets.length - dto.sheets.length)
+                : currentSheets.length,
+          };
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5_000,
+          timeout: 120_000,
+        },
+      );
+    } catch (error) {
+      if (
+        typeof error === 'object' &&
+        error !== null &&
+        'code' in error &&
+        (error.code === 'P2034' || error.code === 'P2002')
+      ) {
+        throw new ConflictException(
+          'Spreadsheet changed while the workbook was being imported',
+        );
+      }
+      throw error;
+    }
+  }
+
+  private async assertImportEditAccess(
+    tx: Prisma.TransactionClient,
+    userId: string,
+    spreadsheetId: string,
+  ): Promise<void> {
+    const spreadsheet = await tx.spreadsheet.findFirst({
+      where: { id: spreadsheetId, deletedAt: null },
+      select: {
+        ownerId: true,
+        permissions: {
+          where: { userId },
+          select: { role: true },
+          take: 1,
+        },
+      },
+    });
+    if (!spreadsheet) throw new NotFoundException('Spreadsheet not found');
+    const role = spreadsheet.permissions[0]?.role;
+    if (
+      spreadsheet.ownerId !== userId &&
+      role !== PermissionRole.EDITOR &&
+      role !== PermissionRole.OWNER
+    ) {
+      throw new ForbiddenException(
+        'You do not have edit access to this spreadsheet',
+      );
+    }
+  }
+
+  private validateWorkbookImport(dto: ImportWorkbookDto): void {
+    let encoded: string;
+    try {
+      encoded = JSON.stringify(dto);
+    } catch {
+      throw new BadRequestException('Workbook payload must be valid JSON');
+    }
+    if (Buffer.byteLength(encoded, 'utf8') > this.maxWorkbookImportBytes) {
+      throw new BadRequestException('Workbook payload exceeds the 16 MB limit');
+    }
+    const totalCells = dto.sheets.reduce(
+      (sum, sheet) => sum + sheet.cells.length,
+      0,
+    );
+    if (totalCells > this.maxWorkbookImportCells) {
+      throw new BadRequestException(
+        `Workbook import cannot contain more than ${this.maxWorkbookImportCells} cells`,
+      );
+    }
+    this.assertUniqueImportedSheetNames(dto.sheets.map(({ name }) => name));
+    dto.sheets.forEach((sheet) => this.validateImportedSheet(sheet));
+  }
+
+  private validateImportedSheet(sheet: WorkbookImportSheetDto): void {
+    if (/[[\]:*?/\\\u0000-\u001f\u007f]/u.test(sheet.name)) {
+      throw new BadRequestException(
+        `Sheet name contains unsafe characters: ${sheet.name}`,
+      );
+    }
+    if (
+      sheet.frozenRows > sheet.rowCount ||
+      sheet.frozenCols > sheet.colCount
+    ) {
+      throw new BadRequestException(
+        `Frozen rows or columns exceed bounds for sheet ${sheet.name}`,
+      );
+    }
+
+    const cells = new Set<string>();
+    for (const cell of sheet.cells) {
+      this.validateCellCoordinates(
+        cell.row,
+        cell.col,
+        sheet.rowCount,
+        sheet.colCount,
+      );
+      const key = `${cell.row}:${cell.col}`;
+      if (cells.has(key)) {
+        throw new BadRequestException(
+          `Duplicate cell coordinate in sheet ${sheet.name}: ${key}`,
+        );
+      }
+      cells.add(key);
+      if (
+        !Object.prototype.hasOwnProperty.call(cell, 'value') &&
+        !Object.prototype.hasOwnProperty.call(cell, 'formula') &&
+        !Object.prototype.hasOwnProperty.call(cell, 'format')
+      ) {
+        throw new BadRequestException(`Imported cell ${key} has no content`);
+      }
+      this.assertSafeImportValue(cell, `cell ${key}`);
+    }
+
+    this.assertUniqueImportCoordinates(
+      sheet.rowMeta,
+      'row',
+      sheet.rowCount,
+      sheet.name,
+    );
+    this.assertUniqueImportCoordinates(
+      sheet.colMeta,
+      'col',
+      sheet.colCount,
+      sheet.name,
+    );
+
+    for (const range of sheet.mergedRanges) {
+      this.validateMergedRange(range, sheet.rowCount, sheet.colCount);
+    }
+    this.assertImportedMergesDoNotOverlap(sheet);
+    this.assertNoImportedNonAnchorCells(sheet);
+  }
+
+  private assertSafeImportValue(value: unknown, label: string): void {
+    let encoded: string | undefined;
+    try {
+      encoded = JSON.stringify(value);
+    } catch {
+      throw new BadRequestException(`${label} is not JSON serializable`);
+    }
+    if (encoded === undefined) {
+      throw new BadRequestException(`${label} contains an unsupported value`);
+    }
+    if (Buffer.byteLength(encoded, 'utf8') > this.maxCellImportBytes) {
+      throw new BadRequestException(`${label} exceeds the 256 KB limit`);
+    }
+    const visit = (current: unknown, depth: number): void => {
+      if (depth > 20)
+        throw new BadRequestException(`${label} is too deeply nested`);
+      if (typeof current === 'string' && current.length > 50_000) {
+        throw new BadRequestException(`${label} contains an oversized string`);
+      }
+      if (Array.isArray(current))
+        current.forEach((entry) => visit(entry, depth + 1));
+      else if (current && typeof current === 'object')
+        Object.values(current).forEach((entry) => visit(entry, depth + 1));
+    };
+    visit(value, 0);
+  }
+
+  private assertUniqueImportCoordinates<T extends object, K extends keyof T>(
+    values: T[],
+    coordinate: K,
+    bound: number,
+    sheetName: string,
+  ): void {
+    const seen = new Set<number>();
+    for (const value of values) {
+      const rawPosition = value[coordinate];
+      const position = typeof rawPosition === 'number' ? rawPosition : -1;
+      if (!Number.isInteger(position) || position < 0 || position >= bound) {
+        throw new BadRequestException(
+          `${String(coordinate)} metadata is outside bounds for sheet ${sheetName}`,
+        );
+      }
+      if (seen.has(position)) {
+        throw new BadRequestException(
+          `Duplicate ${String(coordinate)} metadata in sheet ${sheetName}: ${position}`,
+        );
+      }
+      seen.add(position);
+    }
+  }
+
+  private assertUniqueImportedSheetNames(names: string[]): void {
+    const seen = new Set<string>();
+    for (const name of names) {
+      const normalized = name.normalize('NFKC').trim().toLocaleLowerCase();
+      if (!normalized || seen.has(normalized)) {
+        throw new BadRequestException('Workbook sheet names must be unique');
+      }
+      seen.add(normalized);
+    }
+  }
+
+  private assertExpectedSheetVersions(
+    current: Array<{ id: string; version: number }>,
+    expected: Array<{ sheetId: string; version: number }>,
+  ): void {
+    const expectedMap = new Map<string, number>();
+    for (const entry of expected) {
+      if (expectedMap.has(entry.sheetId)) {
+        throw new BadRequestException(
+          'Expected sheet versions contain duplicates',
+        );
+      }
+      expectedMap.set(entry.sheetId, entry.version);
+    }
+    if (
+      expectedMap.size !== current.length ||
+      current.some((sheet) => expectedMap.get(sheet.id) !== sheet.version)
+    ) {
+      throw new ConflictException(
+        'Spreadsheet changed since the workbook import was prepared',
+      );
+    }
+  }
+
+  private importedMergeEvents(sheet: WorkbookImportSheetDto) {
+    return sheet.mergedRanges
+      .flatMap((range) => [
+        { row: range.startRow, delta: 1, range },
+        { row: range.endRow + 1, delta: -1, range },
+      ])
+      .sort((left, right) => left.row - right.row || left.delta - right.delta);
+  }
+
+  private assertImportedMergesDoNotOverlap(
+    sheet: WorkbookImportSheetDto,
+  ): void {
+    const coverage = new ColumnCoverageTree(sheet.colCount);
+    for (const event of this.importedMergeEvents(sheet)) {
+      const { startCol, endCol } = event.range;
+      if (event.delta > 0 && coverage.max(startCol, endCol) > 0) {
+        throw new BadRequestException(
+          `Merged ranges overlap in sheet ${sheet.name}`,
+        );
+      }
+      coverage.add(startCol, endCol, event.delta);
+    }
+  }
+
+  private assertNoImportedNonAnchorCells(sheet: WorkbookImportSheetDto): void {
+    if (!sheet.mergedRanges.length || !sheet.cells.length) return;
+    const coverage = new ColumnCoverageTree(sheet.colCount);
+    const events = this.importedMergeEvents(sheet);
+    const anchors = new Set(
+      sheet.mergedRanges.map(
+        ({ startRow, startCol }) => `${startRow}:${startCol}`,
+      ),
+    );
+    const cells = [...sheet.cells].sort(
+      (left, right) => left.row - right.row || left.col - right.col,
+    );
+    let eventIndex = 0;
+    for (const cell of cells) {
+      while (eventIndex < events.length && events[eventIndex].row <= cell.row) {
+        const event = events[eventIndex++];
+        coverage.add(event.range.startCol, event.range.endCol, event.delta);
+      }
+      const key = `${cell.row}:${cell.col}`;
+      if (coverage.max(cell.col, cell.col) > 0 && !anchors.has(key)) {
+        throw new BadRequestException(
+          `Non-anchor cell ${key} contains data inside a merged range`,
+        );
+      }
+    }
+  }
+
+  private async replaceImportedSheetContent(
+    tx: Prisma.TransactionClient,
+    sheetId: string,
+    sheet: WorkbookImportSheetDto,
+  ): Promise<void> {
+    const where = { where: { sheetId } };
+    await tx.cell.deleteMany(where);
+    await tx.rowMeta.deleteMany(where);
+    await tx.colMeta.deleteMany(where);
+    await tx.mergedRange.deleteMany(where);
+    // XLSX parsing does not currently model JaSheets charts, pivots or
+    // conditional rules. Preserve them rather than silently deleting content
+    // which cannot be recreated from the import payload.
+    await this.createImportedSheetContent(tx, sheetId, sheet);
+  }
+
+  private async createImportedSheetContent(
+    tx: Prisma.TransactionClient,
+    sheetId: string,
+    sheet: WorkbookImportSheetDto,
+  ): Promise<void> {
+    const batchSize = 1_000;
+    for (let offset = 0; offset < sheet.cells.length; offset += batchSize) {
+      await tx.cell.createMany({
+        data: sheet.cells.slice(offset, offset + batchSize).map((cell) => ({
+          sheetId,
+          row: cell.row,
+          col: cell.col,
+          ...(Object.prototype.hasOwnProperty.call(cell, 'value')
+            ? {
+                value:
+                  cell.value === null
+                    ? Prisma.JsonNull
+                    : (cell.value as Prisma.InputJsonValue),
+              }
+            : {}),
+          ...(Object.prototype.hasOwnProperty.call(cell, 'formula')
+            ? { formula: cell.formula }
+            : {}),
+          ...(Object.prototype.hasOwnProperty.call(cell, 'format')
+            ? {
+                format:
+                  cell.format === null
+                    ? Prisma.JsonNull
+                    : (cell.format as Prisma.InputJsonValue),
+              }
+            : {}),
+        })),
+      });
+    }
+    if (sheet.rowMeta.length)
+      await tx.rowMeta.createMany({
+        data: sheet.rowMeta.map((meta) => ({ sheetId, ...meta })),
+      });
+    if (sheet.colMeta.length)
+      await tx.colMeta.createMany({
+        data: sheet.colMeta.map((meta) => ({ sheetId, ...meta })),
+      });
+    if (sheet.mergedRanges.length)
+      await tx.mergedRange.createMany({
+        data: sheet.mergedRanges.map((range) => ({ sheetId, ...range })),
+      });
   }
 
   async updateSheet(userId: string, sheetId: string, data: { name: string }) {

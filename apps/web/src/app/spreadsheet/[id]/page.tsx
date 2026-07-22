@@ -22,6 +22,8 @@ import {
 import { deserializeCellFormat } from "@/utils/cellPersistence";
 import { rewriteSheetNameReferences } from "@/utils/formulaReferences";
 import { deserializeConditionalRule } from "@/utils/conditionalRulePersistence";
+import { createWorkbookImportSheets, type ImportResult } from "@/utils/fileImport";
+import type { XLSXWorkbookSheet } from "@/utils/export";
 
 function deserializeSheetData(sheet: SpreadsheetSheet): SheetData {
   const sheetData: SheetData = {};
@@ -107,13 +109,16 @@ export default function SpreadsheetPage() {
     }
   }, [authLoading, user, router]);
 
-  const loadSpreadsheet = useCallback(async () => {
+  const loadSpreadsheet = useCallback(async (
+    background = false,
+    preferredSheetId?: string | null,
+  ) => {
     if (!id) return;
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
     const requestId = ++requestRef.current;
-    setLoading(true);
+    if (!background) setLoading(true);
     setError(null);
 
     try {
@@ -128,13 +133,17 @@ export default function SpreadsheetPage() {
         ),
       );
       if (sheets.length > 0) {
-        const firstSheet = sheets[0];
-        setActiveSheetId(firstSheet.id);
-        setActiveSheetVersion(firstSheet.version ?? 0);
-        setData(deserializeSheetData(firstSheet));
+        const selectedSheet =
+          sheets.find(({ id: sheetId }) => sheetId === preferredSheetId) ??
+          sheets[0];
+        setActiveSheetId(selectedSheet.id);
+        setActiveSheetVersion(selectedSheet.version ?? 0);
+        setData(deserializeSheetData(selectedSheet));
 
-        if (firstSheet.charts && Array.isArray(firstSheet.charts)) {
-          setInitialCharts(firstSheet.charts);
+        if (selectedSheet.charts && Array.isArray(selectedSheet.charts)) {
+          setInitialCharts(selectedSheet.charts);
+        } else {
+          setInitialCharts([]);
         }
       } else {
         setData({});
@@ -327,6 +336,22 @@ export default function SpreadsheetPage() {
     [],
   );
 
+  const importWorkbook = useCallback(async (
+    result: ImportResult,
+    mode: "append" | "replace",
+    activeVersion: number,
+  ) => {
+    await api.spreadsheets.importWorkbook(id, {
+      mode,
+      sheets: createWorkbookImportSheets(result),
+      expectedSheetVersions: sheets.map((sheet) => ({
+        sheetId: sheet.id,
+        version: sheet.id === activeSheetId ? activeVersion : (sheet.version ?? 0),
+      })),
+    });
+    await loadSpreadsheet(true, activeSheetId);
+  }, [activeSheetId, id, loadSpreadsheet, sheets]);
+
   const activeSheet = useMemo(
     () => sheets.find(({ id: sheetId }) => sheetId === activeSheetId),
     [activeSheetId, sheets],
@@ -381,6 +406,20 @@ export default function SpreadsheetPage() {
       ),
     [sheetData, sheets],
   );
+  const workbookExportSheets = useMemo<XLSXWorkbookSheet[]>(() =>
+    sheets.map((sheet) => ({
+      name: sheet.name,
+      data: sheetData[sheet.id] ?? deserializeSheetData(sheet),
+      mergedRanges: sheet.mergedRanges ?? [],
+      rows: Object.fromEntries((sheet.rowMeta ?? []).map((row) => [row.row, {
+        height: row.height ?? sheet.defaultRowHeight ?? DEFAULT_CONFIG.defaultRowHeight,
+        hidden: row.hidden,
+      }])),
+      columns: Object.fromEntries((sheet.colMeta ?? []).map((column) => [column.col, {
+        width: column.width ?? sheet.defaultColWidth ?? DEFAULT_CONFIG.defaultColWidth,
+        hidden: column.hidden,
+      }])),
+    })), [sheetData, sheets]);
   const initialConditionalRules = useMemo(
     () =>
       (activeSheet?.conditionalRules ?? [])
@@ -448,6 +487,8 @@ export default function SpreadsheetPage() {
       onChartsChange={handleChartsChange}
       onStructureChange={handleStructureChange}
       onMergedRangesChange={handleMergedRangesChange}
+      onWorkbookImport={importWorkbook}
+      workbookExportSheets={workbookExportSheets}
     />
   );
 }
