@@ -24,7 +24,8 @@ endpoint only through TLS-enabled Ingress.
 
 | Tool | Purpose | Mutation |
 | --- | --- | --- |
-| `list_spreadsheets` | List workbooks visible to the user | No |
+| `list_workbooks` | List workbooks visible to the user | No |
+| `list_spreadsheets` | Compatibility alias for `list_workbooks` | No |
 | `get_spreadsheet` | Read workbook and sheet metadata | No |
 | `get_range` | Read a bounded zero-based rectangular range | No |
 | `set_cells` | Write values, formulas, or formats | Yes |
@@ -67,4 +68,3 @@ port `3000`, as described in [OFFLINE_DEPLOYMENT.md](./OFFLINE_DEPLOYMENT.md).
 If another editor changes the sheet first, JaSheets returns a version conflict.
 Read the current workbook/range and retry with a new idempotency key after
 reconciling the change.
-

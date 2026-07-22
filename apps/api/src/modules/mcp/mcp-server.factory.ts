@@ -6,8 +6,9 @@ import { McpQueryService } from './mcp-query.service';
 
 const jsonResult = (value: unknown) => ({
   content: [{ type: 'text' as const, text: JSON.stringify(value) }],
-  structuredContent:
-    typeof value === 'object' && value !== null
+  structuredContent: Array.isArray(value)
+    ? { items: value }
+    : typeof value === 'object' && value !== null
       ? (value as Record<string, unknown>)
       : { value },
 });
@@ -22,15 +23,28 @@ export class McpServerFactory {
   create(userId: string) {
     const server = new McpServer({ name: 'jasheets', version: '0.1.1' });
 
-    server.registerTool(
+    const registerWorkbookListTool = (
+      name: 'list_workbooks' | 'list_spreadsheets',
+      description: string,
+    ) =>
+      server.registerTool(
+        name,
+        {
+          description,
+          inputSchema: { search: z.string().max(200).optional() },
+          annotations: { readOnlyHint: true, idempotentHint: true },
+        },
+        async ({ search }) =>
+          jsonResult(await this.queries.listSpreadsheets(userId, search)),
+      );
+
+    registerWorkbookListTool(
+      'list_workbooks',
+      'List workbooks accessible to the authenticated user.',
+    );
+    registerWorkbookListTool(
       'list_spreadsheets',
-      {
-        description: 'List spreadsheets accessible to the authenticated user.',
-        inputSchema: { search: z.string().max(200).optional() },
-        annotations: { readOnlyHint: true, idempotentHint: true },
-      },
-      async ({ search }) =>
-        jsonResult(await this.queries.listSpreadsheets(userId, search)),
+      'Compatibility alias for list_workbooks.',
     );
 
     server.registerTool(

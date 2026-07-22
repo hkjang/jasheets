@@ -30,6 +30,7 @@ describe('McpServerFactory', () => {
     const tools = await client.listTools();
     expect(tools.tools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining([
+        'list_workbooks',
         'list_spreadsheets',
         'get_spreadsheet',
         'get_range',
@@ -38,6 +39,17 @@ describe('McpServerFactory', () => {
         'delete_row',
       ]),
     );
+
+    queries.listSpreadsheets.mockResolvedValue([{ id: 'workbook-1' }]);
+    const workbooks = await client.callTool({
+      name: 'list_workbooks',
+      arguments: { search: 'budget' },
+    });
+    expect(workbooks.isError).not.toBe(true);
+    expect(workbooks.structuredContent).toEqual({
+      items: [{ id: 'workbook-1' }],
+    });
+    expect(queries.listSpreadsheets).toHaveBeenCalledWith('user-1', 'budget');
 
     const result = await client.callTool({
       name: 'set_cells',
