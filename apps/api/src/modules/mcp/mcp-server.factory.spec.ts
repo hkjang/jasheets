@@ -12,6 +12,7 @@ describe('McpServerFactory', () => {
     getSheetSchema: jest.fn(),
     getRange: jest.fn(),
     analyzeRange: jest.fn(),
+    previewChanges: jest.fn(),
   };
 
   beforeEach(() => jest.clearAllMocks());
@@ -39,6 +40,7 @@ describe('McpServerFactory', () => {
         'read_range',
         'get_range',
         'analyze_range',
+        'preview_changes',
         'set_cells',
         'write_range',
         'append_rows',
@@ -133,6 +135,28 @@ describe('McpServerFactory', () => {
       3,
       2,
       true,
+    );
+
+    queries.previewChanges.mockResolvedValue({
+      sheetId: '550e8400-e29b-41d4-a716-446655440001',
+      currentVersion: 7,
+      previewHash: 'preview-hash',
+      changes: [],
+    });
+    const preview = await client.callTool({
+      name: 'preview_changes',
+      arguments: {
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        updates: [{ row: 0, col: 0, value: 42 }],
+        expectedVersion: 7,
+      },
+    });
+    expect(preview.isError).not.toBe(true);
+    expect(queries.previewChanges).toHaveBeenCalledWith(
+      'user-1',
+      '550e8400-e29b-41d4-a716-446655440001',
+      [{ row: 0, col: 0, value: 42 }],
+      7,
     );
 
     const result = await client.callTool({

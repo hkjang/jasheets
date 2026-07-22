@@ -154,6 +154,40 @@ export class McpServerFactory {
     );
 
     server.registerTool(
+      'preview_changes',
+      {
+        description:
+          'Preview cell mutations without writing: before/after values, no-ops, version conflicts and a deterministic preview hash.',
+        inputSchema: {
+          sheetId: z.string().uuid(),
+          updates: z
+            .array(
+              z.object({
+                row: z.number().int().min(0),
+                col: z.number().int().min(0),
+                value: z.unknown().optional(),
+                formula: z.string().nullable().optional(),
+                format: z.record(z.unknown()).optional(),
+              }),
+            )
+            .min(1)
+            .max(1000),
+          expectedVersion: z.number().int().min(0).optional(),
+        },
+        annotations: { readOnlyHint: true, idempotentHint: true },
+      },
+      async ({ sheetId, updates, expectedVersion }) =>
+        jsonResult(
+          await this.queries.previewChanges(
+            userId,
+            sheetId,
+            updates,
+            expectedVersion,
+          ),
+        ),
+    );
+
+    server.registerTool(
       'set_cells',
       {
         description:

@@ -212,6 +212,26 @@ export class McpQueryService {
     };
   }
 
+  previewChanges(
+    userId: string,
+    sheetId: string,
+    updates: Array<{
+      row: number;
+      col: number;
+      value?: unknown;
+      formula?: string | null;
+      format?: Record<string, unknown>;
+    }>,
+    expectedVersion?: number,
+  ) {
+    return this.sheetsService.previewCellChanges(
+      userId,
+      sheetId,
+      updates,
+      expectedVersion,
+    );
+  }
+
   private analysisType(value: unknown): string {
     if (value === null || value === undefined) return 'unknown';
     if (Array.isArray(value)) return 'array';

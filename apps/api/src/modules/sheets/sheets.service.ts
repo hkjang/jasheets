@@ -513,6 +513,166 @@ export class SheetsService {
     };
   }
 
+  async previewCellChanges(
+    userId: string,
+    sheetId: string,
+    updates: Array<{
+      row: number;
+      col: number;
+      value?: unknown;
+      formula?: string | null;
+      format?: Record<string, unknown>;
+    }>,
+    expectedVersion?: number,
+  ) {
+    if (updates.length < 1 || updates.length > 1000) {
+      throw new BadRequestException(
+        'Cell change preview must contain between 1 and 1,000 items',
+      );
+    }
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+      select: {
+        spreadsheetId: true,
+        rowCount: true,
+        colCount: true,
+        version: true,
+      },
+    });
+    if (!sheet) throw new NotFoundException('Sheet not found');
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+
+    const seen = new Set<string>();
+    const normalized = updates.map((update) => {
+      this.validateCellCoordinates(
+        update.row,
+        update.col,
+        sheet.rowCount,
+        sheet.colCount,
+      );
+      const coordinate = `${update.row}:${update.col}`;
+      if (seen.has(coordinate)) {
+        throw new BadRequestException(
+          `Duplicate cell coordinate in preview: ${coordinate}`,
+        );
+      }
+      seen.add(coordinate);
+      return { ...update, ...this.normalizeCellUpdate(update) };
+    });
+    await this.assertMergedCellWriteAllowed(sheetId, normalized);
+
+    const existing = await this.prisma.cell.findMany({
+      where: {
+        sheetId,
+        OR: normalized.map(({ row, col }) => ({ row, col })),
+      },
+      select: {
+        row: true,
+        col: true,
+        value: true,
+        formula: true,
+        format: true,
+      },
+    });
+    const existingByCoordinate = new Map(
+      existing.map((cell) => [`${cell.row}:${cell.col}`, cell]),
+    );
+    let valueChanges = 0;
+    let formulaChanges = 0;
+    let formatChanges = 0;
+    const changes = normalized.map((update) => {
+      const before = existingByCoordinate.get(`${update.row}:${update.col}`);
+      const after = {
+        value:
+          update.value === undefined ? (before?.value ?? null) : update.value,
+        formula:
+          update.formula === undefined
+            ? (before?.formula ?? null)
+            : update.formula,
+        format:
+          update.format === undefined
+            ? (before?.format ?? null)
+            : update.format,
+      };
+      const valueChanged = !this.jsonEqual(before?.value ?? null, after.value);
+      const formulaChanged = (before?.formula ?? null) !== after.formula;
+      const formatChanged = !this.jsonEqual(
+        before?.format ?? null,
+        after.format,
+      );
+      if (valueChanged) valueChanges += 1;
+      if (formulaChanged) formulaChanges += 1;
+      if (formatChanged) formatChanges += 1;
+      return {
+        row: update.row,
+        col: update.col,
+        before: {
+          value: before?.value ?? null,
+          formula: before?.formula ?? null,
+          format: before?.format ?? null,
+        },
+        after,
+        changed: valueChanged || formulaChanged || formatChanged,
+      };
+    });
+    const changedCells = changes.filter(({ changed }) => changed).length;
+    const versionConflict =
+      expectedVersion !== undefined && expectedVersion !== sheet.version;
+    const previewHash = createHash('sha256')
+      .update(
+        JSON.stringify(
+          this.canonicalize({
+            sheetId,
+            version: sheet.version,
+            changes: changes.map(({ row, col, after }) => ({
+              row,
+              col,
+              after,
+            })),
+          }),
+        ),
+      )
+      .digest('hex');
+
+    return {
+      sheetId,
+      currentVersion: sheet.version,
+      expectedVersion: expectedVersion ?? null,
+      versionConflict,
+      canApply: !versionConflict && changedCells > 0,
+      previewHash,
+      summary: {
+        requestedCells: updates.length,
+        changedCells,
+        unchangedCells: updates.length - changedCells,
+        valueChanges,
+        formulaChanges,
+        formatChanges,
+      },
+      changes,
+    };
+  }
+
+  private jsonEqual(left: unknown, right: unknown): boolean {
+    return (
+      JSON.stringify(this.canonicalize(left)) ===
+      JSON.stringify(this.canonicalize(right))
+    );
+  }
+
+  private canonicalize(value: unknown): unknown {
+    if (Array.isArray(value))
+      return value.map((item) => this.canonicalize(item));
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, item]) => [key, this.canonicalize(item)]),
+      );
+    }
+    return value;
+  }
+
   async getAppendTarget(
     userId: string,
     sheetId: string,

@@ -31,6 +31,7 @@ endpoint only through TLS-enabled Ingress.
 | `read_range` | Read a selected, bounded zero-based rectangular range | No |
 | `get_range` | Compatibility alias for `read_range` | No |
 | `analyze_range` | Profile a range for statistics and data-quality issues | No |
+| `preview_changes` | Preview before/after cell changes and version conflicts without writing | No |
 | `set_cells` | Write values, formulas, or formats | Yes |
 | `write_range` | Write a rectangular 2D value/formula matrix | Yes |
 | `append_rows` | Append rows after the last non-empty data row | Yes |
