@@ -737,9 +737,11 @@ model RevisionLog {
   userId       String
   user         User     @relation(fields: [userId], references: [id])
   description  String? // 변경 설명
+  sheetVersion Int? // 이 변경이 생성한 시트 버전 (레거시 로그는 null)
   createdAt    DateTime @default(now())
 
   @@index([sheetId, createdAt(sort: Desc)])
+  @@index([sheetId, sheetVersion])
   @@map("revision_logs")
 }
 

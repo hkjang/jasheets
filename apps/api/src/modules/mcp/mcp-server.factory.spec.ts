@@ -13,6 +13,7 @@ describe('McpServerFactory', () => {
     getRange: jest.fn(),
     analyzeRange: jest.fn(),
     previewChanges: jest.fn(),
+    getRevisionHistory: jest.fn(),
   };
 
   beforeEach(() => jest.clearAllMocks());
@@ -41,6 +42,7 @@ describe('McpServerFactory', () => {
         'get_range',
         'analyze_range',
         'preview_changes',
+        'get_revision_history',
         'execute_change_set',
         'set_cells',
         'write_range',
@@ -158,6 +160,32 @@ describe('McpServerFactory', () => {
       '550e8400-e29b-41d4-a716-446655440001',
       [{ row: 0, col: 0, value: 42 }],
       7,
+    );
+
+    queries.getRevisionHistory.mockResolvedValue({
+      revisions: [{ id: '550e8400-e29b-41d4-a716-446655440010' }],
+      hasMore: false,
+      nextCursor: null,
+    });
+    const history = await client.callTool({
+      name: 'get_revision_history',
+      arguments: {
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        limit: 25,
+        action: 'BULK_UPDATE',
+        includeChanges: true,
+      },
+    });
+    expect(history.isError).not.toBe(true);
+    expect(queries.getRevisionHistory).toHaveBeenCalledWith(
+      'user-1',
+      '550e8400-e29b-41d4-a716-446655440001',
+      {
+        limit: 25,
+        cursor: undefined,
+        action: 'BULK_UPDATE',
+        includeChanges: true,
+      },
     );
 
     commands.execute.mockResolvedValueOnce({

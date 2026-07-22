@@ -1,5 +1,6 @@
 import { SheetsService } from '../sheets/sheets.service';
 import { McpQueryService } from './mcp-query.service';
+import { RevisionLogsService } from '../revision-logs/revision-logs.service';
 
 describe('McpQueryService range analysis', () => {
   it('profiles sparse columns and reports quality insights', async () => {
@@ -24,7 +25,10 @@ describe('McpQueryService range analysis', () => {
         ],
       }),
     };
-    const service = new McpQueryService(sheets as unknown as SheetsService);
+    const service = new McpQueryService(
+      sheets as unknown as SheetsService,
+      {} as RevisionLogsService,
+    );
 
     const result = await service.analyzeRange(
       'user-1',

@@ -2442,6 +2442,46 @@ export class SheetsService {
           ),
         );
         await this.refreshRangeLinkedCharts(tx, sheetId, normalizedUpdates);
+        const previousByCoordinate = new Map(
+          existingCells.map((cell) => [`${cell.row}:${cell.col}`, cell]),
+        );
+        const rows = normalizedUpdates.map(({ row }) => row);
+        const cols = normalizedUpdates.map(({ col }) => col);
+        const minRow = Math.min(...rows);
+        const maxRow = Math.max(...rows);
+        const minCol = Math.min(...cols);
+        const maxCol = Math.max(...cols);
+        const startCell = `${this.columnLabel(minCol)}${minRow + 1}`;
+        const endCell = `${this.columnLabel(maxCol)}${maxRow + 1}`;
+        await tx.revisionLog.create({
+          data: {
+            sheetId,
+            userId,
+            action:
+              normalizedUpdates.length === 1 ? 'CELL_UPDATE' : 'BULK_UPDATE',
+            targetRange:
+              startCell === endCell ? startCell : `${startCell}:${endCell}`,
+            sheetVersion: versionToMatch + 1,
+            previousData: normalizedUpdates.map(({ row, col }) => {
+              const previous = previousByCoordinate.get(`${row}:${col}`);
+              return {
+                row,
+                col,
+                value: previous?.value ?? null,
+                formula: previous?.formula ?? null,
+                format: previous?.format ?? null,
+              };
+            }),
+            newData: cells.map(({ row, col, value, formula, format }) => ({
+              row,
+              col,
+              value,
+              formula,
+              format,
+            })),
+            description: `Updated ${normalizedUpdates.length} cell(s)`,
+          },
+        });
         return { cells, existingCells };
       })
       .catch(async (error: unknown) => {

@@ -188,6 +188,31 @@ export class McpServerFactory {
     );
 
     server.registerTool(
+      'get_revision_history',
+      {
+        description:
+          'Get a newest-first, cursor-paginated sheet revision history. Change payloads are omitted unless explicitly requested.',
+        inputSchema: {
+          sheetId: z.string().uuid(),
+          limit: z.number().int().min(1).max(100).optional().default(50),
+          cursor: z.string().uuid().optional(),
+          action: z.string().min(1).max(64).optional(),
+          includeChanges: z.boolean().optional().default(false),
+        },
+        annotations: { readOnlyHint: true, idempotentHint: true },
+      },
+      async ({ sheetId, limit, cursor, action, includeChanges }) =>
+        jsonResult(
+          await this.queries.getRevisionHistory(userId, sheetId, {
+            limit,
+            cursor,
+            action,
+            includeChanges,
+          }),
+        ),
+    );
+
+    server.registerTool(
       'set_cells',
       {
         description:

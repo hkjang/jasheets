@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { SheetsService } from '../sheets/sheets.service';
+import { RevisionLogsService } from '../revision-logs/revision-logs.service';
 
 @Injectable()
 export class McpQueryService {
-  constructor(private readonly sheetsService: SheetsService) {}
+  constructor(
+    private readonly sheetsService: SheetsService,
+    private readonly revisionLogsService: RevisionLogsService,
+  ) {}
 
   listSpreadsheets(userId: string, search?: string) {
     return this.sheetsService.findAll(userId, undefined, search);
@@ -229,6 +233,23 @@ export class McpQueryService {
       sheetId,
       updates,
       expectedVersion,
+    );
+  }
+
+  getRevisionHistory(
+    userId: string,
+    sheetId: string,
+    options: {
+      limit: number;
+      cursor?: string;
+      action?: string;
+      includeChanges?: boolean;
+    },
+  ) {
+    return this.revisionLogsService.getRevisionHistory(
+      userId,
+      sheetId,
+      options,
     );
   }
 

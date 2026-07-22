@@ -30,6 +30,7 @@ interface PrismaMock {
     findMany: jest.Mock;
     update: jest.Mock;
   };
+  revisionLog: { create: jest.Mock };
   $transaction: jest.Mock;
 }
 
@@ -71,6 +72,9 @@ describe('SheetsService cell updates', () => {
         findMany: jest.fn().mockResolvedValue([]),
         update: jest.fn(),
       },
+      revisionLog: {
+        create: jest.fn().mockResolvedValue({ id: 'revision-1' }),
+      },
       cellMutation: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest
@@ -105,6 +109,15 @@ describe('SheetsService cell updates', () => {
     expect(upsertInput.update).toMatchObject({
       value: 'plain text',
       formula: null,
+    });
+    expect(prisma.revisionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        sheetId: sheet.id,
+        userId: 'user-1',
+        action: 'CELL_UPDATE',
+        targetRange: 'C2',
+        sheetVersion: 1,
+      }),
     });
   });
 
