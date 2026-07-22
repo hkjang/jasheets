@@ -1971,9 +1971,15 @@ export class SheetsService {
           data: { version: { increment: 1 } },
         });
         if (versionUpdate.count !== 1) {
-          throw new ConflictException(
-            'Sheet was modified by another user. Reload before saving again.',
-          );
+          const currentSheet = await tx.sheet.findUnique({
+            where: { id: sheetId },
+            select: { version: true },
+          });
+          throw new ConflictException({
+            message:
+              'Sheet was modified by another user. Reload before saving again.',
+            currentVersion: currentSheet?.version ?? versionToMatch,
+          });
         }
 
         const existingCells = await tx.cell.findMany({

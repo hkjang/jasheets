@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api } from "@/lib/api";
+import { api, CellVersionConflictError } from "@/lib/api";
 import type { PersistedCellUpdate } from "@/utils/cellPersistence";
 
 export type AutosaveStatus = "saved" | "unsaved" | "saving" | "error";
@@ -13,6 +13,7 @@ interface UseSpreadsheetAutosaveOptions {
   onBroadcast?: (updates: PersistedCellUpdate[]) => void;
   onError?: (error: Error) => void;
   getExpectedVersion?: () => number | undefined;
+  onConflictVersion?: (version: number) => void;
 }
 
 interface PendingBatch {
@@ -35,6 +36,7 @@ export function useSpreadsheetAutosave({
   onBroadcast,
   onError,
   getExpectedVersion,
+  onConflictVersion,
 }: UseSpreadsheetAutosaveOptions) {
   const [status, setStatus] = useState<AutosaveStatus>("saved");
   const bufferRef = useRef(new Map<string, PersistedCellUpdate>());
@@ -52,6 +54,7 @@ export function useSpreadsheetAutosave({
 
     const run = async () => {
       setStatus("saving");
+      let conflictRetries = 0;
       while (retryBatchRef.current || bufferRef.current.size > 0) {
         let batch = retryBatchRef.current;
         if (!batch) {
@@ -70,9 +73,16 @@ export function useSpreadsheetAutosave({
             batch.idempotencyKey,
           );
           retryBatchRef.current = null;
+          conflictRetries = 0;
           onSaved?.(result.version);
           onBroadcast?.(batch.updates);
         } catch (error) {
+          if (error instanceof CellVersionConflictError && conflictRetries < 3) {
+            conflictRetries += 1;
+            retryBatchRef.current = batch;
+            onConflictVersion?.(error.currentVersion);
+            continue;
+          }
           retryBatchRef.current = batch;
           const saveError =
             error instanceof Error
@@ -91,7 +101,7 @@ export function useSpreadsheetAutosave({
     });
     activeFlushRef.current = promise;
     return promise;
-  }, [getExpectedVersion, onBroadcast, onError, onSaved, sheetId]);
+  }, [getExpectedVersion, onBroadcast, onConflictVersion, onError, onSaved, sheetId]);
 
   const queueChanges = useCallback(
     (updates: PersistedCellUpdate[]) => {

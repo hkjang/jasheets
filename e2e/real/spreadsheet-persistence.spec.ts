@@ -147,3 +147,116 @@ test('formula, formatting, and row insertion survive a real server round trip', 
   ]));
   expect(reactStateWarnings).toEqual([]);
 });
+
+test('two editors rebase a CAS conflict and preserve both cell edits', async ({ browser, request }) => {
+  const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const registerUser = async (prefix: string) => {
+    const email = `${prefix}-${suffix}@example.com`;
+    const response = await request.post(`${apiUrl}/auth/register`, {
+      data: { email, password: 'E2e-password-123!', name: prefix },
+    });
+    expect(response.ok()).toBe(true);
+    return {
+      email,
+      session: (await response.json()) as {
+        accessToken: string;
+        refreshToken: string;
+        user: { id: string; email: string; name: string | null };
+      },
+    };
+  };
+  const owner = await registerUser('Owner');
+  const editor = await registerUser('Editor');
+  const create = await request.post(`${apiUrl}/sheets`, {
+    headers: { Authorization: `Bearer ${owner.session.accessToken}` },
+    data: { name: `Concurrent ${suffix}` },
+  });
+  expect(create.ok()).toBe(true);
+  const workbook = (await create.json()) as { id: string };
+  const permission = await request.post(`${apiUrl}/sheets/${workbook.id}/permissions`, {
+    headers: { Authorization: `Bearer ${owner.session.accessToken}` },
+    data: { email: editor.email, role: 'EDITOR' },
+  });
+  expect(permission.ok()).toBe(true);
+
+  const ownerContext = await browser.newContext();
+  const editorContext = await browser.newContext();
+  const installSession = async (
+    context: typeof ownerContext,
+    session: typeof owner.session,
+  ) => {
+    await context.addInitScript((auth) => {
+      localStorage.setItem('auth_token', auth.accessToken);
+      localStorage.setItem('refresh_token', auth.refreshToken);
+      localStorage.setItem('user', JSON.stringify(auth.user));
+    }, session);
+  };
+  await installSession(ownerContext, owner.session);
+  await installSession(editorContext, editor.session);
+  const ownerPage = await ownerContext.newPage();
+  const editorPage = await editorContext.newPage();
+  const statuses: number[] = [];
+  for (const activePage of [ownerPage, editorPage]) {
+    activePage.on('response', (response) => {
+      if (
+        response.request().method() === 'PUT' &&
+        response.url().endsWith('/cells')
+      ) {
+        statuses.push(response.status());
+      }
+    });
+  }
+
+  try {
+    await Promise.all([
+      ownerPage.goto(`/spreadsheet/${workbook.id}`),
+      editorPage.goto(`/spreadsheet/${workbook.id}`),
+    ]);
+    const ownerCanvas = ownerPage.getByRole('grid', { name: 'Spreadsheet grid' });
+    const editorCanvas = editorPage.getByRole('grid', { name: 'Spreadsheet grid' });
+    await Promise.all([
+      expect(ownerCanvas).toBeVisible(),
+      expect(editorCanvas).toBeVisible(),
+    ]);
+
+    const ownerValue = `owner-${suffix}`;
+    const editorValue = `editor-${suffix}`;
+    await Promise.all([
+      (async () => {
+        await ownerCanvas.dblclick({ position: { x: 100, y: 35 } });
+        await ownerPage.keyboard.type(ownerValue);
+        await ownerPage.keyboard.press('Enter');
+      })(),
+      (async () => {
+        await editorCanvas.dblclick({ position: { x: 200, y: 35 } });
+        await editorPage.keyboard.type(editorValue);
+        await editorPage.keyboard.press('Enter');
+      })(),
+    ]);
+
+    await expect.poll(() => statuses.filter((status) => status === 200).length, {
+      timeout: 15_000,
+    }).toBe(2);
+    expect(statuses).toContain(409);
+
+    const loaded = await request.get(`${apiUrl}/sheets/${workbook.id}`, {
+      headers: { Authorization: `Bearer ${owner.session.accessToken}` },
+    });
+    expect(loaded.ok()).toBe(true);
+    const body = (await loaded.json()) as {
+      sheets: Array<{ cells: Array<{ row: number; col: number; value: unknown }> }>;
+    };
+    expect(body.sheets[0].cells).toEqual(expect.arrayContaining([
+      expect.objectContaining({ row: 0, col: 0, value: ownerValue }),
+      expect.objectContaining({ row: 0, col: 1, value: editorValue }),
+    ]));
+
+    await Promise.all([ownerPage.reload(), editorPage.reload()]);
+    await ownerCanvas.click({ position: { x: 100, y: 35 } });
+    await editorCanvas.click({ position: { x: 200, y: 35 } });
+    await expect(ownerPage.getByPlaceholder('Enter value or formula')).toHaveValue(ownerValue);
+    await expect(editorPage.getByPlaceholder('Enter value or formula')).toHaveValue(editorValue);
+  } finally {
+    await Promise.all([ownerContext.close(), editorContext.close()]);
+  }
+});

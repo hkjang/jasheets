@@ -199,14 +199,16 @@ describe('SheetsService cell updates', () => {
   it('rejects a stale expected version without writing cells', async () => {
     prisma.sheet.updateMany.mockResolvedValueOnce({ count: 0 });
 
-    await expect(
-      service.updateCells(
+    const failure = service.updateCells(
         'user-1',
         sheet.id,
         [{ row: 1, col: 1, value: 'stale' }],
         3,
-      ),
-    ).rejects.toThrow('modified by another user');
+      );
+    await expect(failure).rejects.toThrow('modified by another user');
+    await expect(failure).rejects.toMatchObject({
+      response: { currentVersion: 0 },
+    });
 
     expect(prisma.cell.upsert).not.toHaveBeenCalled();
     expect(eventsService.detectCellChange).not.toHaveBeenCalled();

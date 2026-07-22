@@ -242,6 +242,11 @@ export default function Spreadsheet({
       "자동 저장에 실패했습니다. 연결이 복구되면 다시 시도합니다.",
     );
   }, []);
+  const handleAutosaveConflict = useCallback((version: number) => {
+    sheetVersionRef.current = version;
+    setSheetVersion(version);
+    if (activeSheetId) onVersionChange?.(activeSheetId, version);
+  }, [activeSheetId, onVersionChange]);
   const {
     status: autosaveStatus,
     queueChanges,
@@ -252,6 +257,7 @@ export default function Spreadsheet({
     onBroadcast: handleAutosaveBroadcast,
     onError: handleAutosaveError,
     getExpectedVersion: getExpectedSheetVersion,
+    onConflictVersion: handleAutosaveConflict,
   });
 
   // Update title if prop changes (e.g. loaded from server)

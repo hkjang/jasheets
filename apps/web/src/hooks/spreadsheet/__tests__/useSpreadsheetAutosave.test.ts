@@ -3,6 +3,11 @@ import { api } from "@/lib/api";
 import { useSpreadsheetAutosave } from "../useSpreadsheetAutosave";
 
 jest.mock("@/lib/api", () => ({
+  CellVersionConflictError: class CellVersionConflictError extends Error {
+    constructor(readonly currentVersion: number) {
+      super("version conflict");
+    }
+  },
   api: { spreadsheets: { updateCells: jest.fn() } },
 }));
 
@@ -89,5 +94,40 @@ describe("useSpreadsheetAutosave", () => {
 
     await waitFor(() => expect(updateCells).toHaveBeenCalledTimes(1));
     expect(updateCells.mock.calls[0][2]).toBe(7);
+  });
+
+  it("rebases and retries a conflicting batch without losing edits", async () => {
+    const { CellVersionConflictError } = jest.requireMock("@/lib/api") as {
+      CellVersionConflictError: new (version: number) => Error;
+    };
+    updateCells
+      .mockRejectedValueOnce(new CellVersionConflictError(9))
+      .mockResolvedValueOnce({ cells: [], version: 10 });
+    let version = 8;
+    const onConflictVersion = jest.fn((next: number) => {
+      version = next;
+    });
+    const { result } = renderHook(() =>
+      useSpreadsheetAutosave({
+        sheetId: "sheet-1",
+        getExpectedVersion: () => version,
+        onConflictVersion,
+      }),
+    );
+
+    act(() => {
+      result.current.queueChanges([
+        { row: 4, col: 5, value: "merged", formula: null, format: null },
+      ]);
+      jest.advanceTimersByTime(600);
+    });
+
+    await waitFor(() => expect(result.current.status).toBe("saved"));
+    expect(onConflictVersion).toHaveBeenCalledWith(9);
+    expect(updateCells).toHaveBeenCalledTimes(2);
+    expect(updateCells.mock.calls[0][2]).toBe(8);
+    expect(updateCells.mock.calls[1][2]).toBe(9);
+    expect(updateCells.mock.calls[1][1]).toEqual(updateCells.mock.calls[0][1]);
+    expect(updateCells.mock.calls[1][3]).toBe(updateCells.mock.calls[0][3]);
   });
 });

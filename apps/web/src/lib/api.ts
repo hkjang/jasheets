@@ -49,6 +49,13 @@ export interface SpreadsheetSheet {
   pivotTables?: ManagedPivotTable[];
 }
 
+export class CellVersionConflictError extends Error {
+  constructor(readonly currentVersion: number) {
+    super("다른 사용자의 변경과 병합한 뒤 다시 저장합니다.");
+    this.name = "CellVersionConflictError";
+  }
+}
+
 export interface SpreadsheetVersion {
   id: string;
   name?: string | null;
@@ -496,9 +503,17 @@ export const api = {
         body: JSON.stringify({ updates, expectedVersion, idempotencyKey }),
       });
       if (res.status === 409) {
-        throw new Error(
-          "다른 사용자가 먼저 시트를 변경했습니다. 입력 내용은 유지되며 새로고침 후 다시 저장해 주세요.",
-        );
+        const body = (await res.json().catch(() => null)) as {
+          currentVersion?: unknown;
+        } | null;
+        if (
+          typeof body?.currentVersion === "number" &&
+          Number.isInteger(body.currentVersion) &&
+          body.currentVersion >= 0
+        ) {
+          throw new CellVersionConflictError(body.currentVersion);
+        }
+        throw new Error("다른 사용자가 먼저 시트를 변경했습니다. 입력 내용은 유지됩니다.");
       }
       if (!res.ok) throw new Error("Failed to save cells");
       return res.json();
