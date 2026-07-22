@@ -21,7 +21,7 @@ git -C "$ROOT_DIR" archive --format=tar HEAD > "$CONTEXT_TAR"
 docker build \
   --build-arg NEXT_PUBLIC_API_URL=/api \
   --build-arg NEXT_PUBLIC_WS_URL= \
-  -f "$ROOT_DIR/docker/Dockerfile.offline" \
+  -f docker/Dockerfile.offline \
   -t "$APP_IMAGE" \
   - < "$CONTEXT_TAR"
 
