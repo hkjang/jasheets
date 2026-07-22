@@ -155,6 +155,38 @@ export class McpServerFactory {
         ),
     );
 
+    server.registerTool(
+      'write_range',
+      {
+        description:
+          'Write a rectangular two-dimensional value matrix to a selected range through the shared SpreadsheetCommand boundary.',
+        inputSchema: {
+          sheetId: z.string().uuid(),
+          startRow: z.number().int().min(0),
+          startCol: z.number().int().min(0),
+          values: z
+            .array(z.array(z.unknown()).min(1).max(1000))
+            .min(1)
+            .max(1000),
+          formulas: z
+            .array(z.array(z.string().nullable()).min(1).max(1000))
+            .min(1)
+            .max(1000)
+            .optional(),
+          expectedVersion: z.number().int().min(0).optional(),
+          idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+        },
+        annotations: { readOnlyHint: false, idempotentHint: true },
+      },
+      async (input) =>
+        jsonResult(
+          await this.commands.execute(
+            { userId, actorType: 'MCP' },
+            { type: 'WRITE_RANGE', ...input },
+          ),
+        ),
+    );
+
     const registerStructureTool = (
       name: 'insert_row' | 'delete_row',
       operation: 'insert' | 'delete',

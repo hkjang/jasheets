@@ -21,6 +21,17 @@ export interface SetCellsCommand {
   idempotencyKey?: string;
 }
 
+export interface WriteRangeCommand {
+  type: 'WRITE_RANGE';
+  sheetId: string;
+  startRow: number;
+  startCol: number;
+  values: unknown[][];
+  formulas?: Array<Array<string | null>>;
+  expectedVersion?: number;
+  idempotencyKey: string;
+}
+
 export interface ChangeStructureCommand {
   type: 'CHANGE_STRUCTURE';
   sheetId: string;
@@ -29,4 +40,5 @@ export interface ChangeStructureCommand {
   index: number;
 }
 
-export type SpreadsheetCommand = SetCellsCommand | ChangeStructureCommand;
+export type SpreadsheetCommand =
+  SetCellsCommand | WriteRangeCommand | ChangeStructureCommand;

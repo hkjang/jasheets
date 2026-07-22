@@ -57,4 +57,63 @@ describe('SpreadsheetCommandService', () => {
       index: 3,
     });
   });
+
+  it('expands a rectangular range into one atomic cell command', async () => {
+    sheets.updateCells.mockResolvedValue({ version: 12, cells: [] });
+
+    await expect(
+      service.execute(
+        { userId: 'user-1', actorType: 'MCP' },
+        {
+          type: 'WRITE_RANGE',
+          sheetId: 'sheet-1',
+          startRow: 3,
+          startCol: 4,
+          values: [
+            ['Name', 'Score'],
+            ['Ada', 10],
+          ],
+          formulas: [
+            [null, null],
+            [null, '=SUM(5,5)'],
+          ],
+          expectedVersion: 11,
+          idempotencyKey: 'range-request-1',
+        },
+      ),
+    ).resolves.toMatchObject({
+      version: 12,
+      range: { startRow: 3, startCol: 4, endRow: 4, endCol: 5 },
+    });
+
+    expect(sheets.updateCells).toHaveBeenCalledWith(
+      'user-1',
+      'sheet-1',
+      [
+        { row: 3, col: 4, value: 'Name', formula: null },
+        { row: 3, col: 5, value: 'Score', formula: null },
+        { row: 4, col: 4, value: 'Ada', formula: null },
+        { row: 4, col: 5, value: 10, formula: '=SUM(5,5)' },
+      ],
+      11,
+      'range-request-1',
+    );
+  });
+
+  it('rejects ragged ranges before calling the sheet service', async () => {
+    await expect(
+      service.execute(
+        { userId: 'user-1', actorType: 'MCP' },
+        {
+          type: 'WRITE_RANGE',
+          sheetId: 'sheet-1',
+          startRow: 0,
+          startCol: 0,
+          values: [[1, 2], [3]],
+          idempotencyKey: 'ragged-request',
+        },
+      ),
+    ).rejects.toThrow('must be rectangular');
+    expect(sheets.updateCells).not.toHaveBeenCalled();
+  });
 });
