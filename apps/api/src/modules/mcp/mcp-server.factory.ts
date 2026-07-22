@@ -84,34 +84,43 @@ export class McpServerFactory {
         ),
     );
 
-    server.registerTool(
-      'get_range',
-      {
-        description:
-          'Read a rectangular zero-based cell range. Empty cells are omitted.',
-        inputSchema: {
-          spreadsheetId: z.string().uuid(),
-          sheetId: z.string().uuid(),
-          startRow: z.number().int().min(0),
-          startCol: z.number().int().min(0),
-          endRow: z.number().int().min(0),
-          endCol: z.number().int().min(0),
+    const registerRangeReadTool = (
+      name: 'read_range' | 'get_range',
+      description: string,
+    ) =>
+      server.registerTool(
+        name,
+        {
+          description,
+          inputSchema: {
+            spreadsheetId: z.string().uuid(),
+            sheetId: z.string().uuid(),
+            startRow: z.number().int().min(0),
+            startCol: z.number().int().min(0),
+            endRow: z.number().int().min(0),
+            endCol: z.number().int().min(0),
+          },
+          annotations: { readOnlyHint: true, idempotentHint: true },
         },
-        annotations: { readOnlyHint: true, idempotentHint: true },
-      },
-      async (input) =>
-        jsonResult(
-          await this.queries.getRange(
-            userId,
-            input.spreadsheetId,
-            input.sheetId,
-            input.startRow,
-            input.startCol,
-            input.endRow,
-            input.endCol,
+        async (input) =>
+          jsonResult(
+            await this.queries.getRange(
+              userId,
+              input.spreadsheetId,
+              input.sheetId,
+              input.startRow,
+              input.startCol,
+              input.endRow,
+              input.endCol,
+            ),
           ),
-        ),
+      );
+
+    registerRangeReadTool(
+      'read_range',
+      'Read a bounded rectangular zero-based cell range. Empty cells are omitted.',
     );
+    registerRangeReadTool('get_range', 'Compatibility alias for read_range.');
 
     server.registerTool(
       'set_cells',

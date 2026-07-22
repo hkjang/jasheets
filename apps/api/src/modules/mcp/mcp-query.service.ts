@@ -1,8 +1,4 @@
-import {
-  BadRequestException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { SheetsService } from '../sheets/sheets.service';
 
 @Injectable()
@@ -46,7 +42,7 @@ export class McpQueryService {
     );
   }
 
-  async getRange(
+  getRange(
     userId: string,
     spreadsheetId: string,
     sheetId: string,
@@ -55,45 +51,14 @@ export class McpQueryService {
     endRow: number,
     endCol: number,
   ) {
-    if (endRow < startRow || endCol < startCol) {
-      throw new BadRequestException('Range end must not precede range start');
-    }
-    const cellCount = (endRow - startRow + 1) * (endCol - startCol + 1);
-    if (cellCount > 10_000) {
-      throw new BadRequestException(
-        'MCP range reads are limited to 10,000 cells',
-      );
-    }
-
-    const workbook = await this.sheetsService.findOne(userId, spreadsheetId);
-    const sheet = workbook.sheets.find((candidate) => candidate.id === sheetId);
-    if (!sheet) throw new NotFoundException('Sheet not found in spreadsheet');
-    if (endRow >= sheet.rowCount || endCol >= sheet.colCount) {
-      throw new BadRequestException('Range exceeds sheet bounds');
-    }
-
-    const cells = sheet.cells
-      .filter(
-        (cell) =>
-          cell.row >= startRow &&
-          cell.row <= endRow &&
-          cell.col >= startCol &&
-          cell.col <= endCol,
-      )
-      .map(({ row, col, value, formula, format }) => ({
-        row,
-        col,
-        value,
-        formula,
-        format,
-      }));
-
-    return {
+    return this.sheetsService.readSheetRange(
+      userId,
       spreadsheetId,
       sheetId,
-      version: sheet.version,
-      range: { startRow, startCol, endRow, endCol },
-      cells,
-    };
+      startRow,
+      startCol,
+      endRow,
+      endCol,
+    );
   }
 }

@@ -439,6 +439,80 @@ export class SheetsService {
     };
   }
 
+  async readSheetRange(
+    userId: string,
+    spreadsheetId: string,
+    sheetId: string,
+    startRow: number,
+    startCol: number,
+    endRow: number,
+    endCol: number,
+  ) {
+    const coordinates = [startRow, startCol, endRow, endCol];
+    if (
+      coordinates.some(
+        (coordinate) => !Number.isInteger(coordinate) || coordinate < 0,
+      )
+    ) {
+      throw new BadRequestException(
+        'Range coordinates must be non-negative integers',
+      );
+    }
+    if (endRow < startRow || endCol < startCol) {
+      throw new BadRequestException('Range end must not precede range start');
+    }
+    const requestedCells = (endRow - startRow + 1) * (endCol - startCol + 1);
+    if (requestedCells > 10_000) {
+      throw new BadRequestException('Range reads are limited to 10,000 cells');
+    }
+
+    const sheet = await this.prisma.sheet.findFirst({
+      where: { id: sheetId, spreadsheetId },
+      select: {
+        id: true,
+        name: true,
+        rowCount: true,
+        colCount: true,
+        version: true,
+      },
+    });
+    if (!sheet) throw new NotFoundException('Sheet not found in spreadsheet');
+    if (!(await this.checkAccess(userId, spreadsheetId))) {
+      throw new ForbiddenException(
+        'You do not have access to this spreadsheet',
+      );
+    }
+    if (endRow >= sheet.rowCount || endCol >= sheet.colCount) {
+      throw new BadRequestException('Range exceeds sheet bounds');
+    }
+
+    const cells = await this.prisma.cell.findMany({
+      where: {
+        sheetId,
+        row: { gte: startRow, lte: endRow },
+        col: { gte: startCol, lte: endCol },
+      },
+      select: {
+        row: true,
+        col: true,
+        value: true,
+        formula: true,
+        format: true,
+      },
+      orderBy: [{ row: 'asc' }, { col: 'asc' }],
+    });
+
+    return {
+      spreadsheetId,
+      sheetId,
+      sheetName: sheet.name,
+      version: sheet.version,
+      range: { startRow, startCol, endRow, endCol },
+      requestedCells,
+      cells,
+    };
+  }
+
   private columnLabel(index: number): string {
     let value = index + 1;
     let label = '';

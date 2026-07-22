@@ -35,6 +35,7 @@ describe('McpServerFactory', () => {
         'list_spreadsheets',
         'get_spreadsheet',
         'get_sheet_schema',
+        'read_range',
         'get_range',
         'set_cells',
         'insert_row',
@@ -72,6 +73,32 @@ describe('McpServerFactory', () => {
       '550e8400-e29b-41d4-a716-446655440001',
       0,
       50,
+    );
+
+    queries.getRange.mockResolvedValue({
+      sheetId: '550e8400-e29b-41d4-a716-446655440001',
+      cells: [],
+    });
+    const range = await client.callTool({
+      name: 'read_range',
+      arguments: {
+        spreadsheetId: '550e8400-e29b-41d4-a716-446655440000',
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        startRow: 2,
+        startCol: 3,
+        endRow: 4,
+        endCol: 5,
+      },
+    });
+    expect(range.isError).not.toBe(true);
+    expect(queries.getRange).toHaveBeenCalledWith(
+      'user-1',
+      '550e8400-e29b-41d4-a716-446655440000',
+      '550e8400-e29b-41d4-a716-446655440001',
+      2,
+      3,
+      4,
+      5,
     );
 
     const result = await client.callTool({

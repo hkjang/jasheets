@@ -28,7 +28,8 @@ endpoint only through TLS-enabled Ingress.
 | `list_spreadsheets` | Compatibility alias for `list_workbooks` | No |
 | `get_spreadsheet` | Read workbook and sheet metadata | No |
 | `get_sheet_schema` | Infer headers, column types and formula presence from a bounded sample | No |
-| `get_range` | Read a bounded zero-based rectangular range | No |
+| `read_range` | Read a bounded zero-based rectangular range | No |
+| `get_range` | Compatibility alias for `read_range` | No |
 | `set_cells` | Write values, formulas, or formats | Yes |
 | `insert_row` | Insert one row at a zero-based index | Yes |
 | `delete_row` | Delete one row at a zero-based index | Yes |

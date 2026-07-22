@@ -74,6 +74,83 @@ describe('SheetsService sheet schema', () => {
     ]);
   });
 
+  it('reads only the requested range after checking access', async () => {
+    const prisma = {
+      sheet: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'sheet-1',
+          name: 'Data',
+          rowCount: 1000,
+          colCount: 100,
+          version: 9,
+        }),
+      },
+      cell: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            row: 10,
+            col: 2,
+            value: 'bounded',
+            formula: null,
+            format: null,
+          },
+        ]),
+      },
+    };
+    const service = new SheetsService(
+      prisma as unknown as PrismaService,
+      {} as EventsService,
+    );
+    jest.spyOn(service, 'checkAccess').mockResolvedValue(true);
+
+    const result = await service.readSheetRange(
+      'user-1',
+      'workbook-1',
+      'sheet-1',
+      10,
+      2,
+      20,
+      5,
+    );
+
+    expect(prisma.cell.findMany).toHaveBeenCalledWith({
+      where: {
+        sheetId: 'sheet-1',
+        row: { gte: 10, lte: 20 },
+        col: { gte: 2, lte: 5 },
+      },
+      select: {
+        row: true,
+        col: true,
+        value: true,
+        formula: true,
+        format: true,
+      },
+      orderBy: [{ row: 'asc' }, { col: 'asc' }],
+    });
+    expect(result).toMatchObject({
+      version: 9,
+      requestedCells: 44,
+      cells: [{ value: 'bounded' }],
+    });
+  });
+
+  it('rejects oversized range reads before touching the database', async () => {
+    const prisma = {
+      sheet: { findFirst: jest.fn() },
+      cell: { findMany: jest.fn() },
+    };
+    const service = new SheetsService(
+      prisma as unknown as PrismaService,
+      {} as EventsService,
+    );
+
+    await expect(
+      service.readSheetRange('user-1', 'workbook-1', 'sheet-1', 0, 0, 100, 100),
+    ).rejects.toThrow('limited to 10,000 cells');
+    expect(prisma.sheet.findFirst).not.toHaveBeenCalled();
+  });
+
   it('does not query cells when access is denied', async () => {
     const prisma = {
       sheet: {
