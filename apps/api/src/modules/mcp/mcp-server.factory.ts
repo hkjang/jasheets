@@ -60,6 +60,31 @@ export class McpServerFactory {
     );
 
     server.registerTool(
+      'get_sheet_schema',
+      {
+        description:
+          'Inspect an accessible sheet schema using a bounded sample: dimensions, version, headers, inferred column types and formula presence.',
+        inputSchema: {
+          spreadsheetId: z.string().uuid(),
+          sheetId: z.string().uuid(),
+          headerRow: z.number().int().min(0).optional().default(0),
+          sampleRows: z.number().int().min(1).max(1000).optional().default(100),
+        },
+        annotations: { readOnlyHint: true, idempotentHint: true },
+      },
+      async ({ spreadsheetId, sheetId, headerRow, sampleRows }) =>
+        jsonResult(
+          await this.queries.getSheetSchema(
+            userId,
+            spreadsheetId,
+            sheetId,
+            headerRow,
+            sampleRows,
+          ),
+        ),
+    );
+
+    server.registerTool(
       'get_range',
       {
         description:

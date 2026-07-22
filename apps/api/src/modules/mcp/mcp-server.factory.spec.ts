@@ -9,6 +9,7 @@ describe('McpServerFactory', () => {
   const queries = {
     listSpreadsheets: jest.fn(),
     getSpreadsheet: jest.fn(),
+    getSheetSchema: jest.fn(),
     getRange: jest.fn(),
   };
 
@@ -33,6 +34,7 @@ describe('McpServerFactory', () => {
         'list_workbooks',
         'list_spreadsheets',
         'get_spreadsheet',
+        'get_sheet_schema',
         'get_range',
         'set_cells',
         'insert_row',
@@ -50,6 +52,27 @@ describe('McpServerFactory', () => {
       items: [{ id: 'workbook-1' }],
     });
     expect(queries.listSpreadsheets).toHaveBeenCalledWith('user-1', 'budget');
+
+    queries.getSheetSchema.mockResolvedValue({
+      sheetId: '550e8400-e29b-41d4-a716-446655440001',
+      columns: [],
+    });
+    const schema = await client.callTool({
+      name: 'get_sheet_schema',
+      arguments: {
+        spreadsheetId: '550e8400-e29b-41d4-a716-446655440000',
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        sampleRows: 50,
+      },
+    });
+    expect(schema.isError).not.toBe(true);
+    expect(queries.getSheetSchema).toHaveBeenCalledWith(
+      'user-1',
+      '550e8400-e29b-41d4-a716-446655440000',
+      '550e8400-e29b-41d4-a716-446655440001',
+      0,
+      50,
+    );
 
     const result = await client.callTool({
       name: 'set_cells',

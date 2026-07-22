@@ -30,6 +30,22 @@ export class McpQueryService {
     };
   }
 
+  getSheetSchema(
+    userId: string,
+    spreadsheetId: string,
+    sheetId: string,
+    headerRow?: number,
+    sampleRows?: number,
+  ) {
+    return this.sheetsService.describeSheetSchema(
+      userId,
+      spreadsheetId,
+      sheetId,
+      headerRow,
+      sampleRows,
+    );
+  }
+
   async getRange(
     userId: string,
     spreadsheetId: string,

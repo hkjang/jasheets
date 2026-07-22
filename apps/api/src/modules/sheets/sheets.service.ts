@@ -331,6 +331,125 @@ export class SheetsService {
     return spreadsheet;
   }
 
+  async describeSheetSchema(
+    userId: string,
+    spreadsheetId: string,
+    sheetId: string,
+    headerRow = 0,
+    sampleRows = 100,
+  ) {
+    const sheet = await this.prisma.sheet.findFirst({
+      where: { id: sheetId, spreadsheetId },
+      select: {
+        id: true,
+        name: true,
+        rowCount: true,
+        colCount: true,
+        version: true,
+      },
+    });
+    if (!sheet) throw new NotFoundException('Sheet not found in spreadsheet');
+    if (!(await this.checkAccess(userId, spreadsheetId))) {
+      throw new ForbiddenException(
+        'You do not have access to this spreadsheet',
+      );
+    }
+    if (
+      !Number.isInteger(headerRow) ||
+      headerRow < 0 ||
+      headerRow >= sheet.rowCount
+    ) {
+      throw new BadRequestException('Header row is outside the sheet bounds');
+    }
+    if (!Number.isInteger(sampleRows) || sampleRows < 1 || sampleRows > 1000) {
+      throw new BadRequestException('Sample rows must be between 1 and 1000');
+    }
+
+    const sampleEndRow = Math.min(sheet.rowCount - 1, headerRow + sampleRows);
+    const cells = await this.prisma.cell.findMany({
+      where: {
+        sheetId,
+        row: { gte: headerRow, lte: sampleEndRow },
+      },
+      select: { row: true, col: true, value: true, formula: true },
+      orderBy: [{ col: 'asc' }, { row: 'asc' }],
+    });
+
+    const columns = new Map<
+      number,
+      {
+        header: string | null;
+        types: Set<string>;
+        nullable: boolean;
+        hasFormula: boolean;
+        sampledValues: number;
+      }
+    >();
+    for (const cell of cells) {
+      const column = columns.get(cell.col) ?? {
+        header: null,
+        types: new Set<string>(),
+        nullable: false,
+        hasFormula: false,
+        sampledValues: 0,
+      };
+      if (cell.row === headerRow) {
+        if (
+          typeof cell.value === 'string' ||
+          typeof cell.value === 'number' ||
+          typeof cell.value === 'boolean'
+        ) {
+          column.header = String(cell.value);
+        }
+      } else {
+        column.hasFormula ||= Boolean(cell.formula);
+        if (cell.value === null) {
+          column.nullable = true;
+        } else if (cell.value !== undefined) {
+          column.types.add(
+            Array.isArray(cell.value) ? 'array' : typeof cell.value,
+          );
+          column.sampledValues += 1;
+        }
+      }
+      columns.set(cell.col, column);
+    }
+
+    return {
+      spreadsheetId,
+      sheetId: sheet.id,
+      name: sheet.name,
+      version: sheet.version,
+      dimensions: { rows: sheet.rowCount, columns: sheet.colCount },
+      sampling: { headerRow, sampleRows, endRow: sampleEndRow },
+      columns: [...columns.entries()].map(([index, column]) => ({
+        index,
+        label: this.columnLabel(index),
+        header: column.header,
+        inferredType:
+          column.types.size === 0
+            ? 'unknown'
+            : column.types.size === 1
+              ? [...column.types][0]
+              : 'mixed',
+        nullable: column.nullable,
+        hasFormula: column.hasFormula,
+        sampledValues: column.sampledValues,
+      })),
+    };
+  }
+
+  private columnLabel(index: number): string {
+    let value = index + 1;
+    let label = '';
+    while (value > 0) {
+      value -= 1;
+      label = String.fromCharCode(65 + (value % 26)) + label;
+      value = Math.floor(value / 26);
+    }
+    return label;
+  }
+
   async update(userId: string, id: string, dto: UpdateSpreadsheetDto) {
     await this.checkEditAccess(userId, id);
 
