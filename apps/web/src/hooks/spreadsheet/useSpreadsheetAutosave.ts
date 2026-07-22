@@ -1,10 +1,10 @@
-'use client';
+"use client";
 
-import { useCallback, useEffect, useRef, useState } from 'react';
-import { api } from '@/lib/api';
-import type { PersistedCellUpdate } from '@/utils/cellPersistence';
+import { useCallback, useEffect, useRef, useState } from "react";
+import { api } from "@/lib/api";
+import type { PersistedCellUpdate } from "@/utils/cellPersistence";
 
-export type AutosaveStatus = 'saved' | 'unsaved' | 'saving' | 'error';
+export type AutosaveStatus = "saved" | "unsaved" | "saving" | "error";
 
 interface UseSpreadsheetAutosaveOptions {
   sheetId?: string | null;
@@ -12,6 +12,7 @@ interface UseSpreadsheetAutosaveOptions {
   onSaved?: (version: number) => void;
   onBroadcast?: (updates: PersistedCellUpdate[]) => void;
   onError?: (error: Error) => void;
+  getExpectedVersion?: () => number | undefined;
 }
 
 interface PendingBatch {
@@ -20,9 +21,11 @@ interface PendingBatch {
 }
 
 function createIdempotencyKey(): string {
-  if (typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+  if (typeof crypto.randomUUID === "function") return crypto.randomUUID();
   const bytes = crypto.getRandomValues(new Uint8Array(16));
-  return [...bytes].map((value) => value.toString(16).padStart(2, '0')).join('');
+  return [...bytes]
+    .map((value) => value.toString(16).padStart(2, "0"))
+    .join("");
 }
 
 export function useSpreadsheetAutosave({
@@ -31,8 +34,9 @@ export function useSpreadsheetAutosave({
   onSaved,
   onBroadcast,
   onError,
+  getExpectedVersion,
 }: UseSpreadsheetAutosaveOptions) {
-  const [status, setStatus] = useState<AutosaveStatus>('saved');
+  const [status, setStatus] = useState<AutosaveStatus>("saved");
   const bufferRef = useRef(new Map<string, PersistedCellUpdate>());
   const retryBatchRef = useRef<PendingBatch | null>(null);
   const timerRef = useRef<number | null>(null);
@@ -47,12 +51,14 @@ export function useSpreadsheetAutosave({
     if (activeFlushRef.current) return activeFlushRef.current;
 
     const run = async () => {
-      setStatus('saving');
+      setStatus("saving");
       while (retryBatchRef.current || bufferRef.current.size > 0) {
         let batch = retryBatchRef.current;
         if (!batch) {
           const updates = [...bufferRef.current.values()].slice(0, 1000);
-          updates.forEach(({ row, col }) => bufferRef.current.delete(`${row}:${col}`));
+          updates.forEach(({ row, col }) =>
+            bufferRef.current.delete(`${row}:${col}`),
+          );
           batch = { idempotencyKey: createIdempotencyKey(), updates };
         }
 
@@ -60,7 +66,7 @@ export function useSpreadsheetAutosave({
           const result = await api.spreadsheets.updateCells(
             sheetId,
             batch.updates,
-            undefined,
+            getExpectedVersion?.(),
             batch.idempotencyKey,
           );
           retryBatchRef.current = null;
@@ -68,13 +74,16 @@ export function useSpreadsheetAutosave({
           onBroadcast?.(batch.updates);
         } catch (error) {
           retryBatchRef.current = batch;
-          const saveError = error instanceof Error ? error : new Error('셀 자동 저장에 실패했습니다.');
-          setStatus('error');
+          const saveError =
+            error instanceof Error
+              ? error
+              : new Error("셀 자동 저장에 실패했습니다.");
+          setStatus("error");
           onError?.(saveError);
           throw saveError;
         }
       }
-      setStatus('saved');
+      setStatus("saved");
     };
 
     const promise = run().finally(() => {
@@ -82,19 +91,22 @@ export function useSpreadsheetAutosave({
     });
     activeFlushRef.current = promise;
     return promise;
-  }, [onBroadcast, onError, onSaved, sheetId]);
+  }, [getExpectedVersion, onBroadcast, onError, onSaved, sheetId]);
 
-  const queueChanges = useCallback((updates: PersistedCellUpdate[]) => {
-    if (!sheetId || updates.length === 0) return;
-    updates.forEach((update) => {
-      bufferRef.current.set(`${update.row}:${update.col}`, update);
-    });
-    setStatus('unsaved');
-    if (timerRef.current !== null) window.clearTimeout(timerRef.current);
-    timerRef.current = window.setTimeout(() => {
-      void flush().catch(() => undefined);
-    }, debounceMs);
-  }, [debounceMs, flush, sheetId]);
+  const queueChanges = useCallback(
+    (updates: PersistedCellUpdate[]) => {
+      if (!sheetId || updates.length === 0) return;
+      updates.forEach((update) => {
+        bufferRef.current.set(`${update.row}:${update.col}`, update);
+      });
+      setStatus("unsaved");
+      if (timerRef.current !== null) window.clearTimeout(timerRef.current);
+      timerRef.current = window.setTimeout(() => {
+        void flush().catch(() => undefined);
+      }, debounceMs);
+    },
+    [debounceMs, flush, sheetId],
+  );
 
   useEffect(() => {
     const handleOnline = () => {
@@ -102,9 +114,9 @@ export function useSpreadsheetAutosave({
         void flush().catch(() => undefined);
       }
     };
-    window.addEventListener('online', handleOnline);
+    window.addEventListener("online", handleOnline);
     return () => {
-      window.removeEventListener('online', handleOnline);
+      window.removeEventListener("online", handleOnline);
       if (timerRef.current !== null) window.clearTimeout(timerRef.current);
       void flush().catch(() => undefined);
     };

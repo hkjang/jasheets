@@ -22,7 +22,10 @@ import {
 import { deserializeCellFormat } from "@/utils/cellPersistence";
 import { rewriteSheetNameReferences } from "@/utils/formulaReferences";
 import { deserializeConditionalRule } from "@/utils/conditionalRulePersistence";
-import { createWorkbookImportSheets, type ImportResult } from "@/utils/fileImport";
+import {
+  createWorkbookImportSheets,
+  type ImportResult,
+} from "@/utils/fileImport";
 import type { XLSXWorkbookSheet } from "@/utils/export";
 import type { ManagedPivotTable } from "@/utils/managedPivots";
 
@@ -93,6 +96,13 @@ export default function SpreadsheetPage() {
   const [error, setError] = useState<string | null>(null);
   const [activeSheetId, setActiveSheetId] = useState<string | null>(null);
   const [activeSheetVersion, setActiveSheetVersion] = useState(0);
+  const [canvasTransition, setCanvasTransition] = useState<{
+    url: string;
+    left: number;
+    top: number;
+    width: number;
+    height: number;
+  } | null>(null);
   const [title, setTitle] = useState("");
   const [sheets, setSheets] = useState<SpreadsheetSheet[]>([]);
   const [sheetData, setSheetData] = useState<Record<string, SheetData>>({});
@@ -110,75 +120,75 @@ export default function SpreadsheetPage() {
     }
   }, [authLoading, user, router]);
 
-  const loadSpreadsheet = useCallback(async (
-    background = false,
-    preferredSheetId?: string | null,
-  ) => {
-    if (!id) return;
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-    const requestId = ++requestRef.current;
-    if (!background) setLoading(true);
-    setError(null);
+  const loadSpreadsheet = useCallback(
+    async (background = false, preferredSheetId?: string | null) => {
+      if (!id) return;
+      abortRef.current?.abort();
+      const controller = new AbortController();
+      abortRef.current = controller;
+      const requestId = ++requestRef.current;
+      if (!background) setLoading(true);
+      setError(null);
 
-    try {
-      const res = await api.spreadsheets.get(id, controller.signal);
-      if (requestId !== requestRef.current) return;
-      setTitle(res.name || "Untitled Spreadsheet");
-      const sheets = res.sheets || [];
-      setSheets(sheets);
-      setSheetData(
-        Object.fromEntries(
-          sheets.map((sheet) => [sheet.id, deserializeSheetData(sheet)]),
-        ),
-      );
-      if (sheets.length > 0) {
-        const selectedSheet =
-          sheets.find(({ id: sheetId }) => sheetId === preferredSheetId) ??
-          sheets[0];
-        setActiveSheetId(selectedSheet.id);
-        setActiveSheetVersion(selectedSheet.version ?? 0);
-        setData(deserializeSheetData(selectedSheet));
+      try {
+        const res = await api.spreadsheets.get(id, controller.signal);
+        if (requestId !== requestRef.current) return;
+        setTitle(res.name || "Untitled Spreadsheet");
+        const sheets = res.sheets || [];
+        setSheets(sheets);
+        setSheetData(
+          Object.fromEntries(
+            sheets.map((sheet) => [sheet.id, deserializeSheetData(sheet)]),
+          ),
+        );
+        if (sheets.length > 0) {
+          const selectedSheet =
+            sheets.find(({ id: sheetId }) => sheetId === preferredSheetId) ??
+            sheets[0];
+          setActiveSheetId(selectedSheet.id);
+          setActiveSheetVersion(selectedSheet.version ?? 0);
+          setData(deserializeSheetData(selectedSheet));
 
-        if (selectedSheet.charts && Array.isArray(selectedSheet.charts)) {
-          setInitialCharts(selectedSheet.charts);
+          if (selectedSheet.charts && Array.isArray(selectedSheet.charts)) {
+            setInitialCharts(selectedSheet.charts);
+          } else {
+            setInitialCharts([]);
+          }
         } else {
+          setData({});
+          setActiveSheetId(null);
           setInitialCharts([]);
         }
-      } else {
-        setData({});
-        setActiveSheetId(null);
-        setInitialCharts([]);
+      } catch (err) {
+        if (
+          controller.signal.aborted ||
+          (err instanceof DOMException && err.name === "AbortError")
+        )
+          return;
+        console.error("Failed to load spreadsheet:", err);
+        if (err instanceof ApiError && err.status === 401) {
+          clearAuthSession();
+          router.replace("/login");
+        } else if (err instanceof ApiError && err.status === 403) {
+          setError(
+            "이 문서를 열 권한이 없습니다. 소유자에게 접근 권한을 요청해 주세요.",
+          );
+        } else if (err instanceof ApiError && err.status === 404) {
+          setError("문서가 삭제되었거나 주소가 올바르지 않습니다.");
+        } else if (err instanceof DOMException && err.name === "TimeoutError") {
+          setError(
+            "서버 응답이 지연되고 있습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.",
+          );
+        } else {
+          setError("문서를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
+        }
+      } finally {
+        if (requestId === requestRef.current && !controller.signal.aborted)
+          setLoading(false);
       }
-    } catch (err) {
-      if (
-        controller.signal.aborted ||
-        (err instanceof DOMException && err.name === "AbortError")
-      )
-        return;
-      console.error("Failed to load spreadsheet:", err);
-      if (err instanceof ApiError && err.status === 401) {
-        clearAuthSession();
-        router.replace("/login");
-      } else if (err instanceof ApiError && err.status === 403) {
-        setError(
-          "이 문서를 열 권한이 없습니다. 소유자에게 접근 권한을 요청해 주세요.",
-        );
-      } else if (err instanceof ApiError && err.status === 404) {
-        setError("문서가 삭제되었거나 주소가 올바르지 않습니다.");
-      } else if (err instanceof DOMException && err.name === "TimeoutError") {
-        setError(
-          "서버 응답이 지연되고 있습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.",
-        );
-      } else {
-        setError("문서를 불러오지 못했습니다. 잠시 후 다시 시도해 주세요.");
-      }
-    } finally {
-      if (requestId === requestRef.current && !controller.signal.aborted)
-        setLoading(false);
-    }
-  }, [id, router]);
+    },
+    [id, router],
+  );
 
   const selectSheet = useCallback(
     (sheetId: string) => {
@@ -186,6 +196,23 @@ export default function SpreadsheetPage() {
         ({ id: candidateId }) => candidateId === sheetId,
       );
       if (!sheet) return;
+      const canvas = document.querySelector<HTMLCanvasElement>(
+        'canvas[role="grid"]',
+      );
+      if (canvas) {
+        const rect = canvas.getBoundingClientRect();
+        try {
+          setCanvasTransition({
+            url: canvas.toDataURL(),
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height,
+          });
+        } catch {
+          setCanvasTransition(null);
+        }
+      }
       setActiveSheetId(sheet.id);
       setActiveSheetVersion(sheet.version ?? 0);
       setData(sheetData[sheet.id] ?? deserializeSheetData(sheet));
@@ -193,6 +220,18 @@ export default function SpreadsheetPage() {
     },
     [sheetData, sheets],
   );
+
+  useEffect(() => {
+    if (!canvasTransition) return;
+    let secondFrame = 0;
+    const firstFrame = requestAnimationFrame(() => {
+      secondFrame = requestAnimationFrame(() => setCanvasTransition(null));
+    });
+    return () => {
+      cancelAnimationFrame(firstFrame);
+      if (secondFrame) cancelAnimationFrame(secondFrame);
+    };
+  }, [activeSheetId, canvasTransition]);
 
   const addSheet = useCallback(async () => {
     const existingNames = new Set(
@@ -330,37 +369,45 @@ export default function SpreadsheetPage() {
 
   const handleMergedRangesChange = useCallback(
     (sheetId: string, mergedRanges: SpreadsheetSheet["mergedRanges"]) => {
-      setSheets((current) => current.map((sheet) =>
-        sheet.id === sheetId ? { ...sheet, mergedRanges } : sheet,
-      ));
+      setSheets((current) =>
+        current.map((sheet) =>
+          sheet.id === sheetId ? { ...sheet, mergedRanges } : sheet,
+        ),
+      );
     },
     [],
   );
 
   const handlePivotTablesChange = useCallback(
     (sheetId: string, pivotTables: ManagedPivotTable[]) => {
-      setSheets((current) => current.map((sheet) =>
-        sheet.id === sheetId ? { ...sheet, pivotTables } : sheet,
-      ));
+      setSheets((current) =>
+        current.map((sheet) =>
+          sheet.id === sheetId ? { ...sheet, pivotTables } : sheet,
+        ),
+      );
     },
     [],
   );
 
-  const importWorkbook = useCallback(async (
-    result: ImportResult,
-    mode: "append" | "replace",
-    activeVersion: number,
-  ) => {
-    await api.spreadsheets.importWorkbook(id, {
-      mode,
-      sheets: createWorkbookImportSheets(result),
-      expectedSheetVersions: sheets.map((sheet) => ({
-        sheetId: sheet.id,
-        version: sheet.id === activeSheetId ? activeVersion : (sheet.version ?? 0),
-      })),
-    });
-    await loadSpreadsheet(true, activeSheetId);
-  }, [activeSheetId, id, loadSpreadsheet, sheets]);
+  const importWorkbook = useCallback(
+    async (
+      result: ImportResult,
+      mode: "append" | "replace",
+      activeVersion: number,
+    ) => {
+      await api.spreadsheets.importWorkbook(id, {
+        mode,
+        sheets: createWorkbookImportSheets(result),
+        expectedSheetVersions: sheets.map((sheet) => ({
+          sheetId: sheet.id,
+          version:
+            sheet.id === activeSheetId ? activeVersion : (sheet.version ?? 0),
+        })),
+      });
+      await loadSpreadsheet(true, activeSheetId);
+    },
+    [activeSheetId, id, loadSpreadsheet, sheets],
+  );
 
   const activeSheet = useMemo(
     () => sheets.find(({ id: sheetId }) => sheetId === activeSheetId),
@@ -416,20 +463,39 @@ export default function SpreadsheetPage() {
       ),
     [sheetData, sheets],
   );
-  const workbookExportSheets = useMemo<XLSXWorkbookSheet[]>(() =>
-    sheets.map((sheet) => ({
-      name: sheet.name,
-      data: sheetData[sheet.id] ?? deserializeSheetData(sheet),
-      mergedRanges: sheet.mergedRanges ?? [],
-      rows: Object.fromEntries((sheet.rowMeta ?? []).map((row) => [row.row, {
-        height: row.height ?? sheet.defaultRowHeight ?? DEFAULT_CONFIG.defaultRowHeight,
-        hidden: row.hidden,
-      }])),
-      columns: Object.fromEntries((sheet.colMeta ?? []).map((column) => [column.col, {
-        width: column.width ?? sheet.defaultColWidth ?? DEFAULT_CONFIG.defaultColWidth,
-        hidden: column.hidden,
-      }])),
-    })), [sheetData, sheets]);
+  const workbookExportSheets = useMemo<XLSXWorkbookSheet[]>(
+    () =>
+      sheets.map((sheet) => ({
+        name: sheet.name,
+        data: sheetData[sheet.id] ?? deserializeSheetData(sheet),
+        mergedRanges: sheet.mergedRanges ?? [],
+        rows: Object.fromEntries(
+          (sheet.rowMeta ?? []).map((row) => [
+            row.row,
+            {
+              height:
+                row.height ??
+                sheet.defaultRowHeight ??
+                DEFAULT_CONFIG.defaultRowHeight,
+              hidden: row.hidden,
+            },
+          ]),
+        ),
+        columns: Object.fromEntries(
+          (sheet.colMeta ?? []).map((column) => [
+            column.col,
+            {
+              width:
+                column.width ??
+                sheet.defaultColWidth ??
+                DEFAULT_CONFIG.defaultColWidth,
+              hidden: column.hidden,
+            },
+          ]),
+        ),
+      })),
+    [sheetData, sheets],
+  );
   const initialConditionalRules = useMemo(
     () =>
       (activeSheet?.conditionalRules ?? [])
@@ -466,41 +532,63 @@ export default function SpreadsheetPage() {
     );
 
   return (
-    <Spreadsheet
-      key={activeSheetId}
-      currentUser={user}
-      initialData={data}
-      initialCharts={initialCharts}
-      initialConditionalRules={initialConditionalRules}
-      initialMergedRanges={activeSheet?.mergedRanges ?? []}
-      initialPivotTables={activeSheet?.pivotTables ?? []}
-      onDataChange={handleDataChange}
-      spreadsheetId={id}
-      activeSheetId={activeSheetId}
-      initialVersion={activeSheetVersion}
-      initialRowCount={activeSheet?.rowCount}
-      initialColCount={activeSheet?.colCount}
-      initialRows={initialRows}
-      initialCols={initialCols}
-      initialFrozenRows={activeSheet?.frozenRows}
-      initialFrozenCols={activeSheet?.frozenCols}
-      workbook={workbook}
-      currentSheetName={activeSheet?.name}
-      title={title}
-      sheets={sheets.map(({ id: sheetId, name }) => ({ id: sheetId, name }))}
-      onSheetSelect={selectSheet}
-      onSheetAdd={addSheet}
-      onSheetRename={renameSheet}
-      onSheetDelete={deleteSheet}
-      onSheetReorder={reorderSheet}
-      onSheetDuplicate={duplicateSheet}
-      onVersionChange={handleVersionChange}
-      onChartsChange={handleChartsChange}
-      onStructureChange={handleStructureChange}
-      onMergedRangesChange={handleMergedRangesChange}
-      onPivotTablesChange={handlePivotTablesChange}
-      onWorkbookImport={importWorkbook}
-      workbookExportSheets={workbookExportSheets}
-    />
+    <>
+      <Spreadsheet
+        key={activeSheetId}
+        currentUser={user}
+        initialData={data}
+        initialCharts={initialCharts}
+        initialConditionalRules={initialConditionalRules}
+        initialMergedRanges={activeSheet?.mergedRanges ?? []}
+        initialPivotTables={activeSheet?.pivotTables ?? []}
+        onDataChange={handleDataChange}
+        spreadsheetId={id}
+        activeSheetId={activeSheetId}
+        initialVersion={activeSheetVersion}
+        initialRowCount={activeSheet?.rowCount}
+        initialColCount={activeSheet?.colCount}
+        initialRows={initialRows}
+        initialCols={initialCols}
+        initialFrozenRows={activeSheet?.frozenRows}
+        initialFrozenCols={activeSheet?.frozenCols}
+        workbook={workbook}
+        currentSheetName={activeSheet?.name}
+        title={title}
+        sheets={sheets.map(({ id: sheetId, name }) => ({ id: sheetId, name }))}
+        onSheetSelect={selectSheet}
+        onSheetAdd={addSheet}
+        onSheetRename={renameSheet}
+        onSheetDelete={deleteSheet}
+        onSheetReorder={reorderSheet}
+        onSheetDuplicate={duplicateSheet}
+        onVersionChange={handleVersionChange}
+        onChartsChange={handleChartsChange}
+        onStructureChange={handleStructureChange}
+        onMergedRangesChange={handleMergedRangesChange}
+        onPivotTablesChange={handlePivotTablesChange}
+        onWorkbookImport={importWorkbook}
+        workbookExportSheets={workbookExportSheets}
+      />
+      {canvasTransition && (
+        // Preserve the last painted grid until the replacement canvas has
+        // completed two animation frames, avoiding a white remount flash.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={canvasTransition.url}
+          alt=""
+          aria-hidden="true"
+          data-sheet-transition="canvas-snapshot"
+          style={{
+            position: "fixed",
+            left: canvasTransition.left,
+            top: canvasTransition.top,
+            width: canvasTransition.width,
+            height: canvasTransition.height,
+            pointerEvents: "none",
+            zIndex: 1000,
+          }}
+        />
+      )}
+    </>
   );
 }

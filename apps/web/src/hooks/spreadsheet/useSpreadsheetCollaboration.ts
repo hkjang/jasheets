@@ -1,16 +1,20 @@
-
-import { useState, useCallback, useEffect, useRef } from 'react';
-import { useCollaboration, ChatMessage } from '@/hooks/useCollaboration';
-import { CellPosition, CellRange, CellValue, SheetData } from '@/types/spreadsheet';
-import { applyCollaborationOperation } from '@/utils/collaborationConflict';
-import type { PersistedCellFormat } from '@/utils/cellPersistence';
+import { useState, useCallback, useEffect, useRef } from "react";
+import { useCollaboration, ChatMessage } from "@/hooks/useCollaboration";
+import {
+  CellPosition,
+  CellRange,
+  CellValue,
+  SheetData,
+} from "@/types/spreadsheet";
+import { applyCollaborationOperation } from "@/utils/collaborationConflict";
+import type { PersistedCellFormat } from "@/utils/cellPersistence";
 
 interface UseSpreadsheetCollaborationProps {
   userId: string;
   userName: string;
   selectedCell: CellPosition | null;
   selection: CellRange | null;
-  setData: React.Dispatch<React.SetStateAction<SheetData>>;
+  setData: (updater: (current: SheetData) => SheetData) => void;
   spreadsheetId: string;
   activeSheetId?: string | null;
 }
@@ -29,35 +33,59 @@ export function useSpreadsheetCollaboration({
   const [unreadCount, setUnreadCount] = useState(0);
   const cellSequencesRef = useRef(new Map<string, number>());
 
-  const handleChatMessage = useCallback((message: ChatMessage) => {
-    setChatMessages(prev => [...prev, message]);
-    if (!isChatOpen) setUnreadCount(prev => prev + 1);
-  }, [isChatOpen]);
+  const handleChatMessage = useCallback(
+    (message: ChatMessage) => {
+      setChatMessages((prev) => [...prev, message]);
+      if (!isChatOpen) setUnreadCount((prev) => prev + 1);
+    },
+    [isChatOpen],
+  );
 
-  const handleCellUpdate = useCallback((data: {
-    sheetId: string;
-    row: number;
-    col: number;
-    value: CellValue;
-    formula?: string;
-    format?: PersistedCellFormat | null;
-    sequence?: number;
-  }) => {
-    if (activeSheetId && data.sheetId !== activeSheetId) return;
-    setData(prev => applyCollaborationOperation(prev, data, cellSequencesRef.current));
-  }, [activeSheetId, setData]);
+  const handleCellUpdate = useCallback(
+    (data: {
+      sheetId: string;
+      row: number;
+      col: number;
+      value: CellValue;
+      formula?: string;
+      format?: PersistedCellFormat | null;
+      sequence?: number;
+    }) => {
+      if (activeSheetId && data.sheetId !== activeSheetId) return;
+      setData((prev) =>
+        applyCollaborationOperation(prev, data, cellSequencesRef.current),
+      );
+    },
+    [activeSheetId, setData],
+  );
 
-  const handleCellsUpdate = useCallback((data: {
-    sheetId: string;
-    updates: Array<{ row: number; col: number; value: CellValue; formula?: string; format?: PersistedCellFormat | null }>;
-    sequence?: number;
-  }) => {
-    if (activeSheetId && data.sheetId !== activeSheetId) return;
-    setData(prev => data.updates.reduce(
-      (next, update) => applyCollaborationOperation(next, { ...update, sheetId: data.sheetId, sequence: data.sequence }, cellSequencesRef.current),
-      prev,
-    ));
-  }, [activeSheetId, setData]);
+  const handleCellsUpdate = useCallback(
+    (data: {
+      sheetId: string;
+      updates: Array<{
+        row: number;
+        col: number;
+        value: CellValue;
+        formula?: string;
+        format?: PersistedCellFormat | null;
+      }>;
+      sequence?: number;
+    }) => {
+      if (activeSheetId && data.sheetId !== activeSheetId) return;
+      setData((prev) =>
+        data.updates.reduce(
+          (next, update) =>
+            applyCollaborationOperation(
+              next,
+              { ...update, sheetId: data.sheetId, sequence: data.sequence },
+              cellSequencesRef.current,
+            ),
+          prev,
+        ),
+      );
+    },
+    [activeSheetId, setData],
+  );
 
   const {
     users,
@@ -82,11 +110,17 @@ export function useSpreadsheetCollaboration({
   }, [selectedCell, sendCursorMove]);
 
   useEffect(() => {
-    if (selection) sendSelectionChange(selection.start.row, selection.start.col, selection.end.row, selection.end.col);
+    if (selection)
+      sendSelectionChange(
+        selection.start.row,
+        selection.start.col,
+        selection.end.row,
+        selection.end.col,
+      );
   }, [selection, sendSelectionChange]);
 
   const toggleChat = useCallback(() => {
-    setIsChatOpen(prev => !prev);
+    setIsChatOpen((prev) => !prev);
     if (!isChatOpen) setUnreadCount(0);
   }, [isChatOpen]);
 
