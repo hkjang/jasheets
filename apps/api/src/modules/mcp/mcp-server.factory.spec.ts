@@ -11,6 +11,7 @@ describe('McpServerFactory', () => {
     getSpreadsheet: jest.fn(),
     getSheetSchema: jest.fn(),
     getRange: jest.fn(),
+    analyzeRange: jest.fn(),
   };
 
   beforeEach(() => jest.clearAllMocks());
@@ -37,6 +38,7 @@ describe('McpServerFactory', () => {
         'get_sheet_schema',
         'read_range',
         'get_range',
+        'analyze_range',
         'set_cells',
         'write_range',
         'append_rows',
@@ -104,6 +106,33 @@ describe('McpServerFactory', () => {
       3,
       4,
       5,
+    );
+
+    queries.analyzeRange.mockResolvedValue({
+      sheetId: '550e8400-e29b-41d4-a716-446655440001',
+      summary: { dataRows: 3, columns: 3 },
+    });
+    const analysis = await client.callTool({
+      name: 'analyze_range',
+      arguments: {
+        spreadsheetId: '550e8400-e29b-41d4-a716-446655440000',
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        startRow: 0,
+        startCol: 0,
+        endRow: 3,
+        endCol: 2,
+      },
+    });
+    expect(analysis.isError).not.toBe(true);
+    expect(queries.analyzeRange).toHaveBeenCalledWith(
+      'user-1',
+      '550e8400-e29b-41d4-a716-446655440000',
+      '550e8400-e29b-41d4-a716-446655440001',
+      0,
+      0,
+      3,
+      2,
+      true,
     );
 
     const result = await client.callTool({

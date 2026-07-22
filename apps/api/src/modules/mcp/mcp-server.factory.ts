@@ -123,6 +123,37 @@ export class McpServerFactory {
     registerRangeReadTool('get_range', 'Compatibility alias for read_range.');
 
     server.registerTool(
+      'analyze_range',
+      {
+        description:
+          'Analyze a selected range for column types, missing values, distinct counts, formulas, errors and numeric statistics.',
+        inputSchema: {
+          spreadsheetId: z.string().uuid(),
+          sheetId: z.string().uuid(),
+          startRow: z.number().int().min(0),
+          startCol: z.number().int().min(0),
+          endRow: z.number().int().min(0),
+          endCol: z.number().int().min(0),
+          hasHeader: z.boolean().optional().default(true),
+        },
+        annotations: { readOnlyHint: true, idempotentHint: true },
+      },
+      async (input) =>
+        jsonResult(
+          await this.queries.analyzeRange(
+            userId,
+            input.spreadsheetId,
+            input.sheetId,
+            input.startRow,
+            input.startCol,
+            input.endRow,
+            input.endCol,
+            input.hasHeader,
+          ),
+        ),
+    );
+
+    server.registerTool(
       'set_cells',
       {
         description:
