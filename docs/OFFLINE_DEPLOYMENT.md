@@ -104,4 +104,6 @@ docker compose --env-file .env -f docker-compose.offline.yml down
 ```
 
 첫 명령은 `dist/releases/`에 이미지 포함 archive와 체크섬을 만들고, 두 번째
-명령은 같은 자산을 GitHub Release `offline-VERSION`에 게시합니다.
+명령은 같은 자산을 SemVer GitHub Release(예: `v0.1.1`)에 게시합니다.
+Docker image도 동일하게 `jasheets:v0.1.1` 형식을 사용하며 commit SHA는
+`release-manifest.txt`의 추적 정보로만 남습니다.

@@ -2,9 +2,13 @@
 set -eu
 
 ROOT_DIR=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
-VERSION=${1:-$(git -C "$ROOT_DIR" rev-parse --short HEAD)}
+VERSION=${1:-v$(node -p "require('$ROOT_DIR/package.json').version")}
 OUTPUT_DIR=${2:-$ROOT_DIR/dist/releases}
-APP_IMAGE="jasheets/app:$VERSION"
+case "$VERSION" in
+  v[0-9]*.[0-9]*.[0-9]*) ;;
+  *) echo "Version must use SemVer with a v prefix (for example v0.1.1)." >&2; exit 2 ;;
+esac
+APP_IMAGE="jasheets:$VERSION"
 BUNDLE_NAME="jasheets-offline-$VERSION"
 TEMP_DIR=$(mktemp -d "${TMPDIR:-/tmp}/jasheets-release.XXXXXX")
 BUNDLE_DIR="$TEMP_DIR/$BUNDLE_NAME"

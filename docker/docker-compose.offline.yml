@@ -2,7 +2,7 @@ name: jasheets
 
 services:
   app:
-    image: jasheets/app:${JASHEETS_VERSION}
+    image: jasheets:${JASHEETS_VERSION}
     restart: unless-stopped
     environment:
       POSTGRES_DSN: ${POSTGRES_DSN}
