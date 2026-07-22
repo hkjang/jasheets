@@ -26,6 +26,10 @@ interface PrismaMock {
     findMany: jest.Mock;
     upsert: jest.Mock<Promise<unknown>, [UpsertInput]>;
   };
+  chart: {
+    findMany: jest.Mock;
+    update: jest.Mock;
+  };
   $transaction: jest.Mock;
 }
 
@@ -63,6 +67,10 @@ describe('SheetsService cell updates', () => {
             Promise.resolve({ id: `${create.row}:${create.col}`, ...create }),
           ),
       },
+      chart: {
+        findMany: jest.fn().mockResolvedValue([]),
+        update: jest.fn(),
+      },
       cellMutation: {
         findUnique: jest.fn().mockResolvedValue(null),
         create: jest
@@ -97,6 +105,39 @@ describe('SheetsService cell updates', () => {
     expect(upsertInput.update).toMatchObject({
       value: 'plain text',
       formula: null,
+    });
+  });
+
+  it('refreshes only range-linked charts touched by the cell batch', async () => {
+    prisma.chart.findMany.mockResolvedValue([
+      {
+        id: 'chart-1',
+        sourceRange: { startRow: 0, startCol: 0, endRow: 2, endCol: 2 },
+      },
+      {
+        id: 'chart-2',
+        sourceRange: { startRow: 10, startCol: 10, endRow: 11, endCol: 11 },
+      },
+    ]);
+    prisma.cell.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([
+      { row: 1, col: 2, value: 42 },
+      { row: 0, col: 0, value: 'Header' },
+    ]);
+
+    await service.updateCells('user-1', sheet.id, [
+      { row: 1, col: 2, value: 42 },
+    ]);
+
+    expect(prisma.chart.update).toHaveBeenCalledTimes(1);
+    expect(prisma.chart.update).toHaveBeenCalledWith({
+      where: { id: 'chart-1' },
+      data: {
+        data: [
+          ['Header', null, null],
+          [null, null, 42],
+          [null, null, null],
+        ],
+      },
     });
   });
 
@@ -200,11 +241,11 @@ describe('SheetsService cell updates', () => {
     prisma.sheet.updateMany.mockResolvedValueOnce({ count: 0 });
 
     const failure = service.updateCells(
-        'user-1',
-        sheet.id,
-        [{ row: 1, col: 1, value: 'stale' }],
-        3,
-      );
+      'user-1',
+      sheet.id,
+      [{ row: 1, col: 1, value: 'stale' }],
+      3,
+    );
     await expect(failure).rejects.toThrow('modified by another user');
     await expect(failure).rejects.toMatchObject({
       response: { currentVersion: 0 },

@@ -8,6 +8,7 @@ describe('SpreadsheetCommandService', () => {
     getAppendTarget: jest.fn(),
     getCellMutationReplay: jest.fn(),
     createPivotTable: jest.fn(),
+    createChart: jest.fn(),
   };
   const service = new SpreadsheetCommandService(
     sheets as unknown as SheetsService,
@@ -272,6 +273,45 @@ describe('SpreadsheetCommandService', () => {
       'sheet-1',
       { ...command.pivot, id: firstPivot.id },
       40,
+    );
+  });
+
+  it('creates charts with a stable id through the command boundary', async () => {
+    sheets.createChart.mockResolvedValue({
+      chart: { id: 'stable' },
+      version: 51,
+      replayed: false,
+    });
+    const command = {
+      type: 'CREATE_CHART' as const,
+      sheetId: 'sheet-1',
+      chart: {
+        type: 'line' as const,
+        sourceRange: { startRow: 0, startCol: 0, endRow: 10, endCol: 2 },
+        x: 100,
+        y: 150,
+        width: 500,
+        height: 320,
+        options: { title: 'Trend', showLegend: true, horizontal: false },
+      },
+      expectedVersion: 50,
+      idempotencyKey: 'chart-request-1',
+    };
+
+    await service.execute({ userId: 'user-1', actorType: 'MCP' }, command);
+    await service.execute({ userId: 'user-1', actorType: 'MCP' }, command);
+
+    const firstChart = sheets.createChart.mock.calls[0][2];
+    const secondChart = sheets.createChart.mock.calls[1][2];
+    expect(firstChart.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(secondChart.id).toBe(firstChart.id);
+    expect(sheets.createChart).toHaveBeenLastCalledWith(
+      'user-1',
+      'sheet-1',
+      { ...command.chart, id: firstChart.id },
+      50,
     );
   });
 });

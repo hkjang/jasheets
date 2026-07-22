@@ -250,18 +250,19 @@ model Cell {
 
 // Chart model - 시트에 포함된 차트
 model Chart {
-  id        String   @id @default(uuid())
-  sheetId   String
-  sheet     Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
-  type      String // bar, line, pie, doughnut
-  x         Int      @default(100)
-  y         Int      @default(100)
-  width     Int      @default(400)
-  height    Int      @default(300)
-  data      Json // 차트 데이터 (labels, datasets)
-  options   Json? // 차트 옵션
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id          String   @id @default(uuid())
+  sheetId     String
+  sheet       Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  type        String // bar, line, pie, doughnut
+  x           Int      @default(100)
+  y           Int      @default(100)
+  width       Int      @default(400)
+  height      Int      @default(300)
+  data        Json // 차트 데이터 (labels, datasets)
+  options     Json? // 차트 옵션
+  sourceRange Json? // 실시간 재연결을 위한 원본 좌표 범위
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   @@index([sheetId])
   @@map("charts")

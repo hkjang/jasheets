@@ -187,6 +187,19 @@ export class SpreadsheetCommandService {
           command.expectedVersion,
         );
       }
+      case 'CREATE_CHART': {
+        const chartId = this.commandUuid(
+          context.userId,
+          command.sheetId,
+          command.idempotencyKey,
+        );
+        return await this.sheetsService.createChart(
+          context.userId,
+          command.sheetId,
+          { ...command.chart, id: chartId },
+          command.expectedVersion,
+        );
+      }
       case 'CHANGE_STRUCTURE':
         return await this.sheetsService.changeStructure(
           context.userId,

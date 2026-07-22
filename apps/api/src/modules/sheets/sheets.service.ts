@@ -2281,6 +2281,7 @@ export class SheetsService {
             }),
           ),
         );
+        await this.refreshRangeLinkedCharts(tx, sheetId, normalizedUpdates);
         return { cells, existingCells };
       })
       .catch(async (error: unknown) => {
@@ -2397,6 +2398,81 @@ export class SheetsService {
         'Cannot write to a non-anchor cell inside a merged range',
       );
     }
+  }
+
+  private async refreshRangeLinkedCharts(
+    tx: Prisma.TransactionClient,
+    sheetId: string,
+    coordinates: Array<{ row: number; col: number }>,
+  ): Promise<void> {
+    const charts = await tx.chart.findMany({
+      where: { sheetId, sourceRange: { not: Prisma.AnyNull } },
+      select: { id: true, sourceRange: true },
+    });
+    for (const chart of charts) {
+      const range = this.asCoordinateRange(chart.sourceRange);
+      if (
+        !range ||
+        !coordinates.some(
+          ({ row, col }) =>
+            row >= range.startRow &&
+            row <= range.endRow &&
+            col >= range.startCol &&
+            col <= range.endCol,
+        )
+      ) {
+        continue;
+      }
+      const cells = await tx.cell.findMany({
+        where: {
+          sheetId,
+          row: { gte: range.startRow, lte: range.endRow },
+          col: { gte: range.startCol, lte: range.endCol },
+        },
+        select: { row: true, col: true, value: true },
+      });
+      const byCoordinate = new Map(
+        cells.map((cell) => [`${cell.row}:${cell.col}`, cell.value]),
+      );
+      const data = Array.from(
+        { length: range.endRow - range.startRow + 1 },
+        (_, rowOffset) =>
+          Array.from(
+            { length: range.endCol - range.startCol + 1 },
+            (_, colOffset) =>
+              byCoordinate.get(
+                `${range.startRow + rowOffset}:${range.startCol + colOffset}`,
+              ) ?? null,
+          ),
+      );
+      await tx.chart.update({
+        where: { id: chart.id },
+        data: { data: data as Prisma.InputJsonValue },
+      });
+    }
+  }
+
+  private asCoordinateRange(
+    value: Prisma.JsonValue,
+  ): PivotSourceRangeDto | null {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+      return null;
+    const range = value as Record<string, unknown>;
+    const coordinates = [
+      range.startRow,
+      range.startCol,
+      range.endRow,
+      range.endCol,
+    ];
+    if (!coordinates.every((coordinate) => Number.isInteger(coordinate))) {
+      return null;
+    }
+    return {
+      startRow: range.startRow as number,
+      startCol: range.startCol as number,
+      endRow: range.endRow as number,
+      endCol: range.endCol as number,
+    };
   }
 
   private validateCellCoordinates(
@@ -2716,6 +2792,169 @@ export class SheetsService {
     );
 
     return created;
+  }
+
+  async createChart(
+    userId: string,
+    sheetId: string,
+    chart: {
+      id: string;
+      type: 'bar' | 'line' | 'pie' | 'doughnut' | 'area';
+      sourceRange: PivotSourceRangeDto;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+      options: { title?: string; showLegend?: boolean; horizontal?: boolean };
+    },
+    expectedVersion: number,
+  ) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+      select: {
+        spreadsheetId: true,
+        rowCount: true,
+        colCount: true,
+        version: true,
+      },
+    });
+    if (!sheet) throw new NotFoundException('Sheet not found');
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+
+    const replay = await this.prisma.chart.findUnique({
+      where: { id: chart.id },
+    });
+    if (replay) {
+      if (
+        replay.sheetId !== sheetId ||
+        replay.type !== chart.type ||
+        replay.x !== chart.x ||
+        replay.y !== chart.y ||
+        replay.width !== chart.width ||
+        replay.height !== chart.height ||
+        JSON.stringify(replay.options) !== JSON.stringify(chart.options) ||
+        JSON.stringify(replay.sourceRange) !== JSON.stringify(chart.sourceRange)
+      ) {
+        throw new ConflictException(
+          'Idempotency key was already used for a different chart request.',
+        );
+      }
+      return { chart: replay, version: sheet.version, replayed: true };
+    }
+
+    this.assertPivotRange(
+      chart.sourceRange,
+      sheet.rowCount,
+      sheet.colCount,
+      'chart source',
+    );
+    const sourceRows =
+      chart.sourceRange.endRow - chart.sourceRange.startRow + 1;
+    const sourceCols =
+      chart.sourceRange.endCol - chart.sourceRange.startCol + 1;
+    if (sourceRows * sourceCols > 10_000) {
+      throw new BadRequestException(
+        'Chart source cannot contain more than 10,000 cells',
+      );
+    }
+    if (
+      ![chart.x, chart.y, chart.width, chart.height].every(Number.isInteger) ||
+      chart.x < 0 ||
+      chart.y < 0 ||
+      chart.width < 200 ||
+      chart.width > 2000 ||
+      chart.height < 150 ||
+      chart.height > 1200
+    ) {
+      throw new BadRequestException('Chart geometry is invalid');
+    }
+
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          await this.assertImportEditAccess(tx, userId, sheet.spreadsheetId);
+          const current = await tx.sheet.findUnique({
+            where: { id: sheetId },
+            select: { version: true },
+          });
+          if (!current) throw new NotFoundException('Sheet not found');
+          const chartCount = await tx.chart.count({ where: { sheetId } });
+          if (chartCount >= 50) {
+            throw new BadRequestException(
+              'This sheet can contain at most 50 charts',
+            );
+          }
+          const cells = await tx.cell.findMany({
+            where: {
+              sheetId,
+              row: {
+                gte: chart.sourceRange.startRow,
+                lte: chart.sourceRange.endRow,
+              },
+              col: {
+                gte: chart.sourceRange.startCol,
+                lte: chart.sourceRange.endCol,
+              },
+            },
+            select: { row: true, col: true, value: true },
+          });
+          const byCoordinate = new Map(
+            cells.map((cell) => [`${cell.row}:${cell.col}`, cell.value]),
+          );
+          const data = Array.from({ length: sourceRows }, (_, rowOffset) =>
+            Array.from(
+              { length: sourceCols },
+              (_, colOffset) =>
+                byCoordinate.get(
+                  `${chart.sourceRange.startRow + rowOffset}:${chart.sourceRange.startCol + colOffset}`,
+                ) ?? null,
+            ),
+          );
+
+          const claimed = await tx.sheet.updateMany({
+            where: { id: sheetId, version: expectedVersion },
+            data: { version: { increment: 1 } },
+          });
+          if (claimed.count !== 1) {
+            throw new ConflictException(
+              'Sheet was modified by another user. Reload before creating the chart.',
+            );
+          }
+          const created = await tx.chart.create({
+            data: {
+              id: chart.id,
+              sheetId,
+              type: chart.type,
+              x: chart.x,
+              y: chart.y,
+              width: chart.width,
+              height: chart.height,
+              data: data as Prisma.InputJsonValue,
+              options: chart.options as Prisma.InputJsonValue,
+              sourceRange:
+                chart.sourceRange as unknown as Prisma.InputJsonValue,
+            },
+          });
+          return {
+            chart: created,
+            version: expectedVersion + 1,
+            replayed: false,
+          };
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5_000,
+          timeout: 30_000,
+        },
+      );
+    } catch (error) {
+      if (this.isTransactionConflict(error)) {
+        throw new ConflictException(
+          'Sheet was modified by another user. Reload before creating the chart.',
+        );
+      }
+      throw error;
+    }
   }
 
   // Pivot Table operations

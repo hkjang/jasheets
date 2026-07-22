@@ -64,6 +64,31 @@ export interface CreatePivotCommand {
   idempotencyKey: string;
 }
 
+export interface CreateChartCommand {
+  type: 'CREATE_CHART';
+  sheetId: string;
+  chart: {
+    type: 'bar' | 'line' | 'pie' | 'doughnut' | 'area';
+    sourceRange: {
+      startRow: number;
+      startCol: number;
+      endRow: number;
+      endCol: number;
+    };
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    options: {
+      title?: string;
+      showLegend?: boolean;
+      horizontal?: boolean;
+    };
+  };
+  expectedVersion: number;
+  idempotencyKey: string;
+}
+
 export interface ChangeStructureCommand {
   type: 'CHANGE_STRUCTURE';
   sheetId: string;
@@ -78,4 +103,5 @@ export type SpreadsheetCommand =
   | AppendRowsCommand
   | ApplyFormulaCommand
   | CreatePivotCommand
+  | CreateChartCommand
   | ChangeStructureCommand;

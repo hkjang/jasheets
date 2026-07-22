@@ -328,6 +328,59 @@ export class McpServerFactory {
         ),
     );
 
+    server.registerTool(
+      'create_chart',
+      {
+        description:
+          'Create an idempotent, range-linked chart without replacing existing charts.',
+        inputSchema: {
+          sheetId: z.string().uuid(),
+          type: z.enum(['bar', 'line', 'pie', 'doughnut', 'area']),
+          sourceRange: z.object({
+            startRow: z.number().int().min(0).max(999999),
+            startCol: z.number().int().min(0).max(18277),
+            endRow: z.number().int().min(0).max(999999),
+            endCol: z.number().int().min(0).max(18277),
+          }),
+          x: z.number().int().min(0).max(100000).optional().default(100),
+          y: z.number().int().min(0).max(100000).optional().default(100),
+          width: z.number().int().min(200).max(2000).optional().default(400),
+          height: z.number().int().min(150).max(1200).optional().default(300),
+          title: z.string().max(200).optional(),
+          showLegend: z.boolean().optional().default(true),
+          horizontal: z.boolean().optional().default(false),
+          expectedVersion: z.number().int().min(0),
+          idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+        },
+        annotations: { readOnlyHint: false, idempotentHint: true },
+      },
+      async (input) =>
+        jsonResult(
+          await this.commands.execute(
+            { userId, actorType: 'MCP' },
+            {
+              type: 'CREATE_CHART',
+              sheetId: input.sheetId,
+              chart: {
+                type: input.type,
+                sourceRange: input.sourceRange,
+                x: input.x,
+                y: input.y,
+                width: input.width,
+                height: input.height,
+                options: {
+                  title: input.title,
+                  showLegend: input.showLegend,
+                  horizontal: input.horizontal,
+                },
+              },
+              expectedVersion: input.expectedVersion,
+              idempotencyKey: input.idempotencyKey,
+            },
+          ),
+        ),
+    );
+
     const registerStructureTool = (
       name: 'insert_row' | 'delete_row',
       operation: 'insert' | 'delete',

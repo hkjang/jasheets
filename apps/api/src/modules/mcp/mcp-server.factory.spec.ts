@@ -42,6 +42,7 @@ describe('McpServerFactory', () => {
         'append_rows',
         'apply_formula',
         'create_pivot',
+        'create_chart',
         'insert_row',
         'delete_row',
       ]),
@@ -261,6 +262,51 @@ describe('McpServerFactory', () => {
         },
         expectedVersion: 5,
         idempotencyKey: 'pivot-request-1',
+      },
+    );
+
+    commands.execute.mockResolvedValueOnce({
+      chart: { id: 'chart-1' },
+      version: 7,
+      replayed: false,
+    });
+    const chart = await client.callTool({
+      name: 'create_chart',
+      arguments: {
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        type: 'line',
+        sourceRange: { startRow: 0, startCol: 0, endRow: 20, endCol: 2 },
+        title: 'Revenue trend',
+        expectedVersion: 6,
+        idempotencyKey: 'chart-request-1',
+      },
+    });
+    expect(chart.isError).not.toBe(true);
+    expect(commands.execute).toHaveBeenLastCalledWith(
+      { userId: 'user-1', actorType: 'MCP' },
+      {
+        type: 'CREATE_CHART',
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        chart: {
+          type: 'line',
+          sourceRange: {
+            startRow: 0,
+            startCol: 0,
+            endRow: 20,
+            endCol: 2,
+          },
+          x: 100,
+          y: 100,
+          width: 400,
+          height: 300,
+          options: {
+            title: 'Revenue trend',
+            showLegend: true,
+            horizontal: false,
+          },
+        },
+        expectedVersion: 6,
+        idempotencyKey: 'chart-request-1',
       },
     );
 
