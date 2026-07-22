@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { shiftFormulaReferences } from '@jasheets/formula-engine';
+import { createHash } from 'node:crypto';
 import { SheetsService } from '../sheets/sheets.service';
 import {
   SpreadsheetCommand,
@@ -173,6 +174,19 @@ export class SpreadsheetCommandService {
           appliedCells: updates.length,
         };
       }
+      case 'CREATE_PIVOT': {
+        const pivotId = this.commandUuid(
+          context.userId,
+          command.sheetId,
+          command.idempotencyKey,
+        );
+        return await this.sheetsService.createPivotTable(
+          context.userId,
+          command.sheetId,
+          { ...command.pivot, id: pivotId },
+          command.expectedVersion,
+        );
+      }
       case 'CHANGE_STRUCTURE':
         return await this.sheetsService.changeStructure(
           context.userId,
@@ -227,5 +241,12 @@ export class SpreadsheetCommandService {
         ...(formulas ? { formula: formulas[rowOffset][colOffset] } : {}),
       })),
     );
+  }
+
+  private commandUuid(userId: string, sheetId: string, key: string): string {
+    const hex = createHash('sha256')
+      .update(`${userId}\u0000${sheetId}\u0000${key}`)
+      .digest('hex');
+    return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
   }
 }

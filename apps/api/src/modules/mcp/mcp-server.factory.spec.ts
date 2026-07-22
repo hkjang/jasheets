@@ -41,6 +41,7 @@ describe('McpServerFactory', () => {
         'write_range',
         'append_rows',
         'apply_formula',
+        'create_pivot',
         'insert_row',
         'delete_row',
       ]),
@@ -212,6 +213,54 @@ describe('McpServerFactory', () => {
         formula: '=A1*$A$10',
         expectedVersion: 4,
         idempotencyKey: 'formula-request-1',
+      },
+    );
+
+    commands.execute.mockResolvedValueOnce({
+      pivotTable: { id: 'pivot-1' },
+      version: 6,
+      replayed: false,
+    });
+    const pivot = await client.callTool({
+      name: 'create_pivot',
+      arguments: {
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        name: 'Sales by region',
+        sourceRange: { startRow: 0, startCol: 0, endRow: 20, endCol: 4 },
+        targetCell: 'H1',
+        rows: ['Region'],
+        columns: [],
+        values: [{ field: 'Revenue', aggregation: 'SUM' }],
+        expectedVersion: 5,
+        idempotencyKey: 'pivot-request-1',
+      },
+    });
+    expect(pivot.isError).not.toBe(true);
+    expect(commands.execute).toHaveBeenLastCalledWith(
+      { userId: 'user-1', actorType: 'MCP' },
+      {
+        type: 'CREATE_PIVOT',
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        pivot: {
+          name: 'Sales by region',
+          targetCell: 'H1',
+          config: {
+            sourceRange: {
+              startRow: 0,
+              startCol: 0,
+              endRow: 20,
+              endCol: 4,
+            },
+            rows: ['Region'],
+            cols: [],
+            values: [{ field: 'Revenue', aggregation: 'SUM' }],
+            filters: undefined,
+            rowGrandTotals: true,
+            columnGrandTotals: true,
+          },
+        },
+        expectedVersion: 5,
+        idempotencyKey: 'pivot-request-1',
       },
     );
 

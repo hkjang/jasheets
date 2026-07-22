@@ -69,6 +69,10 @@ describe('SheetsService managed pivot tables', () => {
     };
     prisma = {
       sheet: { findUnique: jest.fn().mockResolvedValue(sheet) },
+      pivotTable: {
+        findUnique: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([]),
+      },
       $transaction: jest
         .fn()
         .mockImplementation(async (callback) => callback(tx)),
@@ -107,6 +111,75 @@ describe('SheetsService managed pivot tables', () => {
       expect.any(Function),
       expect.objectContaining({ isolationLevel: 'Serializable' }),
     );
+  });
+
+  it('creates one pivot without dropping existing definitions', async () => {
+    prisma.pivotTable.findMany.mockResolvedValueOnce([
+      {
+        id: 'pivot-existing',
+        sheetId: sheet.id,
+        name: 'Existing',
+        config: pivot().config,
+        sourceRange: 'A1:C10',
+        targetCell: 'J1',
+      },
+    ]);
+    const save = jest.spyOn(service, 'savePivotTables').mockResolvedValue({
+      version: 8,
+      pivotTables: [
+        { id: 'pivot-existing' },
+        { id: 'pivot-stable', name: 'Sales by region' },
+      ],
+    } as any);
+
+    const result = await service.createPivotTable(
+      'user-1',
+      sheet.id,
+      { ...pivot(), id: 'pivot-stable' },
+      7,
+    );
+
+    expect(save).toHaveBeenCalledWith(
+      'user-1',
+      sheet.id,
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'pivot-existing' }),
+        expect.objectContaining({ id: 'pivot-stable' }),
+      ]),
+      7,
+      true,
+    );
+    expect(result).toMatchObject({
+      pivotTable: { id: 'pivot-stable' },
+      version: 8,
+      replayed: false,
+    });
+  });
+
+  it('replays a pivot with the same deterministic id', async () => {
+    prisma.pivotTable.findUnique.mockResolvedValueOnce({
+      id: 'pivot-stable',
+      sheetId: sheet.id,
+      name: 'Sales by region',
+      config: pivot().config,
+      sourceRange: 'A1:C10',
+      targetCell: 'E1',
+    });
+    const save = jest.spyOn(service, 'savePivotTables');
+
+    await expect(
+      service.createPivotTable(
+        'user-1',
+        sheet.id,
+        { ...pivot(), id: 'pivot-stable' },
+        7,
+      ),
+    ).resolves.toMatchObject({
+      pivotTable: { id: 'pivot-stable' },
+      version: 7,
+      replayed: true,
+    });
+    expect(save).not.toHaveBeenCalled();
   });
 
   it('does not delete persisted pivots when the expected version is stale', async () => {

@@ -1,3 +1,5 @@
+import type { PivotTableDto } from '../sheets/dto/pivot-table.dto';
+
 export type SpreadsheetCommandActorType =
   'USER' | 'MCP' | 'AUTOMATION' | 'FLOW';
 
@@ -54,6 +56,14 @@ export interface ApplyFormulaCommand {
   idempotencyKey: string;
 }
 
+export interface CreatePivotCommand {
+  type: 'CREATE_PIVOT';
+  sheetId: string;
+  pivot: Omit<PivotTableDto, 'id'>;
+  expectedVersion: number;
+  idempotencyKey: string;
+}
+
 export interface ChangeStructureCommand {
   type: 'CHANGE_STRUCTURE';
   sheetId: string;
@@ -67,4 +77,5 @@ export type SpreadsheetCommand =
   | WriteRangeCommand
   | AppendRowsCommand
   | ApplyFormulaCommand
+  | CreatePivotCommand
   | ChangeStructureCommand;

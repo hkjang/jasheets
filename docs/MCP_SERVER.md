@@ -34,6 +34,7 @@ endpoint only through TLS-enabled Ingress.
 | `write_range` | Write a rectangular 2D value/formula matrix | Yes |
 | `append_rows` | Append rows after the last non-empty data row | Yes |
 | `apply_formula` | Fill a range while shifting relative formula references | Yes |
+| `create_pivot` | Create an idempotent pivot definition with policy validation | Yes |
 | `insert_row` | Insert one row at a zero-based index | Yes |
 | `delete_row` | Delete one row at a zero-based index | Yes |
 

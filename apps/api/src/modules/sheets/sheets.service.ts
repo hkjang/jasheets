@@ -2724,6 +2724,7 @@ export class SheetsService {
     sheetId: string,
     pivotTables: PivotTableDto[],
     expectedVersion?: number,
+    allowNewIds = false,
   ) {
     const sheet = await this.prisma.sheet.findUnique({
       where: { id: sheetId },
@@ -2761,7 +2762,7 @@ export class SheetsService {
           });
           const existingIds = new Set(existing.map(({ id }) => id));
           for (const pivot of pivotTables) {
-            if (pivot.id && !existingIds.has(pivot.id)) {
+            if (pivot.id && !existingIds.has(pivot.id) && !allowNewIds) {
               throw new BadRequestException(
                 `Pivot table does not belong to this sheet: ${pivot.id}`,
               );
@@ -2858,6 +2859,78 @@ export class SheetsService {
       }
       throw error;
     }
+  }
+
+  async createPivotTable(
+    userId: string,
+    sheetId: string,
+    pivot: PivotTableDto & { id: string },
+    expectedVersion: number,
+  ) {
+    const sheet = await this.prisma.sheet.findUnique({
+      where: { id: sheetId },
+      select: { spreadsheetId: true, version: true },
+    });
+    if (!sheet) throw new NotFoundException('Sheet not found');
+    await this.checkEditAccess(userId, sheet.spreadsheetId);
+
+    const replay = await this.prisma.pivotTable.findUnique({
+      where: { id: pivot.id },
+    });
+    if (replay) {
+      if (
+        replay.sheetId !== sheetId ||
+        replay.name !== (pivot.name ?? null) ||
+        replay.sourceRange !==
+          (pivot.sourceRange ?? this.formatA1Range(pivot.config.sourceRange)) ||
+        replay.targetCell !== pivot.targetCell ||
+        JSON.stringify(replay.config) !== JSON.stringify(pivot.config)
+      ) {
+        throw new ConflictException(
+          'Idempotency key was already used for a different pivot request.',
+        );
+      }
+      return {
+        pivotTable: replay,
+        version: sheet.version,
+        replayed: true,
+      };
+    }
+
+    const existing = await this.prisma.pivotTable.findMany({
+      where: { sheetId },
+    });
+    const pivotTables: PivotTableDto[] = [
+      ...existing.map((item) => {
+        if (!item.targetCell) {
+          throw new BadRequestException(
+            `Existing pivot is missing a target cell: ${item.id}`,
+          );
+        }
+        const config = item.config as unknown as PivotTableDto['config'];
+        return {
+          id: item.id,
+          name: item.name ?? undefined,
+          config,
+          sourceRange:
+            item.sourceRange ?? this.formatA1Range(config.sourceRange),
+          targetCell: item.targetCell,
+        };
+      }),
+      pivot,
+    ];
+    const saved = await this.savePivotTables(
+      userId,
+      sheetId,
+      pivotTables,
+      expectedVersion,
+      true,
+    );
+    return {
+      pivotTable: saved.pivotTables.find(({ id }) => id === pivot.id),
+      version: saved.version,
+      replayed: false,
+    };
   }
 
   private assertUniquePivotIds(pivotTables: PivotTableDto[]): void {

@@ -7,6 +7,7 @@ describe('SpreadsheetCommandService', () => {
     changeStructure: jest.fn(),
     getAppendTarget: jest.fn(),
     getCellMutationReplay: jest.fn(),
+    createPivotTable: jest.fn(),
   };
   const service = new SpreadsheetCommandService(
     sheets as unknown as SheetsService,
@@ -231,6 +232,46 @@ describe('SpreadsheetCommandService', () => {
       ],
       30,
       'formula-request-1',
+    );
+  });
+
+  it('creates pivots with a stable id derived from the idempotency key', async () => {
+    sheets.createPivotTable.mockResolvedValue({
+      pivotTable: { id: 'stable' },
+      version: 41,
+      replayed: false,
+    });
+    const command = {
+      type: 'CREATE_PIVOT' as const,
+      sheetId: 'sheet-1',
+      pivot: {
+        name: 'Sales by region',
+        targetCell: 'H1',
+        config: {
+          sourceRange: { startRow: 0, startCol: 0, endRow: 20, endCol: 4 },
+          rows: ['Region'],
+          cols: [],
+          values: [{ field: 'Revenue', aggregation: 'SUM' as const }],
+        },
+      },
+      expectedVersion: 40,
+      idempotencyKey: 'pivot-request-1',
+    };
+
+    await service.execute({ userId: 'user-1', actorType: 'MCP' }, command);
+    await service.execute({ userId: 'user-1', actorType: 'MCP' }, command);
+
+    const firstPivot = sheets.createPivotTable.mock.calls[0][2];
+    const secondPivot = sheets.createPivotTable.mock.calls[1][2];
+    expect(firstPivot.id).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-5[0-9a-f]{3}-a[0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+    expect(secondPivot.id).toBe(firstPivot.id);
+    expect(sheets.createPivotTable).toHaveBeenLastCalledWith(
+      'user-1',
+      'sheet-1',
+      { ...command.pivot, id: firstPivot.id },
+      40,
     );
   });
 });

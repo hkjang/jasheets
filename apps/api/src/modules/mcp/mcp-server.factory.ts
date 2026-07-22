@@ -244,6 +244,90 @@ export class McpServerFactory {
         ),
     );
 
+    server.registerTool(
+      'create_pivot',
+      {
+        description:
+          'Create an idempotent pivot table definition from a validated source range and target cell.',
+        inputSchema: {
+          sheetId: z.string().uuid(),
+          name: z.string().min(1).max(200).optional(),
+          sourceRange: z.object({
+            startRow: z.number().int().min(0).max(999999),
+            startCol: z.number().int().min(0).max(18277),
+            endRow: z.number().int().min(0).max(999999),
+            endCol: z.number().int().min(0).max(18277),
+          }),
+          targetCell: z.string().regex(/^\$?[A-Z]+\$?[1-9][0-9]*$/i),
+          rows: z.array(z.string().min(1).max(256)).max(50).default([]),
+          columns: z.array(z.string().min(1).max(256)).max(50).default([]),
+          values: z
+            .array(
+              z.object({
+                field: z.string().min(1).max(256),
+                aggregation: z.enum(['SUM', 'COUNT', 'AVERAGE', 'MIN', 'MAX']),
+              }),
+            )
+            .min(1)
+            .max(50),
+          filters: z
+            .array(
+              z.object({
+                field: z.string().min(1).max(256),
+                operator: z.enum([
+                  'EQUALS',
+                  'NOT_EQUALS',
+                  'CONTAINS',
+                  'NOT_CONTAINS',
+                  'GREATER_THAN',
+                  'GREATER_THAN_OR_EQUAL',
+                  'LESS_THAN',
+                  'LESS_THAN_OR_EQUAL',
+                  'BETWEEN',
+                  'IN',
+                  'IS_BLANK',
+                  'IS_NOT_BLANK',
+                ]),
+                value: z.unknown().optional(),
+                values: z.array(z.unknown()).max(1000).optional(),
+              }),
+            )
+            .max(50)
+            .optional(),
+          rowGrandTotals: z.boolean().optional().default(true),
+          columnGrandTotals: z.boolean().optional().default(true),
+          expectedVersion: z.number().int().min(0),
+          idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+        },
+        annotations: { readOnlyHint: false, idempotentHint: true },
+      },
+      async (input) =>
+        jsonResult(
+          await this.commands.execute(
+            { userId, actorType: 'MCP' },
+            {
+              type: 'CREATE_PIVOT',
+              sheetId: input.sheetId,
+              pivot: {
+                name: input.name,
+                targetCell: input.targetCell,
+                config: {
+                  sourceRange: input.sourceRange,
+                  rows: input.rows,
+                  cols: input.columns,
+                  values: input.values,
+                  filters: input.filters,
+                  rowGrandTotals: input.rowGrandTotals,
+                  columnGrandTotals: input.columnGrandTotals,
+                },
+              },
+              expectedVersion: input.expectedVersion,
+              idempotencyKey: input.idempotencyKey,
+            },
+          ),
+        ),
+    );
+
     const registerStructureTool = (
       name: 'insert_row' | 'delete_row',
       operation: 'insert' | 'delete',
