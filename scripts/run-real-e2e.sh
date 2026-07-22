@@ -15,5 +15,7 @@ trap cleanup EXIT
 
 docker compose -f "$compose_file" up -d --wait
 DATABASE_URL="$database_url" pnpm --filter api exec prisma migrate deploy
-pnpm --filter api build
+if [[ "${JASHEETS_E2E_SKIP_BUILD:-0}" != "1" ]]; then
+  pnpm --filter api build
+fi
 pnpm exec playwright test --config=playwright.real.config.ts "$@"

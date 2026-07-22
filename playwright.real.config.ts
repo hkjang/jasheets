@@ -25,7 +25,7 @@ export default defineConfig({
       command: 'node apps/api/dist/src/main.js',
       url: 'http://localhost:4000/api',
       reuseExistingServer: false,
-      timeout: 120_000,
+      timeout: 240_000,
       env: {
         DATABASE_URL: databaseUrl,
         API_PORT: '4000',
@@ -37,7 +37,7 @@ export default defineConfig({
       command: 'pnpm --filter web dev',
       url: 'http://localhost:3000',
       reuseExistingServer: false,
-      timeout: 120_000,
+      timeout: 240_000,
       env: {
         NEXT_PUBLIC_API_URL: 'http://localhost:4000/api',
         NEXT_PUBLIC_WS_URL: 'http://localhost:4000',
