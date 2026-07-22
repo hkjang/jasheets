@@ -53,6 +53,21 @@ describe("authenticatedFetch", () => {
     expect(localStorage.getItem("auth_token")).toBe("secret-access");
   });
 
+  it("authenticates same-origin API paths used by offline deployments", async () => {
+    saveAuthSession({
+      accessToken: "offline-access",
+      refreshToken: "offline-refresh",
+      user: { id: "1", email: "user@example.com" },
+    });
+    const fetchMock = jest.fn().mockResolvedValue(response(200));
+    globalThis.fetch = fetchMock;
+
+    await authenticatedFetch("/api", "/api/sheets");
+
+    const headers = new Headers(fetchMock.mock.calls[0][1]?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer offline-access");
+  });
+
   it("refreshes once after a 401 and retries with the new token", async () => {
     saveAuthSession({
       accessToken: "expired",

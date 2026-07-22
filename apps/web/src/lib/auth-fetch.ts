@@ -22,8 +22,9 @@ function requestUrl(input: RequestInfo | URL): string {
 
 function isApiRequest(apiUrl: string, input: RequestInfo | URL): boolean {
   try {
-    const api = new URL(apiUrl);
-    const request = new URL(requestUrl(input), api);
+    const pageOrigin = typeof window !== "undefined" ? window.location.origin : "http://localhost";
+    const api = new URL(apiUrl, pageOrigin);
+    const request = new URL(requestUrl(input), pageOrigin);
     const apiPath = api.pathname.replace(/\/$/, "");
     return request.origin === api.origin
       && (request.pathname === apiPath || request.pathname.startsWith(`${apiPath}/`));

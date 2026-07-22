@@ -1,0 +1,22 @@
+name: jasheets
+
+services:
+  app:
+    image: jasheets/app:${JASHEETS_VERSION}
+    restart: unless-stopped
+    environment:
+      POSTGRES_DSN: ${POSTGRES_DSN}
+    ports:
+      - "${JASHEETS_WEB_BIND:-127.0.0.1:3000}:3000"
+      - "${JASHEETS_API_BIND:-127.0.0.1:4000}:4000"
+    volumes:
+      - jasheets_state:/var/lib/jasheets
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 3000 && nc -z 127.0.0.1 4000"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 45s
+
+volumes:
+  jasheets_state:

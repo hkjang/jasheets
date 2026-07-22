@@ -31,6 +31,11 @@ RUN cd apps/api && npx prisma generate
 # Build the API
 RUN pnpm --filter api build
 
+# Create a self-contained production dependency tree. Copying pnpm workspace
+# symlinks alone leaves broken links in the runtime image.
+RUN pnpm --filter api deploy --prod /prod/api
+RUN cp -r apps/api/dist /prod/api/dist && cp -r apps/api/prisma /prod/api/prisma
+
 # Production stage
 FROM node:20-alpine AS runner
 
@@ -42,11 +47,10 @@ ENV NODE_ENV=production
 RUN addgroup --system --gid 1001 nestjs
 RUN adduser --system --uid 1001 nestjs
 
-# Copy built assets
-COPY --from=builder /app/apps/api/dist ./dist
-COPY --from=builder /app/apps/api/node_modules ./node_modules
-COPY --from=builder /app/apps/api/package.json ./
-COPY --from=builder /app/apps/api/prisma ./prisma
+# Copy the deployable app and migration entrypoint.
+COPY --from=builder /prod/api ./
+COPY docker/api-entrypoint.sh /usr/local/bin/jasheets-api-entrypoint
+RUN chmod 755 /usr/local/bin/jasheets-api-entrypoint
 
 USER nestjs
 
@@ -54,4 +58,5 @@ EXPOSE 4000
 
 ENV PORT=4000
 
+ENTRYPOINT ["jasheets-api-entrypoint"]
 CMD ["node", "dist/main.js"]

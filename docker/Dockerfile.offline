@@ -1,0 +1,52 @@
+FROM node:20-alpine AS builder
+
+WORKDIR /app
+RUN npm install -g pnpm
+
+COPY pnpm-lock.yaml pnpm-workspace.yaml package.json ./
+COPY packages/shared/package.json ./packages/shared/
+COPY packages/formula-engine/package.json ./packages/formula-engine/
+COPY packages/crdt/package.json ./packages/crdt/
+COPY apps/api/package.json ./apps/api/
+COPY apps/web/package.json ./apps/web/
+RUN pnpm install --frozen-lockfile
+
+COPY packages ./packages
+COPY apps/api ./apps/api
+COPY apps/web ./apps/web
+
+ARG NEXT_PUBLIC_API_URL=/api
+ARG NEXT_PUBLIC_WS_URL=
+ENV NEXT_PUBLIC_API_URL=${NEXT_PUBLIC_API_URL}
+ENV NEXT_PUBLIC_WS_URL=${NEXT_PUBLIC_WS_URL}
+
+RUN pnpm --filter @jasheets/shared build \
+ && pnpm --filter @jasheets/formula-engine build \
+ && pnpm --filter @jasheets/crdt build \
+ && pnpm --filter api build \
+ && pnpm --filter web build
+RUN pnpm --filter api deploy --prod /prod/api \
+ && cp -r apps/api/dist /prod/api/dist \
+ && cp -r apps/api/prisma /prod/api/prisma
+
+FROM node:20-alpine AS runner
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+RUN addgroup --system --gid 1001 jasheets \
+ && adduser --system --uid 1001 --ingroup jasheets jasheets \
+ && mkdir -p /app/api /app/web /var/lib/jasheets \
+ && chown -R jasheets:jasheets /app /var/lib/jasheets
+
+COPY --from=builder --chown=jasheets:jasheets /prod/api /app/api
+COPY --from=builder --chown=jasheets:jasheets /app/apps/web/.next/standalone /app/web
+COPY --from=builder --chown=jasheets:jasheets /app/apps/web/.next/static /app/web/apps/web/.next/static
+COPY --from=builder --chown=jasheets:jasheets /app/apps/web/public /app/web/apps/web/public
+COPY --chown=jasheets:jasheets docker/unified-entrypoint.sh /usr/local/bin/jasheets-entrypoint
+RUN chmod 755 /usr/local/bin/jasheets-entrypoint
+
+USER jasheets
+EXPOSE 3000 4000
+VOLUME ["/var/lib/jasheets"]
+ENTRYPOINT ["jasheets-entrypoint"]
