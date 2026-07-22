@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useCallback, useState, useMemo, useId } from 'react';
+import { useRef, useEffect, useLayoutEffect, useCallback, useState, useMemo, useId } from 'react';
 import {
   CellPosition,
   CellRange,
@@ -26,6 +26,7 @@ import {
 } from '@/utils/spreadsheetAccessibility';
 import { isDoubleTap, isTap, PointerSample } from '@/utils/mobileGestures';
 import { normalizeHyperlinkUrl } from '@/utils/hyperlink';
+import { syncCanvasResolution } from '@/utils/canvasResolution';
 import {
   findMergedRange,
   getMergedRangeRect,
@@ -170,12 +171,10 @@ export default function SpreadsheetCanvas({
     const { width, height } = canvasSize;
     const dpr = window.devicePixelRatio || 1;
 
-    // Set canvas size with device pixel ratio
-    canvas.width = width * dpr;
-    canvas.height = height * dpr;
-    canvas.style.width = `${width}px`;
-    canvas.style.height = `${height}px`;
-    ctx.scale(dpr, dpr);
+    // Resizing a canvas clears its pixel buffer. Only resize when its physical
+    // dimensions actually changed; cell selection and autosave redraws must not
+    // blank the canvas between frames.
+    syncCanvasResolution(canvas, ctx, width, height, dpr);
 
     // Clear canvas
     ctx.fillStyle = '#fff';
@@ -474,17 +473,26 @@ export default function SpreadsheetCanvas({
   ]);
 
   // Handle resize
-  useEffect(() => {
+  useLayoutEffect(() => {
     const container = containerRef.current;
     if (!container) return;
+
+    const updateSize = (width: number, height: number) => {
+      if (width <= 0 || height <= 0) return;
+      setCanvasSize((current) =>
+        current.width === width && current.height === height
+          ? current
+          : { width, height },
+      );
+    };
+
+    const bounds = container.getBoundingClientRect();
+    updateSize(bounds.width, bounds.height);
 
     const resizeObserver = new ResizeObserver((entries) => {
       const entry = entries[0];
       if (entry) {
-        setCanvasSize({
-          width: entry.contentRect.width,
-          height: entry.contentRect.height,
-        });
+        updateSize(entry.contentRect.width, entry.contentRect.height);
       }
     });
 
@@ -493,7 +501,7 @@ export default function SpreadsheetCanvas({
   }, []);
 
   // Redraw on state change
-  useEffect(() => {
+  useLayoutEffect(() => {
     draw();
   }, [draw]);
 

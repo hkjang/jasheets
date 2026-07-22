@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useMemo, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { useAuth } from "@/hooks/useAuth";
+import type { User } from "@/hooks/useAuth";
 import SpreadsheetCanvas from "./SpreadsheetCanvas";
 import CellEditor from "./CellEditor";
 import FormulaBar from "./FormulaBar";
@@ -105,6 +105,7 @@ import {
 } from "@/utils/conditionalRulePersistence";
 
 interface SpreadsheetProps {
+  currentUser: User;
   initialData?: SheetData;
   initialCharts?: any[];
   initialConditionalRules?: ConditionalRule[];
@@ -142,6 +143,7 @@ interface SpreadsheetProps {
 }
 
 export default function Spreadsheet({
+  currentUser,
   initialData = {},
   initialCharts = [],
   initialConditionalRules = [],
@@ -176,7 +178,7 @@ export default function Spreadsheet({
   const sheetVersionRef = useRef(initialVersion);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [sheetActionPending, setSheetActionPending] = useState(false);
-  const { user, loading } = useAuth();
+  const user = currentUser;
   const collaborationBroadcastRef = useRef<
     (updates: PersistedCellUpdate[]) => void
   >(() => undefined);
@@ -1610,21 +1612,6 @@ export default function Spreadsheet({
       setSheetActionPending(false);
     }
   }, [activeSheetId, mergedRanges, onMergedRangesChange, onVersionChange, persistActiveSheet, selectedCell, sheetActionPending]);
-
-  if (loading || !user) {
-    return (
-      <div
-        style={{
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          height: "100vh",
-        }}
-      >
-        Loading...
-      </div>
-    );
-  }
 
   return (
     <div className={styles.container}>

@@ -419,6 +419,7 @@ export default function SpreadsheetPage() {
   return (
     <Spreadsheet
       key={activeSheetId}
+      currentUser={user}
       initialData={data}
       initialCharts={initialCharts}
       initialConditionalRules={initialConditionalRules}
