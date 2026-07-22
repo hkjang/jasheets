@@ -26,11 +26,15 @@ import { SheetViewDto } from './dto/sheet-view.dto';
 import { MergeCellsDto, UnmergeCellsDto } from './dto/merged-range.dto';
 import { ImportWorkbookDto } from './dto/import-workbook.dto';
 import { SavePivotTablesDto } from './dto/pivot-table.dto';
+import { SpreadsheetCommandService } from '../spreadsheet-command/spreadsheet-command.service';
 
 @Controller('sheets')
 @UseGuards(JwtAuthGuard)
 export class SheetsController {
-  constructor(private readonly sheetsService: SheetsService) {}
+  constructor(
+    private readonly sheetsService: SheetsService,
+    private readonly commands: SpreadsheetCommandService,
+  ) {}
 
   @Post()
   create(@Request() req: any, @Body() dto: CreateSpreadsheetDto) {
@@ -199,7 +203,16 @@ export class SheetsController {
     @Param('sheetId') sheetId: string,
     @Body() dto: StructuralChangeDto,
   ) {
-    return this.sheetsService.changeStructure(req.user.id, sheetId, dto);
+    return this.commands.execute(
+      { userId: req.user.id, actorType: 'USER' },
+      {
+        type: 'CHANGE_STRUCTURE',
+        sheetId,
+        axis: dto.axis,
+        operation: dto.type,
+        index: dto.index,
+      },
+    );
   }
 
   @Put('sheet/:sheetId/view')
@@ -258,12 +271,15 @@ export class SheetsController {
     @Param('sheetId') sheetId: string,
     @Body() dto: UpdateCellsDto,
   ) {
-    return this.sheetsService.updateCells(
-      req.user.id,
-      sheetId,
-      dto.updates,
-      dto.expectedVersion,
-      dto.idempotencyKey,
+    return this.commands.execute(
+      { userId: req.user.id, actorType: 'USER' },
+      {
+        type: 'SET_CELLS',
+        sheetId,
+        updates: dto.updates,
+        expectedVersion: dto.expectedVersion,
+        idempotencyKey: dto.idempotencyKey,
+      },
     );
   }
 

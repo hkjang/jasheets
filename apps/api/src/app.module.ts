@@ -46,6 +46,7 @@ import { QuotaModule } from './modules/quota/quota.module';
 import { MacroApprovalModule } from './modules/macro-approval/macro-approval.module';
 import { ActivityTrackerModule } from './modules/activity-tracker/activity-tracker.module';
 import { APIUsageModule } from './modules/api-usage/api-usage.module';
+import { McpModule } from './modules/mcp/mcp.module';
 
 @Module({
   imports: [
@@ -97,8 +98,9 @@ import { APIUsageModule } from './modules/api-usage/api-usage.module';
     MacroApprovalModule,
     ActivityTrackerModule,
     APIUsageModule,
+    McpModule,
   ],
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule { }
+export class AppModule {}

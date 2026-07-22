@@ -38,6 +38,10 @@ JWT 서명키와 OIDC 설정 암호화 키는 최초 실행 시 `jasheets_state`
 Ingress는 `/`를 호스트의 Web bind(기본 `127.0.0.1:3000`)로 보내고,
 `/api`와 `/socket.io`를 API bind(기본 `127.0.0.1:4000`)로 보내십시오.
 
+`/api/mcp`도 API bind로 전달하면 동일 이미지에서 Streamable HTTP MCP를
+사용할 수 있습니다. 도구와 인증 설정은 [MCP_SERVER.md](./MCP_SERVER.md)를
+참조하십시오.
+
 ## 3. 설치 및 확인
 
 ```bash
