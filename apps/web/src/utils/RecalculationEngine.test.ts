@@ -117,4 +117,43 @@ describe('incremental recalculation', () => {
     expect(data[0][2]).toMatchObject({ value: 'Q3 2026', displayValue: 'Q3 2026' });
     expect(data[0][3]).toMatchObject({ value: 'ready', displayValue: 'ready' });
   });
+
+  it('tracks a million-row range without expanding every cell dependency', () => {
+    const data: SheetData = {
+      0: {
+        0: { value: 2 },
+        1: formula('=SUM(A1:A1000000)'),
+        2: formula('=B1+1'),
+      },
+      999999: {
+        0: { value: 3 },
+      },
+    };
+
+    recalculate(data, {}, [{ row: 999999, col: 0 }]);
+
+    expect(data[0][1].value).toBe(5);
+    expect(data[0][2].value).toBe(6);
+  });
+
+  it('treats named ranges as interval dependencies', () => {
+    const data: SheetData = {
+      0: {
+        0: { value: 4 },
+        1: formula('=SUM(SALES)'),
+      },
+      999999: {
+        0: { value: 6 },
+      },
+    };
+
+    recalculate(data, {
+      SALES: {
+        start: { row: 0, col: 0 },
+        end: { row: 999999, col: 0 },
+      },
+    }, [{ row: 999999, col: 0 }]);
+
+    expect(data[0][1].value).toBe(10);
+  });
 });

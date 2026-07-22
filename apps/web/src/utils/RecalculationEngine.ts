@@ -9,13 +9,30 @@ const parseCellKey = (key: string) => {
     return { row, col };
 };
 
+interface CellRangeDependency {
+    startRow: number;
+    endRow: number;
+    startCol: number;
+    endCol: number;
+}
+
+interface FormulaDependencies {
+    cells: string[];
+    ranges: CellRangeDependency[];
+}
+
+const containsCell = (range: CellRangeDependency, row: number, col: number) =>
+    row >= range.startRow && row <= range.endRow
+    && col >= range.startCol && col <= range.endCol;
+
 // Extract dependencies from a formula string
 // Returns array of cell keys "row:col"
-function getDependencies(formula: string, namedRanges: NamedRanges): string[] {
-    if (!formula.startsWith('=')) return [];
+function getDependencies(formula: string, namedRanges: NamedRanges): FormulaDependencies {
+    if (!formula.startsWith('=')) return { cells: [], ranges: [] };
     
     const tokens = tokenize(formula);
     const deps: Set<string> = new Set();
+    const ranges: CellRangeDependency[] = [];
     
     for (const token of tokens) {
         if (token.type === 'REF') {
@@ -58,25 +75,22 @@ function getDependencies(formula: string, namedRanges: NamedRanges): string[] {
                      const maxR = Math.max(start.row, end.row);
                      const minC = Math.min(start.col, end.col);
                      const maxC = Math.max(start.col, end.col);
-                     for(let r=minR; r<=maxR; r++) {
-                         for(let c=minC; c<=maxC; c++) {
-                             deps.add(getCellKey(r,c));
-                         }
-                     }
+                     ranges.push({ startRow: minR, endRow: maxR, startCol: minC, endCol: maxC });
                  }
              }
         } else if (token.type === 'NAME') {
             const range = namedRanges[token.value];
             if (range) {
-                for (let row = range.start.row; row <= range.end.row; row++) {
-                    for (let col = range.start.col; col <= range.end.col; col++) {
-                        deps.add(getCellKey(row, col));
-                    }
-                }
+                ranges.push({
+                    startRow: Math.min(range.start.row, range.end.row),
+                    endRow: Math.max(range.start.row, range.end.row),
+                    startCol: Math.min(range.start.col, range.end.col),
+                    endCol: Math.max(range.start.col, range.end.col),
+                });
             }
         }
     }
-    return Array.from(deps);
+    return { cells: Array.from(deps), ranges };
 }
 
 function parseRef(ref: string) {
@@ -101,6 +115,7 @@ export function recalculate(
 ): SheetData {
     // 1. Build Graph
     const graph = new Map<string, string[]>(); // Key -> dependants (who depends on Key)
+    const rangeGraph: Array<{ range: CellRangeDependency; dependant: string }> = [];
     
     // Scan all cells with formulas
     const cellsWithFormulas: string[] = [];
@@ -120,13 +135,14 @@ export function recalculate(
                 cellsWithFormulas.push(key);
                 
                 const deps = getDependencies(cell.formula, namedRanges);
-                deps.forEach(dep => {
+                deps.cells.forEach(dep => {
                     // dep is a cell that 'key' needs.
                     // So if 'dep' changes, 'key' needs update.
                     // Graph: dep -> [key, ...] (Adjacency List)
                     if (!graph.has(dep)) graph.set(dep, []);
                     graph.get(dep)!.push(key);
                 });
+                deps.ranges.forEach((range) => rangeGraph.push({ range, dependant: key }));
                 
             }
         });
@@ -177,6 +193,12 @@ export function recalculate(
                 affected.add(dependant);
                 pending.push(dependant);
             }
+            const position = parseCellKey(key);
+            for (const edge of rangeGraph) {
+                if (!containsCell(edge.range, position.row, position.col) || affected.has(edge.dependant)) continue;
+                affected.add(edge.dependant);
+                pending.push(edge.dependant);
+            }
         }
     }
     const activeFormulaSet = changedCells
@@ -191,10 +213,10 @@ export function recalculate(
          const cell = data[row]?.[col];
          const deps = getDependencies(cell?.formula || '', namedRanges);
          
-         let count = 0;
-         deps.forEach(dep => {
+         const internalDependencies = new Set<string>();
+         deps.cells.forEach(dep => {
              if (activeFormulaSet.has(dep)) {
-                 count++;
+                 internalDependencies.add(dep);
                  // We also need to build the internal graph for these
                  if (!graph.has(dep)) graph.set(dep, []);
                  // Check if we already added this edge? getDependencies might return dups.
@@ -203,6 +225,15 @@ export function recalculate(
                  // actually graph was built for ALL deps above. We should rebuild or reuse.
              }
          });
+         deps.ranges.forEach((range) => {
+             activeFormulaCells.forEach((dependencyKey) => {
+                 const dependency = parseCellKey(dependencyKey);
+                 if (containsCell(range, dependency.row, dependency.col)) {
+                     internalDependencies.add(dependencyKey);
+                 }
+             });
+         });
+         const count = internalDependencies.size;
          effectiveInDegree.set(cellKey, count);
          if (count === 0) {
              queue.push(cellKey);
@@ -225,8 +256,12 @@ export function recalculate(
         // But that included constants.
         // We can just use that graph.
         
-        const consumers = graph.get(u);
-        if (consumers) {
+        const provider = parseCellKey(u);
+        const consumers = new Set(graph.get(u) ?? []);
+        rangeGraph.forEach((edge) => {
+            if (containsCell(edge.range, provider.row, provider.col)) consumers.add(edge.dependant);
+        });
+        if (consumers.size > 0) {
             consumers.forEach(v => {
                 if (activeFormulaSet.has(v)) {
                     const current = effectiveInDegree.get(v) || 0;
