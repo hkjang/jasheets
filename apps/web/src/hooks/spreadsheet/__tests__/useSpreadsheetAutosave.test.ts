@@ -1,6 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { api } from "@/lib/api";
-import { useSpreadsheetAutosave } from "../useSpreadsheetAutosave";
+import type { OfflineChange, OfflineChangeStore } from "@/utils/offlineChangeQueue";
+import {
+  type AutosaveBatch,
+  useSpreadsheetAutosave,
+} from "../useSpreadsheetAutosave";
 
 jest.mock("@/lib/api", () => ({
   CellVersionConflictError: class CellVersionConflictError extends Error {
@@ -12,6 +16,25 @@ jest.mock("@/lib/api", () => ({
 }));
 
 const updateCells = jest.mocked(api.spreadsheets.updateCells);
+
+class TrackingStore implements OfflineChangeStore<AutosaveBatch> {
+  changes = new Map<string, OfflineChange<AutosaveBatch>>();
+  events: string[] = [];
+
+  async list() {
+    return [...this.changes.values()].sort((left, right) => left.createdAt - right.createdAt);
+  }
+
+  async put(change: OfflineChange<AutosaveBatch>) {
+    this.events.push(`put:${change.id}`);
+    this.changes.set(change.id, change);
+  }
+
+  async delete(id: string) {
+    this.events.push(`delete:${id}`);
+    this.changes.delete(id);
+  }
+}
 
 describe("useSpreadsheetAutosave", () => {
   beforeEach(() => {
@@ -129,5 +152,71 @@ describe("useSpreadsheetAutosave", () => {
     expect(updateCells.mock.calls[1][2]).toBe(9);
     expect(updateCells.mock.calls[1][1]).toEqual(updateCells.mock.calls[0][1]);
     expect(updateCells.mock.calls[1][3]).toBe(updateCells.mock.calls[0][3]);
+  });
+
+  it("commits a batch to the durable outbox before sending and deletes it after success", async () => {
+    const store = new TrackingStore();
+    updateCells.mockImplementation(async () => {
+      expect(store.changes.size).toBe(1);
+      return { cells: [], version: 2 };
+    });
+    const { result } = renderHook(() =>
+      useSpreadsheetAutosave({
+        sheetId: "sheet-1",
+        userId: "user-1",
+        outboxStore: store,
+      }),
+    );
+
+    act(() => {
+      result.current.queueChanges([
+        { row: 0, col: 0, value: "durable", formula: null, format: null },
+      ]);
+      jest.advanceTimersByTime(600);
+    });
+
+    await waitFor(() => expect(result.current.status).toBe("saved"));
+    expect(store.events[0]).toEqual(expect.stringMatching(/^put:/));
+    expect(store.events.at(-1)).toEqual(expect.stringMatching(/^delete:/));
+    expect(store.changes.size).toBe(0);
+  });
+
+  it("recovers a failed batch after remount with the same idempotency key", async () => {
+    const store = new TrackingStore();
+    updateCells.mockRejectedValueOnce(new Error("offline"));
+    const first = renderHook(() =>
+      useSpreadsheetAutosave({
+        sheetId: "sheet-1",
+        userId: "user-1",
+        outboxStore: store,
+      }),
+    );
+
+    act(() => {
+      first.result.current.queueChanges([
+        { row: 2, col: 4, value: "survives", formula: null, format: null },
+      ]);
+      jest.advanceTimersByTime(600);
+    });
+    await waitFor(() => expect(first.result.current.status).toBe("error"));
+    const originalKey = [...store.changes.keys()][0];
+    first.unmount();
+
+    updateCells.mockResolvedValueOnce({ cells: [], version: 7 });
+    const second = renderHook(() =>
+      useSpreadsheetAutosave({
+        sheetId: "sheet-1",
+        userId: "user-1",
+        outboxStore: store,
+      }),
+    );
+
+    await waitFor(() => expect(updateCells).toHaveBeenCalledTimes(2));
+    expect(updateCells.mock.calls[1][1]).toEqual([
+      { row: 2, col: 4, value: "survives", formula: null, format: null },
+    ]);
+    expect(updateCells.mock.calls[1][3]).toBe(originalKey);
+    await waitFor(() => expect(store.changes.size).toBe(0));
+    await waitFor(() => expect(second.result.current.status).toBe("saved"));
   });
 });

@@ -24,24 +24,36 @@ export class IndexedDbChangeStore<T = unknown> implements OfflineChangeStore<T> 
   ) {}
 
   async list(): Promise<OfflineChange<T>[]> {
-    const store = await this.transaction('readonly');
+    const { store, complete } = await this.transaction('readonly');
     const changes = await this.request<OfflineChange<T>[]>(store.getAll());
+    await complete;
     return changes.sort((left, right) => left.createdAt - right.createdAt);
   }
 
   async put(change: OfflineChange<T>): Promise<void> {
-    const store = await this.transaction('readwrite');
+    const { store, complete } = await this.transaction('readwrite');
     await this.request(store.put(change));
+    await complete;
   }
 
   async delete(id: string): Promise<void> {
-    const store = await this.transaction('readwrite');
+    const { store, complete } = await this.transaction('readwrite');
     await this.request(store.delete(id));
+    await complete;
   }
 
-  private async transaction(mode: IDBTransactionMode): Promise<IDBObjectStore> {
+  private async transaction(mode: IDBTransactionMode): Promise<{
+    store: IDBObjectStore;
+    complete: Promise<void>;
+  }> {
     const database = await this.open();
-    return database.transaction(this.storeName, mode).objectStore(this.storeName);
+    const transaction = database.transaction(this.storeName, mode);
+    const complete = new Promise<void>((resolve, reject) => {
+      transaction.oncomplete = () => resolve();
+      transaction.onabort = () => reject(transaction.error ?? new Error('IndexedDB transaction aborted'));
+      transaction.onerror = () => reject(transaction.error ?? new Error('IndexedDB transaction failed'));
+    });
+    return { store: transaction.objectStore(this.storeName), complete };
   }
 
   private open(): Promise<IDBDatabase> {

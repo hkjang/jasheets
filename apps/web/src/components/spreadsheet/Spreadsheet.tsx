@@ -253,6 +253,7 @@ export default function Spreadsheet({
     flush: flushAutosave,
   } = useSpreadsheetAutosave({
     sheetId: activeSheetId,
+    userId: currentUser?.id,
     onSaved: handleAutosaveSaved,
     onBroadcast: handleAutosaveBroadcast,
     onError: handleAutosaveError,
