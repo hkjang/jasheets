@@ -34,7 +34,6 @@ RUN pnpm --filter api build
 # Create a self-contained production dependency tree. Copying pnpm workspace
 # symlinks alone leaves broken links in the runtime image.
 RUN pnpm --filter api deploy --prod /prod/api
-RUN cp -r apps/api/dist /prod/api/dist && cp -r apps/api/prisma /prod/api/prisma
 
 # Production stage
 FROM node:20-alpine AS runner
@@ -59,4 +58,4 @@ EXPOSE 4000
 ENV PORT=4000
 
 ENTRYPOINT ["jasheets-api-entrypoint"]
-CMD ["node", "dist/main.js"]
+CMD ["node", "dist/src/main.js"]

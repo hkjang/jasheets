@@ -40,7 +40,7 @@ shutdown() {
 }
 trap shutdown INT TERM EXIT
 
-API_PORT=4000 PORT=4000 node /app/api/dist/main.js &
+API_PORT=4000 PORT=4000 node /app/api/dist/src/main.js &
 API_PID=$!
 PORT=3000 HOSTNAME=0.0.0.0 node /app/web/apps/web/server.js &
 WEB_PID=$!
