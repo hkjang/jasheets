@@ -23,6 +23,15 @@ export interface SetCellsCommand {
   idempotencyKey?: string;
 }
 
+export interface ExecuteChangeSetCommand {
+  type: 'EXECUTE_CHANGE_SET';
+  sheetId: string;
+  updates: SetCellsCommand['updates'];
+  expectedVersion: number;
+  previewHash: string;
+  idempotencyKey: string;
+}
+
 export interface WriteRangeCommand {
   type: 'WRITE_RANGE';
   sheetId: string;
@@ -99,6 +108,7 @@ export interface ChangeStructureCommand {
 
 export type SpreadsheetCommand =
   | SetCellsCommand
+  | ExecuteChangeSetCommand
   | WriteRangeCommand
   | AppendRowsCommand
   | ApplyFormulaCommand

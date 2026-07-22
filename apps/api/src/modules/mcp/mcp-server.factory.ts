@@ -221,6 +221,44 @@ export class McpServerFactory {
     );
 
     server.registerTool(
+      'execute_change_set',
+      {
+        description:
+          'Apply a previously previewed cell change set only if its sheet version and deterministic preview hash still match.',
+        inputSchema: {
+          sheetId: z.string().uuid(),
+          updates: z
+            .array(
+              z.object({
+                row: z.number().int().min(0),
+                col: z.number().int().min(0),
+                value: z.unknown().optional(),
+                formula: z.string().nullable().optional(),
+                format: z.record(z.unknown()).optional(),
+              }),
+            )
+            .min(1)
+            .max(1000),
+          expectedVersion: z.number().int().min(0),
+          previewHash: z.string().regex(/^[a-f0-9]{64}$/),
+          idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+        },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+        },
+      },
+      async (input) =>
+        jsonResult(
+          await this.commands.execute(
+            { userId, actorType: 'MCP' },
+            { type: 'EXECUTE_CHANGE_SET', ...input },
+          ),
+        ),
+    );
+
+    server.registerTool(
       'write_range',
       {
         description:

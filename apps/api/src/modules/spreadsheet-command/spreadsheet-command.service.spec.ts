@@ -7,6 +7,7 @@ describe('SpreadsheetCommandService', () => {
     changeStructure: jest.fn(),
     getAppendTarget: jest.fn(),
     getCellMutationReplay: jest.fn(),
+    previewCellChanges: jest.fn(),
     createPivotTable: jest.fn(),
     createChart: jest.fn(),
   };
@@ -60,6 +61,129 @@ describe('SpreadsheetCommandService', () => {
       type: 'insert',
       index: 3,
     });
+  });
+
+  it('executes a change set only when its preview still matches', async () => {
+    sheets.getCellMutationReplay.mockResolvedValue(null);
+    sheets.previewCellChanges.mockResolvedValue({
+      currentVersion: 7,
+      versionConflict: false,
+      canApply: true,
+      previewHash: 'a'.repeat(64),
+    });
+    sheets.updateCells.mockResolvedValue({ version: 8, cells: [] });
+    const updates = [{ row: 1, col: 2, value: 'approved' }];
+
+    await expect(
+      service.execute(
+        { userId: 'user-1', actorType: 'MCP' },
+        {
+          type: 'EXECUTE_CHANGE_SET',
+          sheetId: 'sheet-1',
+          updates,
+          expectedVersion: 7,
+          previewHash: 'a'.repeat(64),
+          idempotencyKey: 'change-set-1',
+        },
+      ),
+    ).resolves.toMatchObject({ version: 8, previewHash: 'a'.repeat(64) });
+
+    expect(sheets.previewCellChanges).toHaveBeenCalledWith(
+      'user-1',
+      'sheet-1',
+      updates,
+      7,
+    );
+    expect(sheets.updateCells).toHaveBeenCalledWith(
+      'user-1',
+      'sheet-1',
+      updates,
+      7,
+      'change-set-1',
+      {
+        previewHash: 'a'.repeat(64),
+        changeSetHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      },
+    );
+  });
+
+  it('rejects a stale or altered preview before writing', async () => {
+    sheets.getCellMutationReplay.mockResolvedValue(null);
+    sheets.previewCellChanges.mockResolvedValue({
+      currentVersion: 7,
+      versionConflict: false,
+      canApply: true,
+      previewHash: 'b'.repeat(64),
+    });
+
+    await expect(
+      service.execute(
+        { userId: 'user-1', actorType: 'MCP' },
+        {
+          type: 'EXECUTE_CHANGE_SET',
+          sheetId: 'sheet-1',
+          updates: [{ row: 0, col: 0, value: 1 }],
+          expectedVersion: 7,
+          previewHash: 'a'.repeat(64),
+          idempotencyKey: 'change-set-2',
+        },
+      ),
+    ).rejects.toThrow('no longer matches');
+    expect(sheets.updateCells).not.toHaveBeenCalled();
+  });
+
+  it('returns an idempotent change set replay before revalidating', async () => {
+    const command = {
+      type: 'EXECUTE_CHANGE_SET' as const,
+      sheetId: 'sheet-1',
+      updates: [{ row: 0, col: 0, value: 1 }],
+      expectedVersion: 7,
+      previewHash: 'a'.repeat(64),
+      idempotencyKey: 'change-set-3',
+    };
+    sheets.getCellMutationReplay.mockResolvedValueOnce(null);
+    sheets.previewCellChanges.mockResolvedValueOnce({
+      currentVersion: 7,
+      versionConflict: false,
+      canApply: true,
+      previewHash: 'a'.repeat(64),
+    });
+    sheets.updateCells.mockImplementationOnce(
+      (_userId, _sheetId, _updates, _version, _key, metadata) =>
+        Promise.resolve({ version: 8, cells: [], metadata }),
+    );
+    const first = await service.execute(
+      { userId: 'user-1', actorType: 'MCP' },
+      command,
+    );
+    jest.clearAllMocks();
+    sheets.getCellMutationReplay.mockResolvedValueOnce({
+      version: 8,
+      cells: [],
+      metadata: first.metadata,
+    });
+
+    await expect(
+      service.execute({ userId: 'user-1', actorType: 'MCP' }, command),
+    ).resolves.toMatchObject({
+      version: 8,
+      cells: [],
+      previewHash: 'a'.repeat(64),
+    });
+    expect(sheets.previewCellChanges).not.toHaveBeenCalled();
+    expect(sheets.updateCells).not.toHaveBeenCalled();
+
+    sheets.getCellMutationReplay.mockResolvedValueOnce({
+      version: 8,
+      cells: [],
+      metadata: first.metadata,
+    });
+    await expect(
+      service.execute(
+        { userId: 'user-1', actorType: 'MCP' },
+        { ...command, updates: [{ row: 0, col: 0, value: 2 }] },
+      ),
+    ).rejects.toThrow('different change set');
   });
 
   it('expands a rectangular range into one atomic cell command', async () => {

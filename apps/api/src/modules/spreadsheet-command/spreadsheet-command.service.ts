@@ -1,4 +1,8 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+} from '@nestjs/common';
 import { shiftFormulaReferences } from '@jasheets/formula-engine';
 import { createHash } from 'node:crypto';
 import { SheetsService } from '../sheets/sheets.service';
@@ -31,6 +35,60 @@ export class SpreadsheetCommandService {
           command.expectedVersion,
           command.idempotencyKey,
         );
+      case 'EXECUTE_CHANGE_SET': {
+        const changeSetHash = this.changeSetHash(command);
+        const replay = await this.sheetsService.getCellMutationReplay(
+          context.userId,
+          command.sheetId,
+          command.idempotencyKey,
+        );
+        if (replay) {
+          const metadata =
+            replay.metadata &&
+            typeof replay.metadata === 'object' &&
+            !Array.isArray(replay.metadata)
+              ? replay.metadata
+              : {};
+          if (
+            metadata.previewHash !== command.previewHash ||
+            metadata.changeSetHash !== changeSetHash
+          ) {
+            throw new ConflictException(
+              'Idempotency key was already used for a different change set',
+            );
+          }
+          return { ...replay, previewHash: command.previewHash };
+        }
+
+        const preview = await this.sheetsService.previewCellChanges(
+          context.userId,
+          command.sheetId,
+          command.updates,
+          command.expectedVersion,
+        );
+        if (preview.versionConflict) {
+          throw new ConflictException(
+            `Sheet version changed from ${command.expectedVersion} to ${preview.currentVersion}`,
+          );
+        }
+        if (preview.previewHash !== command.previewHash) {
+          throw new ConflictException(
+            'Change set no longer matches its preview; generate a new preview',
+          );
+        }
+        if (!preview.canApply) {
+          throw new BadRequestException('Change set contains no changes');
+        }
+        const result = await this.sheetsService.updateCells(
+          context.userId,
+          command.sheetId,
+          command.updates,
+          command.expectedVersion,
+          command.idempotencyKey,
+          { previewHash: command.previewHash, changeSetHash },
+        );
+        return { ...result, previewHash: command.previewHash };
+      }
       case 'WRITE_RANGE': {
         const { rowCount, colCount } = this.validateMatrix(
           command.values,
@@ -261,5 +319,35 @@ export class SpreadsheetCommandService {
       .update(`${userId}\u0000${sheetId}\u0000${key}`)
       .digest('hex');
     return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-5${hex.slice(13, 16)}-a${hex.slice(17, 20)}-${hex.slice(20, 32)}`;
+  }
+
+  private changeSetHash(
+    command: Extract<SpreadsheetCommand, { type: 'EXECUTE_CHANGE_SET' }>,
+  ): string {
+    return createHash('sha256')
+      .update(
+        JSON.stringify(
+          this.canonicalize({
+            sheetId: command.sheetId,
+            updates: command.updates,
+            expectedVersion: command.expectedVersion,
+            previewHash: command.previewHash,
+          }),
+        ),
+      )
+      .digest('hex');
+  }
+
+  private canonicalize(value: unknown): unknown {
+    if (Array.isArray(value))
+      return value.map((item) => this.canonicalize(item));
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, item]) => [key, this.canonicalize(item)]),
+      );
+    }
+    return value;
   }
 }

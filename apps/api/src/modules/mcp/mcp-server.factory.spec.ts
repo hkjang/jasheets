@@ -41,6 +41,7 @@ describe('McpServerFactory', () => {
         'get_range',
         'analyze_range',
         'preview_changes',
+        'execute_change_set',
         'set_cells',
         'write_range',
         'append_rows',
@@ -157,6 +158,33 @@ describe('McpServerFactory', () => {
       '550e8400-e29b-41d4-a716-446655440001',
       [{ row: 0, col: 0, value: 42 }],
       7,
+    );
+
+    commands.execute.mockResolvedValueOnce({
+      version: 8,
+      previewHash: 'a'.repeat(64),
+    });
+    const executed = await client.callTool({
+      name: 'execute_change_set',
+      arguments: {
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        updates: [{ row: 0, col: 0, value: 42 }],
+        expectedVersion: 7,
+        previewHash: 'a'.repeat(64),
+        idempotencyKey: 'change-set-1',
+      },
+    });
+    expect(executed.isError).not.toBe(true);
+    expect(commands.execute).toHaveBeenLastCalledWith(
+      { userId: 'user-1', actorType: 'MCP' },
+      {
+        type: 'EXECUTE_CHANGE_SET',
+        sheetId: '550e8400-e29b-41d4-a716-446655440001',
+        updates: [{ row: 0, col: 0, value: 42 }],
+        expectedVersion: 7,
+        previewHash: 'a'.repeat(64),
+        idempotencyKey: 'change-set-1',
+      },
     );
 
     const result = await client.callTool({
