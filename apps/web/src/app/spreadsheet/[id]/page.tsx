@@ -24,6 +24,7 @@ import { rewriteSheetNameReferences } from "@/utils/formulaReferences";
 import { deserializeConditionalRule } from "@/utils/conditionalRulePersistence";
 import { createWorkbookImportSheets, type ImportResult } from "@/utils/fileImport";
 import type { XLSXWorkbookSheet } from "@/utils/export";
+import type { ManagedPivotTable } from "@/utils/managedPivots";
 
 function deserializeSheetData(sheet: SpreadsheetSheet): SheetData {
   const sheetData: SheetData = {};
@@ -336,6 +337,15 @@ export default function SpreadsheetPage() {
     [],
   );
 
+  const handlePivotTablesChange = useCallback(
+    (sheetId: string, pivotTables: ManagedPivotTable[]) => {
+      setSheets((current) => current.map((sheet) =>
+        sheet.id === sheetId ? { ...sheet, pivotTables } : sheet,
+      ));
+    },
+    [],
+  );
+
   const importWorkbook = useCallback(async (
     result: ImportResult,
     mode: "append" | "replace",
@@ -463,6 +473,7 @@ export default function SpreadsheetPage() {
       initialCharts={initialCharts}
       initialConditionalRules={initialConditionalRules}
       initialMergedRanges={activeSheet?.mergedRanges ?? []}
+      initialPivotTables={activeSheet?.pivotTables ?? []}
       onDataChange={handleDataChange}
       spreadsheetId={id}
       activeSheetId={activeSheetId}
@@ -487,6 +498,7 @@ export default function SpreadsheetPage() {
       onChartsChange={handleChartsChange}
       onStructureChange={handleStructureChange}
       onMergedRangesChange={handleMergedRangesChange}
+      onPivotTablesChange={handlePivotTablesChange}
       onWorkbookImport={importWorkbook}
       workbookExportSheets={workbookExportSheets}
     />

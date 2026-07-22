@@ -1,5 +1,11 @@
 
-import { calculatePivotData, PivotConfig } from './pivotLogic';
+import {
+  calculatePivotData,
+  calculatePivotOutput,
+  getPivotOutputDimensions,
+  PivotAggregation,
+  PivotConfig,
+} from './pivotLogic';
 import { SheetData } from '@/types/spreadsheet';
 
 describe('calculatePivotData', () => {
@@ -161,5 +167,133 @@ describe('calculatePivotData', () => {
     expect(() => calculatePivotData(mockData, baseConfig)).toThrow(
       'at least one value field',
     );
+  });
+
+  test('applies typed filters before grouping', () => {
+    const cases: Array<[PivotConfig['filters'], number[]]> = [
+      [[{ field: 'Region', operator: 'EQUALS', value: 'North' }], [370]],
+      [[{ field: 'Product', operator: 'IN', values: ['Banana'] }], [150, 50]],
+      [[{ field: 'Sales', operator: 'BETWEEN', values: [100, 150] }], [370]],
+      [[{ field: 'Product', operator: 'NOT_CONTAINS', value: 'apple' }], [150, 50]],
+      [[{ field: 'Sales', operator: 'GREATER_THAN', value: 120 }], [150, 200]],
+    ];
+
+    for (const [filters, expected] of cases) {
+      const result = calculatePivotData(mockData, {
+        ...baseConfig,
+        rows: ['Region'],
+        values: [{ field: 'Sales', aggregation: 'SUM' }],
+        filters,
+      });
+      expect(Object.keys(result).slice(1).map((row) => result[Number(row)][1].value)).toEqual(expected);
+    }
+  });
+
+  test('sorts row and column tuples by labels or aggregate values', () => {
+    const rowsDescending = calculatePivotData(mockData, {
+      ...baseConfig,
+      rows: ['Region'],
+      values: [{ field: 'Sales', aggregation: 'SUM' }],
+      rowSort: { direction: 'DESC', by: 'VALUE' },
+    });
+    expect([rowsDescending[1][0].value, rowsDescending[2][0].value]).toEqual(['North', 'South']);
+
+    const columnsDescending = calculatePivotData(mockData, {
+      ...baseConfig,
+      rows: ['Region'],
+      cols: ['Product'],
+      values: [{ field: 'Sales', aggregation: 'SUM' }],
+      colSort: { direction: 'DESC', by: 'LABEL' },
+    });
+    expect([columnsDescending[0][1].value, columnsDescending[0][2].value]).toEqual(['Banana', 'Apple']);
+  });
+
+  test('computes row and column grand totals from source records', () => {
+    const result = calculatePivotData(mockData, {
+      ...baseConfig,
+      rows: ['Region'],
+      cols: ['Product'],
+      values: [
+        { field: 'Sales', aggregation: 'SUM' },
+        { field: 'Sales', aggregation: 'AVERAGE' },
+      ],
+      rowGrandTotals: true,
+      columnGrandTotals: true,
+    });
+
+    expect(result[0][5].value).toBe('Grand Total / Sales (SUM)');
+    expect(result[1][5].value).toBe(370);
+    expect(result[1][6].value).toBeCloseTo(370 / 3);
+    expect(result[3][0].value).toBe('Grand Total');
+    expect(result[3][1].value).toBe(420);
+    expect(result[3][2].value).toBe(140);
+    expect(result[3][5].value).toBe(620);
+    expect(result[3][6].value).toBe(124);
+  });
+
+  test.each<[PivotAggregation, number]>([
+    ['SUM', 12.5],
+    ['COUNT', 3],
+    ['AVERAGE', 12.5 / 2],
+    ['MIN', 5],
+    ['MAX', 7.5],
+  ])('aggregates blanks, errors, booleans, and numeric strings robustly for %s', (aggregation, expected) => {
+    const data: SheetData = {
+      0: { 0: { value: 'Group' }, 1: { value: 'Value' } },
+      1: { 0: { value: 'A' }, 1: { value: 5 } },
+      2: { 0: { value: 'A' }, 1: { value: '7.5' } },
+      3: { 0: { value: 'A' }, 1: { value: '' } },
+      4: { 0: { value: 'A' }, 1: { value: true } },
+      5: { 0: { value: 'A' }, 1: { value: '#DIV/0!' } },
+      6: { 0: { value: 'A' }, 1: { value: 999, error: '#REF!' } },
+    };
+    const result = calculatePivotData(data, {
+      sourceRange: { startRow: 0, startCol: 0, endRow: 6, endCol: 1 },
+      rows: ['Group'],
+      cols: [],
+      values: [{ field: 'Value', aggregation }],
+    });
+    expect(result[1][1].value).toBeCloseTo(expected);
+  });
+
+  test('keeps same-looking typed tuples in distinct buckets', () => {
+    const data: SheetData = {
+      0: { 0: { value: 'Key' }, 1: { value: 'Amount' } },
+      1: { 0: { value: 1 }, 1: { value: 10 } },
+      2: { 0: { value: '1' }, 1: { value: 20 } },
+      3: { 0: { value: null }, 1: { value: 30 } },
+      4: { 0: { value: '' }, 1: { value: 40 } },
+    };
+    const result = calculatePivotData(data, {
+      sourceRange: { startRow: 0, startCol: 0, endRow: 4, endCol: 1 },
+      rows: ['Key'],
+      cols: [],
+      values: [{ field: 'Amount', aggregation: 'SUM' }],
+    });
+
+    expect(Object.keys(result)).toHaveLength(4);
+    expect(Object.keys(result).slice(1).map((row) => result[Number(row)][1].value).sort()).toEqual([10, 20, 70]);
+  });
+
+  test('returns exact dimensions and an inclusive managed output range', () => {
+    const output = calculatePivotOutput(mockData, {
+      ...baseConfig,
+      rows: ['Region'],
+      cols: ['Product'],
+      values: [{ field: 'Sales', aggregation: 'SUM' }],
+      rowGrandTotals: true,
+      columnGrandTotals: true,
+    }, { row: 10, col: 4 });
+
+    expect(output.dimensions).toEqual({
+      rowCount: 4,
+      columnCount: 4,
+      range: { startRow: 10, startCol: 4, endRow: 13, endCol: 7 },
+    });
+    expect(getPivotOutputDimensions({}, 3, 2)).toEqual({
+      rowCount: 0,
+      columnCount: 0,
+      range: { startRow: 3, startCol: 2, endRow: 2, endCol: 1 },
+    });
   });
 });

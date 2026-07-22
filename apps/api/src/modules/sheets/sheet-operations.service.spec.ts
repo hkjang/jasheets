@@ -26,7 +26,12 @@ describe('SheetsService sheet operations', () => {
     rowMeta: { deleteMany: jest.fn(), createMany: jest.fn() },
     colMeta: { deleteMany: jest.fn(), createMany: jest.fn() },
     chart: { createMany: jest.fn() },
-    pivotTable: { createMany: jest.fn() },
+    pivotTable: {
+      createMany: jest.fn(),
+      findMany: jest.fn(),
+      update: jest.fn(),
+      delete: jest.fn(),
+    },
     conditionalRule: {
       createMany: jest.fn(),
       findMany: jest.fn(),
@@ -102,6 +107,7 @@ describe('SheetsService sheet operations', () => {
       rowCount: 1001,
       colCount: 26,
       version: 4,
+      pivotTables: [],
     });
     tx.cell.deleteMany.mockResolvedValue({ count: 0 });
     tx.cell.findMany.mockResolvedValue([]);
@@ -114,6 +120,9 @@ describe('SheetsService sheet operations', () => {
     tx.colMeta.createMany.mockResolvedValue({ count: 1 });
     tx.chart.createMany.mockResolvedValue({ count: 0 });
     tx.pivotTable.createMany.mockResolvedValue({ count: 0 });
+    tx.pivotTable.findMany.mockResolvedValue([]);
+    tx.pivotTable.update.mockResolvedValue({});
+    tx.pivotTable.delete.mockResolvedValue({});
     tx.conditionalRule.createMany.mockResolvedValue({ count: 0 });
     tx.conditionalRule.findMany.mockResolvedValue([]);
     tx.conditionalRule.update.mockResolvedValue({});
@@ -295,6 +304,7 @@ describe('SheetsService sheet operations', () => {
       version: 4,
       rowCount: 1001,
       colCount: 26,
+      pivotTables: [],
     });
   });
 
@@ -305,7 +315,9 @@ describe('SheetsService sheet operations', () => {
     ]);
 
     await service.changeStructure('user-1', 'sheet-1', {
-      axis: 'row', type: 'insert', index: 1,
+      axis: 'row',
+      type: 'insert',
+      index: 1,
     });
 
     expect(tx.conditionalRule.update).toHaveBeenCalledWith({
@@ -337,7 +349,9 @@ describe('SheetsService sheet operations', () => {
     ]);
 
     await service.changeStructure('user-1', 'sheet-1', {
-      axis: 'row', type: 'delete', index: 1,
+      axis: 'row',
+      type: 'delete',
+      index: 1,
     });
 
     expect(tx.mergedRange.update).toHaveBeenCalledWith({
@@ -347,6 +361,99 @@ describe('SheetsService sheet operations', () => {
     expect(tx.mergedRange.delete).toHaveBeenCalledWith({
       where: { id: 'merge-2' },
     });
+  });
+
+  it('moves managed pivot source, output and target ranges together', async () => {
+    tx.pivotTable.findMany.mockResolvedValueOnce([
+      {
+        id: 'pivot-1',
+        sourceRange: 'A2:C8',
+        targetCell: 'E2',
+        config: {
+          sourceRange: {
+            startRow: 1,
+            startCol: 0,
+            endRow: 7,
+            endCol: 2,
+          },
+          outputRange: {
+            startRow: 1,
+            startCol: 4,
+            endRow: 5,
+            endCol: 7,
+          },
+          rows: ['Region'],
+          cols: [],
+          values: [{ field: 'Sales', aggregation: 'SUM' }],
+        },
+      },
+    ]);
+
+    await service.changeStructure('user-1', 'sheet-1', {
+      axis: 'row',
+      type: 'insert',
+      index: 0,
+    });
+
+    expect(tx.pivotTable.update).toHaveBeenCalledWith({
+      where: { id: 'pivot-1' },
+      data: {
+        config: expect.objectContaining({
+          sourceRange: {
+            startRow: 2,
+            startCol: 0,
+            endRow: 8,
+            endCol: 2,
+          },
+          outputRange: {
+            startRow: 2,
+            startCol: 4,
+            endRow: 6,
+            endCol: 7,
+          },
+        }),
+        sourceRange: 'A3:C9',
+        targetCell: 'E3',
+      },
+    });
+  });
+
+  it('deletes a managed pivot when its materialization target is deleted', async () => {
+    tx.pivotTable.findMany.mockResolvedValueOnce([
+      {
+        id: 'pivot-1',
+        sourceRange: 'A1:C8',
+        targetCell: 'E2',
+        config: {
+          sourceRange: {
+            startRow: 0,
+            startCol: 0,
+            endRow: 7,
+            endCol: 2,
+          },
+          outputRange: {
+            startRow: 1,
+            startCol: 4,
+            endRow: 5,
+            endCol: 7,
+          },
+          rows: ['Region'],
+          cols: [],
+          values: [{ field: 'Sales', aggregation: 'SUM' }],
+        },
+      },
+    ]);
+
+    await service.changeStructure('user-1', 'sheet-1', {
+      axis: 'row',
+      type: 'delete',
+      index: 1,
+    });
+
+    expect(tx.pivotTable.delete).toHaveBeenCalledWith({
+      where: { id: 'pivot-1' },
+    });
+    expect(tx.pivotTable.update).not.toHaveBeenCalled();
   });
 
   it('deletes column contents without reducing the visible grid size', async () => {

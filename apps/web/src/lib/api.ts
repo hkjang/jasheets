@@ -2,6 +2,7 @@ import { API_URL, apiClient } from "./api-client";
 import type { CellValue } from "@/types/spreadsheet";
 import type { PersistedConditionalRule } from "@/utils/conditionalRulePersistence";
 import type { MergedRange } from "@/utils/mergedRanges";
+import type { ManagedPivotTable } from "@/utils/managedPivots";
 
 export interface PersistedMergedRange extends MergedRange {
   id: string;
@@ -45,6 +46,7 @@ export interface SpreadsheetSheet {
   charts?: unknown[];
   conditionalRules?: PersistedConditionalRule[];
   mergedRanges?: PersistedMergedRange[];
+  pivotTables?: ManagedPivotTable[];
 }
 
 export interface SpreadsheetVersion {
@@ -293,6 +295,7 @@ export const api = {
         version: number;
         rowCount: number;
         colCount: number;
+        pivotTables: ManagedPivotTable[];
       }>(`/sheets/sheet/${sheetId}/structure`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -527,13 +530,8 @@ export const api = {
     },
     savePivotTables: async (
       sheetId: string,
-      pivotTables: Array<{
-        id?: string;
-        name?: string;
-        config: any;
-        sourceRange?: string;
-        targetCell?: string;
-      }>,
+      pivotTables: ManagedPivotTable[],
+      expectedVersion?: number,
     ) => {
       const token = localStorage.getItem("auth_token");
       const res = await fetch(
@@ -544,11 +542,14 @@ export const api = {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ pivotTables }),
+          body: JSON.stringify({ pivotTables, expectedVersion }),
         },
       );
       if (!res.ok) throw new Error("Failed to save pivot tables");
-      return res.json();
+      return res.json() as Promise<{
+        pivotTables: ManagedPivotTable[];
+        version: number;
+      }>;
     },
     // Embed settings
     getEmbed: async (id: string) => {

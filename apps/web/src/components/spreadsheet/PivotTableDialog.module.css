@@ -50,7 +50,19 @@
   padding: 24px;
   flex: 1;
   overflow-y: auto;
+  display: flex;
+  gap: 20px;
 }
+
+.pivotList { width: 180px; border-right: 1px solid #e5e7eb; padding-right: 16px; }
+.editor { flex: 1; min-width: 0; }
+.newPivot { width: 100%; padding: 8px; margin-bottom: 10px; border: 1px solid #93c5fd; border-radius: 5px; background: #eff6ff; cursor: pointer; }
+.savedPivot { display: flex; align-items: center; gap: 4px; margin-bottom: 6px; }
+.savedPivot > button:first-child { flex: 1; overflow: hidden; text-overflow: ellipsis; border: 0; background: transparent; text-align: left; cursor: pointer; }
+.deleteButton { border: 0; background: transparent; color: #dc2626; cursor: pointer; font-size: 11px; }
+.settingsRow { display: flex; gap: 12px; margin-bottom: 12px; }
+.settingsRow label { flex: 1; font-size: 12px; color: #4b5563; }
+.settingsRow input { display: block; width: 100%; box-sizing: border-box; margin-top: 4px; padding: 7px; border: 1px solid #d1d5db; border-radius: 4px; }
 
 .sourceInfo {
     margin-bottom: 20px;
@@ -62,7 +74,14 @@
 .configContainer {
     display: flex;
     gap: 20px;
-    height: 400px;
+    min-height: 360px;
+}
+
+@media (max-width: 700px) {
+  .content { flex-direction: column; }
+  .pivotList { width: auto; border-right: 0; border-bottom: 1px solid #e5e7eb; padding: 0 0 12px; }
+  .configContainer { flex-direction: column; }
+  .fieldList { width: auto; }
 }
 
 .fieldList {
@@ -127,6 +146,14 @@
     cursor: pointer;
     font-weight: bold;
 }
+
+.advancedSettings { margin-top: 16px; display: grid; gap: 16px; grid-template-columns: minmax(0, 2fr) minmax(180px, 1fr); }
+.advancedSettings h4 { margin: 0 0 8px; }
+.filterRow { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
+.filterRow select, .filterRow input, .summaryOptions select { min-width: 110px; padding: 5px; border: 1px solid #d1d5db; border-radius: 4px; }
+.filterRow button { color: #dc2626; border: 0; background: transparent; cursor: pointer; }
+.summaryOptions { display: flex; flex-direction: column; gap: 8px; }
+.summaryOptions label { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; }
 
 .footer {
   padding: 16px 24px;

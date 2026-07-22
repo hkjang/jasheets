@@ -32,12 +32,14 @@ import HeaderContextMenu from "./HeaderContextMenu";
 import CellContextMenu from "./CellContextMenu";
 import {
   CellPosition,
+  CellData,
   CellRange,
   SheetData,
   ColumnDef,
   RowDef,
   DEFAULT_CONFIG,
   parseSelection,
+  cellRefToString,
 } from "@/types/spreadsheet";
 import styles from "./Spreadsheet.module.css";
 import { useSpreadsheetData } from "@/hooks/spreadsheet/useSpreadsheetData";
@@ -106,6 +108,14 @@ import {
   deserializeConditionalRule,
   serializeConditionalRule,
 } from "@/utils/conditionalRulePersistence";
+import type { ManagedPivotTable, PivotOutputRange } from "@/utils/managedPivots";
+import {
+  containsPivotOutput,
+  getPivotOutputRange,
+  parseTargetCell,
+  persistThenApplyPivotOutput,
+  sourceRangeToA1,
+} from "@/utils/managedPivots";
 
 interface SpreadsheetProps {
   currentUser: User;
@@ -113,6 +123,7 @@ interface SpreadsheetProps {
   initialCharts?: any[];
   initialConditionalRules?: ConditionalRule[];
   initialMergedRanges?: PersistedMergedRange[];
+  initialPivotTables?: ManagedPivotTable[];
   onDataChange?: (data: SheetData) => void;
   spreadsheetId?: string;
   activeSheetId?: string | null;
@@ -143,6 +154,10 @@ interface SpreadsheetProps {
     sheetId: string,
     mergedRanges: PersistedMergedRange[],
   ) => void;
+  onPivotTablesChange?: (
+    sheetId: string,
+    pivotTables: ManagedPivotTable[],
+  ) => void;
   onWorkbookImport?: (
     result: ImportResult,
     mode: "append" | "replace",
@@ -157,6 +172,7 @@ export default function Spreadsheet({
   initialCharts = [],
   initialConditionalRules = [],
   initialMergedRanges = [],
+  initialPivotTables = [],
   onDataChange,
   spreadsheetId,
   activeSheetId,
@@ -181,6 +197,7 @@ export default function Spreadsheet({
   onChartsChange,
   onStructureChange,
   onMergedRangesChange,
+  onPivotTablesChange,
   onWorkbookImport,
   workbookExportSheets = [],
 }: SpreadsheetProps) {
@@ -306,6 +323,49 @@ export default function Spreadsheet({
     cancelEditing,
   } = useSpreadsheetEdit({ data, selectedCell, setCellValue });
 
+  const [isPivotDialogOpen, setIsPivotDialogOpen] = useState(false);
+  const [pivotTables, setPivotTables] = useState<ManagedPivotTable[]>(() =>
+    initialPivotTables.map((pivot) => {
+      if (pivot.config.outputRange || !pivot.targetCell) return pivot;
+      try {
+        const outputRange = getPivotOutputRange(
+          pivot.targetCell,
+          calculatePivotData(data, pivot.config),
+        );
+        return outputRange ? { ...pivot, config: { ...pivot.config, outputRange } } : pivot;
+      } catch {
+        return pivot;
+      }
+    }),
+  );
+  const pivotTablesRef = useRef(pivotTables);
+  const pivotSourceSignaturesRef = useRef(new Map<string, string>());
+  useEffect(() => { pivotTablesRef.current = pivotTables; }, [pivotTables]);
+  const isPivotOutputCell = useCallback(
+    (position: CellPosition | null) => !!position && pivotTables.some((pivot) =>
+      containsPivotOutput(pivot, position.row, position.col)),
+    [pivotTables],
+  );
+  const rangeIntersectsPivotOutput = useCallback((range: CellRange | null) => {
+    if (!range) return false;
+    const startRow = Math.min(range.start.row, range.end.row);
+    const endRow = Math.max(range.start.row, range.end.row);
+    const startCol = Math.min(range.start.col, range.end.col);
+    const endCol = Math.max(range.start.col, range.end.col);
+    return pivotTables.some((pivot) => {
+      const output = pivot.config.outputRange;
+      return !!output && startRow <= output.endRow && endRow >= output.startRow &&
+        startCol <= output.endCol && endCol >= output.startCol;
+    });
+  }, [pivotTables]);
+  const startCellEditing = useCallback((position: CellPosition, value?: string) => {
+    if (isPivotOutputCell(position)) {
+      setToastMessage("피벗 결과는 직접 수정할 수 없습니다. 피벗 관리에서 편집하거나 삭제해주세요.");
+      return;
+    }
+    startEditing(position, value);
+  }, [isPivotOutputCell, startEditing]);
+
   // --- Clipboard Handling ---
   const copyToClipboard = useCallback(async () => {
     if (!selection) return;
@@ -331,6 +391,10 @@ export default function Spreadsheet({
 
   const cutoffToClipboard = useCallback(async () => {
     if (!selection) return;
+    if (rangeIntersectsPivotOutput(selection)) {
+      setToastMessage("피벗 결과 범위는 잘라낼 수 없습니다. 피벗 관리에서 삭제해주세요.");
+      return;
+    }
 
     // Copy first
     await copyToClipboard();
@@ -345,7 +409,7 @@ export default function Spreadsheet({
       }
     }
     updateCells(updates);
-  }, [selection, copyToClipboard, updateCells]);
+  }, [selection, copyToClipboard, rangeIntersectsPivotOutput, updateCells]);
 
   const pasteFromClipboard = useCallback(async () => {
     if (!selectedCell) return;
@@ -364,6 +428,7 @@ export default function Spreadsheet({
           const richUpdates = createRichPasteUpdates(richText, origin);
           const accepted = richUpdates && rejectNonAnchorMergedUpdates(richUpdates, mergedRangesRef.current);
           if (!accepted) setToastMessage("병합된 셀의 일부에는 붙여넣을 수 없습니다.");
+          else if (accepted.some(({ row, col }) => isPivotOutputCell({ row, col }))) setToastMessage("피벗 결과 범위에는 붙여넣을 수 없습니다.");
           else if (accepted.length > 0) updateRichCells(accepted.map(({ row, col, cell }) => ({ row, col, cell })));
           if (richUpdates) return;
         }
@@ -377,6 +442,8 @@ export default function Spreadsheet({
 
       if (!updates) {
         setToastMessage("병합된 셀의 일부에는 붙여넣을 수 없습니다.");
+      } else if (updates.some(({ row, col }) => isPivotOutputCell({ row, col }))) {
+        setToastMessage("피벗 결과 범위에는 붙여넣을 수 없습니다.");
       } else if (updates.length > 0) {
         updateCells(updates);
       }
@@ -386,7 +453,7 @@ export default function Spreadsheet({
       // Often triggered if permission denied or not focused
       alert("Failed to paste from clipboard. Please allow clipboard access.");
     }
-  }, [selectedCell, updateCells, updateRichCells]);
+  }, [isPivotOutputCell, selectedCell, updateCells, updateRichCells]);
 
   useEffect(() => {
     const handleCopy = (e: ClipboardEvent) => {
@@ -425,6 +492,7 @@ export default function Spreadsheet({
       if (richUpdates) {
         const accepted = rejectNonAnchorMergedUpdates(richUpdates, mergedRangesRef.current);
         if (!accepted) setToastMessage("병합된 셀의 일부에는 붙여넣을 수 없습니다.");
+        else if (accepted.some(({ row, col }) => isPivotOutputCell({ row, col }))) setToastMessage("피벗 결과 범위에는 붙여넣을 수 없습니다.");
         else if (accepted.length > 0) updateRichCells(accepted.map(({ row, col, cell }) => ({ row, col, cell })));
         return;
       }
@@ -442,6 +510,8 @@ export default function Spreadsheet({
         );
         if (!updates) {
           setToastMessage("병합된 셀의 일부에는 붙여넣을 수 없습니다.");
+        } else if (updates.some(({ row, col }) => isPivotOutputCell({ row, col }))) {
+          setToastMessage("피벗 결과 범위에는 붙여넣을 수 없습니다.");
         } else if (updates.length > 0) {
           updateCells(updates);
         }
@@ -465,6 +535,7 @@ export default function Spreadsheet({
     cutoffToClipboard,
     updateCells,
     updateRichCells,
+    isPivotOutputCell,
   ]);
 
   // Collaboration
@@ -770,6 +841,11 @@ export default function Spreadsheet({
           rowCount: result.rowCount,
           colCount: result.colCount,
         });
+        if (Array.isArray(result.pivotTables)) {
+          setPivotTables(result.pivotTables);
+          pivotTablesRef.current = result.pivotTables;
+          onPivotTablesChange?.(activeSheetId, result.pivotTables);
+        }
         setConfig((current) => ({
           ...current,
           totalRows: result.rowCount,
@@ -839,6 +915,7 @@ export default function Spreadsheet({
       insertRow,
       onStructureChange,
       onMergedRangesChange,
+      onPivotTablesChange,
       onVersionChange,
       persistActiveSheet,
       setColumns,
@@ -1047,7 +1124,7 @@ export default function Spreadsheet({
     isEditingRef,
     onCommit: commitEditing,
     onCancel: cancelEditing,
-    onStartEdit: (val) => selectedCell && startEditing(selectedCell, val),
+    onStartEdit: (val) => selectedCell && startCellEditing(selectedCell, val),
     onNavigate: (row, col, extend, anchor) => {
       const resolved = selectedCell
         ? resolveMergedNavigationTarget(
@@ -1077,6 +1154,10 @@ export default function Spreadsheet({
     },
     onClearSelection: () => {
       if (!selection) return;
+      if (rangeIntersectsPivotOutput(selection)) {
+        setToastMessage("피벗 결과 범위는 직접 지울 수 없습니다. 피벗 관리에서 삭제해주세요.");
+        return;
+      }
       const newData = { ...data };
       for (let row = selection.start.row; row <= selection.end.row; row++) {
         for (let col = selection.start.col; col <= selection.end.col; col++) {
@@ -1116,9 +1197,6 @@ export default function Spreadsheet({
     return true;
   }, [data, mergedRanges, sortRows]);
   const [isConditionalDialogOpen, setIsConditionalDialogOpen] = useState(false);
-
-  // Pivot Table state
-  const [isPivotDialogOpen, setIsPivotDialogOpen] = useState(false);
 
   // Table Format Dialog state
   const [isTableFormatOpen, setIsTableFormatOpen] = useState(false);
@@ -1249,6 +1327,10 @@ export default function Spreadsheet({
       alert("공백을 제거할 범위를 선택해주세요.");
       return;
     }
+    if (rangeIntersectsPivotOutput(selection)) {
+      setToastMessage("피벗 결과 범위는 직접 수정할 수 없습니다.");
+      return;
+    }
     const updates: { row: number; col: number; value: string }[] = [];
     for (let r = selection.start.row; r <= selection.end.row; r++) {
       for (let c = selection.start.col; c <= selection.end.col; c++) {
@@ -1262,7 +1344,7 @@ export default function Spreadsheet({
       updateCells(updates);
       setToastMessage("공백이 제거되었습니다.");
     }
-  }, [selection, data, updateCells]);
+  }, [selection, data, rangeIntersectsPivotOutput, updateCells]);
 
   const handleSortRangeAsc = useCallback(() => {
     if (!selection) {
@@ -1281,9 +1363,13 @@ export default function Spreadsheet({
       setToastMessage("병합된 셀이 포함된 범위는 정렬할 수 없습니다. 먼저 병합을 해제해주세요.");
       return;
     }
+    if (rangeIntersectsPivotOutput(selection)) {
+      setToastMessage("피벗 결과가 포함된 범위는 정렬할 수 없습니다.");
+      return;
+    }
     sortRange(selection, sortCol, true);
     setToastMessage("범위 정렬 완료 (오름차순)");
-  }, [mergedRanges, selection, selectedCell, sortRange]);
+  }, [mergedRanges, rangeIntersectsPivotOutput, selection, selectedCell, sortRange]);
 
   const handleSortRangeDesc = useCallback(() => {
     if (!selection) {
@@ -1302,18 +1388,26 @@ export default function Spreadsheet({
       setToastMessage("병합된 셀이 포함된 범위는 정렬할 수 없습니다. 먼저 병합을 해제해주세요.");
       return;
     }
+    if (rangeIntersectsPivotOutput(selection)) {
+      setToastMessage("피벗 결과가 포함된 범위는 정렬할 수 없습니다.");
+      return;
+    }
     sortRange(selection, sortCol, false);
     setToastMessage("범위 정렬 완료 (내림차순)");
-  }, [mergedRanges, selection, selectedCell, sortRange]);
+  }, [mergedRanges, rangeIntersectsPivotOutput, selection, selectedCell, sortRange]);
 
   const handleRemoveDuplicates = useCallback(() => {
     if (!selection) {
       alert("중복을 제거할 범위를 선택해주세요.");
       return;
     }
+    if (rangeIntersectsPivotOutput(selection)) {
+      setToastMessage("피벗 결과가 포함된 범위에서는 중복을 제거할 수 없습니다.");
+      return;
+    }
     removeDuplicates(selection);
     setToastMessage("중복 항목이 제거되었습니다.");
-  }, [selection, removeDuplicates]);
+  }, [rangeIntersectsPivotOutput, selection, removeDuplicates]);
 
   const handleSplitTextToColumns = useCallback(() => {
     if (!selection) {
@@ -1335,10 +1429,14 @@ export default function Spreadsheet({
       }
     }
     if (updates.length > 0) {
+      if (updates.some(({ row, col }) => isPivotOutputCell({ row, col }))) {
+        setToastMessage("피벗 결과 범위에는 텍스트를 나눌 수 없습니다.");
+        return;
+      }
       updateCells(updates);
       setToastMessage("텍스트 나누기 완료 (쉼표 기준)");
     }
-  }, [selection, data, updateCells]);
+  }, [selection, data, isPivotOutputCell, updateCells]);
 
   // Comments hook
   const {
@@ -1484,6 +1582,10 @@ export default function Spreadsheet({
       const source = matchCase ? val : val.toLowerCase();
 
       if (source.includes(target)) {
+        if (isPivotOutputCell(selectedCell)) {
+          setToastMessage("피벗 결과는 직접 바꿀 수 없습니다.");
+          return;
+        }
         if (matchCase) {
           setCellValue(
             selectedCell.row,
@@ -1507,7 +1609,7 @@ export default function Spreadsheet({
         handleFind(query, matchCase);
       }
     },
-    [selectedCell, currentCell, handleFind, setCellValue],
+    [selectedCell, currentCell, handleFind, isPivotOutputCell, setCellValue],
   );
 
   // Feature Handlers
@@ -1541,34 +1643,176 @@ export default function Spreadsheet({
   }, [selection]);
 
   const handleOpenPivotDialog = useCallback(() => {
-    if (selection) {
-      setIsPivotDialogOpen(true);
-    } else {
-      alert("데이터가 있는 범위를 먼저 선택해주세요.");
+    if (!selection && pivotTables.length === 0) {
+      setToastMessage("새 피벗을 만들려면 데이터 범위를 먼저 선택해주세요.");
+      return;
     }
-  }, [selection]);
+    setIsPivotDialogOpen(true);
+  }, [pivotTables.length, selection]);
 
-  const handleCreatePivot = useCallback(
-    (config: PivotConfig) => {
-      const pivotData = calculatePivotData(data, config);
-      const usedRows = Object.keys(data).map(Number);
-      const maxRow = usedRows.length > 0 ? Math.max(...usedRows) : -1;
-      const startTargetRow = maxRow + 5;
+  const pivotOutputUpdates = useCallback((
+    previousRange: PivotOutputRange | undefined,
+    targetCell: string,
+    output: SheetData,
+  ) => {
+    const updates: Array<{ row: number; col: number; cell: CellData }> = [];
+    if (previousRange) for (let row = previousRange.startRow; row <= previousRange.endRow; row++) {
+      for (let col = previousRange.startCol; col <= previousRange.endCol; col++) {
+        updates.push({ row, col, cell: { value: null } });
+      }
+    }
+    const target = parseTargetCell(targetCell);
+    if (target) for (const [rowKey, cells] of Object.entries(output)) {
+      for (const [colKey, cell] of Object.entries(cells) as Array<[string, CellData]>) {
+        updates.push({ row: target.row + Number(rowKey), col: target.col + Number(colKey), cell });
+      }
+    }
+    return updates;
+  }, []);
 
-      const newData = { ...data };
-      Object.keys(pivotData).forEach((rIdx) => {
-        const r = Number(rIdx);
-        const targetRow = startTargetRow + r;
-        if (!newData[targetRow]) newData[targetRow] = {};
-        Object.keys(pivotData[r]).forEach((cIdx) => {
-          const c = Number(cIdx);
-          newData[targetRow][c] = pivotData[r][c];
-        });
+  const persistPivotDefinitions = useCallback(async (definitions: ManagedPivotTable[]) => {
+    if (!activeSheetId) throw new Error("활성 시트가 없습니다.");
+    // Source edits and pivot metadata share the sheet version CAS. Drain the
+    // cell queue first so both writes cannot race using the same version.
+    await flushAutosave();
+    const saved = await api.spreadsheets.savePivotTables(
+      activeSheetId,
+      definitions,
+      sheetVersionRef.current,
+    );
+    setPivotTables(saved.pivotTables);
+    pivotTablesRef.current = saved.pivotTables;
+    sheetVersionRef.current = saved.version;
+    setSheetVersion(saved.version);
+    onVersionChange?.(activeSheetId, saved.version);
+    onPivotTablesChange?.(activeSheetId, saved.pivotTables);
+    return saved.pivotTables;
+  }, [activeSheetId, flushAutosave, onPivotTablesChange, onVersionChange]);
+
+  const handleSavePivot = useCallback(async ({ id, name, targetCell, config }: {
+    id?: string; name: string; targetCell: string; config: PivotConfig;
+  }) => {
+    try {
+      const output = calculatePivotData(data, config);
+      const outputRange = getPivotOutputRange(targetCell, output);
+      if (!outputRange) throw new Error("피벗 결과가 비어 있습니다.");
+      const overlaps = (a: PivotOutputRange, b: PivotOutputRange) =>
+        a.startRow <= b.endRow && a.endRow >= b.startRow && a.startCol <= b.endCol && a.endCol >= b.startCol;
+      if (overlaps(outputRange, config.sourceRange)) throw new Error("출력 범위가 원본 범위와 겹칩니다.");
+      const previous = pivotTables.find((pivot) => pivot.id === id);
+      if (pivotTables.some((pivot) => pivot.id !== id && pivot.config.outputRange && overlaps(outputRange, pivot.config.outputRange))) {
+        throw new Error("출력 범위가 다른 피벗 테이블과 겹칩니다.");
+      }
+      const previousOutput = previous?.config.outputRange;
+      const wouldOverwrite = Object.keys(output).some((key) => {
+        const [rowOffset, colOffset] = key.split(":").map(Number);
+        const row = outputRange.startRow + rowOffset;
+        const col = outputRange.startCol + colOffset;
+        const belongsToPrevious = previousOutput && row >= previousOutput.startRow && row <= previousOutput.endRow &&
+          col >= previousOutput.startCol && col <= previousOutput.endCol;
+        const cell = data[row]?.[col];
+        return !belongsToPrevious && (cell?.value != null || !!cell?.formula);
       });
-      updateData(newData);
-    },
-    [data, updateData],
-  );
+      if (wouldOverwrite && !confirm("피벗 출력 범위에 기존 데이터가 있습니다. 덮어쓸까요?")) return;
+      const definition: ManagedPivotTable = {
+        ...(id ? { id } : {}), name, targetCell,
+        sourceRange: sourceRangeToA1(config),
+        config: { ...config, outputRange },
+      };
+      const next = id
+        ? pivotTables.map((pivot) => pivot.id === id ? definition : pivot)
+        : [...pivotTables, definition];
+      if (id) {
+        const values = [];
+        for (let row = config.sourceRange.startRow; row <= config.sourceRange.endRow; row++) {
+          for (let col = config.sourceRange.startCol; col <= config.sourceRange.endCol; col++) {
+            const cell = data[row]?.[col];
+            values.push([cell?.value ?? null, cell?.formula ?? null]);
+          }
+        }
+        pivotSourceSignaturesRef.current.set(id, JSON.stringify(values));
+      }
+      await persistThenApplyPivotOutput(
+        () => persistPivotDefinitions(next),
+        () => updateRichCells(pivotOutputUpdates(previous?.config.outputRange, targetCell, output)),
+      );
+      setIsPivotDialogOpen(false);
+      setToastMessage(id ? "피벗 테이블을 변경했습니다." : "피벗 테이블을 생성했습니다.");
+    } catch (error) {
+      console.error("Failed to save pivot", error);
+      setToastMessage(error instanceof Error ? error.message : "피벗 테이블을 저장하지 못했습니다.");
+    }
+  }, [data, persistPivotDefinitions, pivotOutputUpdates, pivotTables, updateRichCells]);
+
+  const handleDeletePivot = useCallback(async (pivot: ManagedPivotTable) => {
+    if (!confirm(`'${pivot.name || "피벗 테이블"}'을 삭제할까요?`)) return;
+    try {
+      await persistThenApplyPivotOutput(
+        () => persistPivotDefinitions(pivotTables.filter((candidate) => candidate.id !== pivot.id)),
+        () => {
+          if (pivot.config.outputRange) updateRichCells(pivotOutputUpdates(pivot.config.outputRange, "", {}));
+        },
+      );
+      setToastMessage("피벗 테이블을 삭제했습니다.");
+    } catch (error) {
+      console.error("Failed to delete pivot", error);
+      setToastMessage("피벗 테이블을 삭제하지 못했습니다.");
+    }
+  }, [persistPivotDefinitions, pivotOutputUpdates, pivotTables, updateRichCells]);
+
+  useEffect(() => {
+    if (!activeSheetId || pivotTables.length === 0) return;
+    const signatureFor = (pivot: ManagedPivotTable) => {
+      const range = pivot.config.sourceRange;
+      const values = [];
+      for (let row = range.startRow; row <= range.endRow; row++) {
+        for (let col = range.startCol; col <= range.endCol; col++) {
+          const cell = data[row]?.[col];
+          values.push([cell?.value ?? null, cell?.formula ?? null]);
+        }
+      }
+      return JSON.stringify(values);
+    };
+    const changed = pivotTables.filter((pivot, index) => {
+      const key = pivot.id ?? `pending-${index}`;
+      const signature = signatureFor(pivot);
+      const previous = pivotSourceSignaturesRef.current.get(key);
+      if (previous === undefined) pivotSourceSignaturesRef.current.set(key, signature);
+      return previous !== undefined && previous !== signature;
+    });
+    if (changed.length === 0) return;
+    const timer = window.setTimeout(() => {
+      const current = pivotTablesRef.current;
+      const updates: Array<{ row: number; col: number; cell: CellData }> = [];
+      let next = current;
+      try {
+        next = current.map((pivot) => {
+          if (!changed.some(({ id }) => id === pivot.id)) return pivot;
+          const output = calculatePivotData(data, pivot.config);
+          if (!pivot.targetCell) return pivot;
+          const targetCell = pivot.targetCell;
+          const outputRange = getPivotOutputRange(targetCell, output);
+          updates.push(...pivotOutputUpdates(pivot.config.outputRange, targetCell, output));
+          return { ...pivot, config: { ...pivot.config, outputRange: outputRange ?? undefined } };
+        });
+        void persistThenApplyPivotOutput(
+          () => persistPivotDefinitions(next),
+          () => { if (updates.length > 0) updateRichCells(updates); },
+        ).then(() => {
+          changed.forEach((pivot, index) => {
+            pivotSourceSignaturesRef.current.set(pivot.id ?? `pending-${index}`, signatureFor(pivot));
+          });
+        }).catch((error) => {
+          console.error("Failed to recalculate pivots", error);
+          setToastMessage("피벗 자동 재계산을 저장하지 못했습니다.");
+        });
+      } catch (error) {
+        console.error("Failed to recalculate pivots", error);
+        setToastMessage("피벗 자동 재계산에 실패했습니다.");
+      }
+    }, 600);
+    return () => window.clearTimeout(timer);
+  }, [activeSheetId, data, persistPivotDefinitions, pivotOutputUpdates, pivotTables, updateRichCells]);
 
   const handleMergeCells = useCallback(async () => {
     if (!activeSheetId || !selection) {
@@ -1981,7 +2225,7 @@ export default function Spreadsheet({
           onValueChange={setEditValue}
           onSubmit={commitEditing}
           onCancel={cancelEditing}
-          onEdit={() => selectedCell && startEditing(selectedCell)}
+          onEdit={() => selectedCell && startCellEditing(selectedCell)}
         />
       )}
 
@@ -2058,7 +2302,7 @@ export default function Spreadsheet({
           selection={selection}
           onCellSelect={handleCellSelect}
           onSelectionChange={handleSelectionChange}
-          onCellEdit={(pos) => startEditing(pos)}
+          onCellEdit={(pos) => startCellEditing(pos)}
           conditionalRules={conditionalRules}
           mergedRanges={mergedRanges}
           onColumnResize={(index, width) => {
@@ -2074,6 +2318,10 @@ export default function Spreadsheet({
           onCellContextMenu={(x, y) => setCellContextMenu({ x, y })}
           isEditing={isEditing}
           onFillRange={(source, target) => {
+            if (rangeIntersectsPivotOutput(target)) {
+              setToastMessage("피벗 결과 범위에는 자동 채우기를 적용할 수 없습니다.");
+              return;
+            }
             const updates = rejectNonAnchorMergedUpdates(
               createFillUpdates(data, source, target),
               mergedRanges,
@@ -2213,7 +2461,11 @@ export default function Spreadsheet({
         <AIAssistant
           onFormulaInsert={(formula) => {
             if (selectedCell) {
-              setCellValue(selectedCell.row, selectedCell.col, formula);
+              if (isPivotOutputCell(selectedCell)) {
+                setToastMessage("피벗 결과는 직접 수정할 수 없습니다.");
+              } else {
+                setCellValue(selectedCell.row, selectedCell.col, formula);
+              }
             }
             setIsAIOpen(false);
           }}
@@ -2254,13 +2506,15 @@ export default function Spreadsheet({
         />
       )}
 
-      {isPivotDialogOpen && selection && (
+      {isPivotDialogOpen && (
         <PivotTableDialog
           isOpen={isPivotDialogOpen}
           onClose={() => setIsPivotDialogOpen(false)}
-          onCreate={handleCreatePivot}
+          onSave={(definition) => void handleSavePivot(definition)}
+          onDelete={(pivot) => void handleDeletePivot(pivot)}
           selection={selection}
           data={data}
+          pivotTables={pivotTables}
         />
       )}
 

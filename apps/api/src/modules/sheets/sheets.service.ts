@@ -15,10 +15,12 @@ import { createHash } from 'crypto';
 import { rewriteSheetReferences } from './sheet-reference.util';
 import { rewriteConditionalRanges } from './conditional-range.util';
 import { rewriteMergedRange } from './merged-range.util';
+import { PivotCoordinateRange, rewritePivotRange } from './pivot-range.util';
 import {
   ImportWorkbookDto,
   WorkbookImportSheetDto,
 } from './dto/import-workbook.dto';
+import { PivotSourceRangeDto, PivotTableDto } from './dto/pivot-table.dto';
 
 class ColumnCoverageTree {
   private readonly maximum: Int32Array;
@@ -466,9 +468,7 @@ export class SheetsService {
           const createdNames =
             dto.mode === 'append'
               ? dto.sheets.map(({ name }) => name)
-              : dto.sheets
-                  .slice(currentSheets.length)
-                  .map(({ name }) => name);
+              : dto.sheets.slice(currentSheets.length).map(({ name }) => name);
           this.assertUniqueImportedSheetNames([
             ...preservedNames,
             ...createdNames,
@@ -1288,8 +1288,12 @@ export class SheetsService {
       }
       await this.shiftConditionalRuleRanges(tx, sheetId, change);
       await this.shiftMergedRanges(tx, sheetId, change);
+      await this.shiftPivotTableRanges(tx, sheetId, change);
 
-      return tx.sheet.findUniqueOrThrow({ where: { id: sheetId } });
+      return tx.sheet.findUniqueOrThrow({
+        where: { id: sheetId },
+        include: { pivotTables: true },
+      });
     });
 
     return {
@@ -1297,6 +1301,7 @@ export class SheetsService {
       version: updatedSheet.version,
       rowCount: updatedSheet.rowCount,
       colCount: updatedSheet.colCount,
+      pivotTables: updatedSheet.pivotTables,
     };
   }
 
@@ -1546,6 +1551,129 @@ export class SheetsService {
         data: rewritten,
       });
     }
+  }
+
+  private async shiftPivotTableRanges(
+    tx: Prisma.TransactionClient,
+    sheetId: string,
+    change: {
+      axis: 'row' | 'column';
+      type: 'insert' | 'delete';
+      index: number;
+    },
+  ): Promise<void> {
+    const pivots = await tx.pivotTable.findMany({
+      where: { sheetId },
+      select: {
+        id: true,
+        config: true,
+        sourceRange: true,
+        targetCell: true,
+      },
+    });
+    for (const pivot of pivots) {
+      const config = this.readStoredPivotConfig(pivot.config);
+      const source = config
+        ? rewritePivotRange(config.sourceRange, change)
+        : null;
+      const parsedTarget = pivot.targetCell
+        ? this.tryParseA1Cell(pivot.targetCell)
+        : null;
+      const target = parsedTarget
+        ? rewritePivotRange(parsedTarget, change)
+        : null;
+
+      // A managed pivot cannot survive without its source definition or
+      // materialization anchor. Deleting either is an explicit pivot delete.
+      if (!source || !target) {
+        const remainingOutput = config?.outputRange
+          ? rewritePivotRange(config.outputRange, change)
+          : null;
+        if (remainingOutput) {
+          await tx.cell.deleteMany({
+            where: {
+              sheetId,
+              row: {
+                gte: remainingOutput.startRow,
+                lte: remainingOutput.endRow,
+              },
+              col: {
+                gte: remainingOutput.startCol,
+                lte: remainingOutput.endCol,
+              },
+            },
+          });
+        }
+        await tx.pivotTable.delete({ where: { id: pivot.id } });
+        continue;
+      }
+
+      const outputRange = config?.outputRange
+        ? rewritePivotRange(config.outputRange, change)
+        : undefined;
+      const nextConfig: Record<string, unknown> = {
+        ...config,
+        sourceRange: source,
+      };
+      if (outputRange) nextConfig.outputRange = outputRange;
+      else delete nextConfig.outputRange;
+      await tx.pivotTable.update({
+        where: { id: pivot.id },
+        data: {
+          config: nextConfig as Prisma.InputJsonValue,
+          sourceRange: this.formatA1Range(source),
+          targetCell: this.formatA1Cell(target.startRow, target.startCol),
+        },
+      });
+    }
+  }
+
+  private readStoredPivotConfig(value: Prisma.JsonValue):
+    | (Record<string, Prisma.JsonValue> & {
+        sourceRange: PivotCoordinateRange;
+        outputRange?: PivotCoordinateRange;
+      })
+    | null {
+    if (!value || Array.isArray(value) || typeof value !== 'object')
+      return null;
+    const sourceRange = this.readPivotCoordinateRange(value.sourceRange);
+    if (!sourceRange) return null;
+    const outputRange = this.readPivotCoordinateRange(value.outputRange);
+    return {
+      ...value,
+      sourceRange,
+      ...(outputRange ? { outputRange } : {}),
+    } as Record<string, Prisma.JsonValue> & {
+      sourceRange: PivotCoordinateRange;
+      outputRange?: PivotCoordinateRange;
+    };
+  }
+
+  private readPivotCoordinateRange(
+    value: unknown,
+  ): PivotCoordinateRange | null {
+    if (!value || Array.isArray(value) || typeof value !== 'object')
+      return null;
+    const candidate = value as Record<string, unknown>;
+    const coordinates = [
+      candidate.startRow,
+      candidate.startCol,
+      candidate.endRow,
+      candidate.endCol,
+    ];
+    if (coordinates.some((coordinate) => !Number.isInteger(coordinate))) {
+      return null;
+    }
+    const [startRow, startCol, endRow, endCol] = coordinates as number[];
+    if (
+      startRow < 0 ||
+      startCol < 0 ||
+      startRow > endRow ||
+      startCol > endCol
+    ) {
+      return null;
+    }
+    return { startRow, startCol, endRow, endCol };
   }
 
   private async shiftRows(
@@ -2314,13 +2442,8 @@ export class SheetsService {
   async savePivotTables(
     userId: string,
     sheetId: string,
-    pivotTables: Array<{
-      id?: string;
-      name?: string;
-      config: any;
-      sourceRange?: string;
-      targetCell?: string;
-    }>,
+    pivotTables: PivotTableDto[],
+    expectedVersion?: number,
   ) {
     const sheet = await this.prisma.sheet.findUnique({
       where: { id: sheetId },
@@ -2331,31 +2454,448 @@ export class SheetsService {
     }
 
     await this.checkEditAccess(userId, sheet.spreadsheetId);
+    this.assertUniquePivotIds(pivotTables);
 
-    // Delete existing pivot tables and recreate
-    await this.prisma.pivotTable.deleteMany({
-      where: { sheetId },
-    });
+    try {
+      return await this.prisma.$transaction(
+        async (tx) => {
+          await this.assertImportEditAccess(tx, userId, sheet.spreadsheetId);
+          const currentSheet = await tx.sheet.findUnique({
+            where: { id: sheetId },
+            select: {
+              id: true,
+              spreadsheetId: true,
+              rowCount: true,
+              colCount: true,
+              version: true,
+            },
+          });
+          if (!currentSheet) throw new NotFoundException('Sheet not found');
+          if (currentSheet.spreadsheetId !== sheet.spreadsheetId) {
+            throw new ConflictException('Sheet ownership changed while saving');
+          }
 
-    if (pivotTables.length === 0) {
-      return [];
+          const existing = await tx.pivotTable.findMany({
+            where: { sheetId },
+            select: { id: true },
+          });
+          const existingIds = new Set(existing.map(({ id }) => id));
+          for (const pivot of pivotTables) {
+            if (pivot.id && !existingIds.has(pivot.id)) {
+              throw new BadRequestException(
+                `Pivot table does not belong to this sheet: ${pivot.id}`,
+              );
+            }
+          }
+
+          const policy =
+            (await tx.pivotPolicy.findFirst({
+              where: { userId, isActive: true },
+              orderBy: { updatedAt: 'desc' },
+            })) ??
+            (await tx.pivotPolicy.findFirst({
+              where: { userId: null, isGlobal: true, isActive: true },
+              orderBy: { updatedAt: 'desc' },
+            }));
+          const maxPivotsPerSheet = policy?.maxPivotsPerSheet ?? 10;
+          if (pivotTables.length > maxPivotsPerSheet) {
+            throw new BadRequestException(
+              `This sheet can contain at most ${maxPivotsPerSheet} pivot tables`,
+            );
+          }
+
+          // PivotTable has no creator identity, so maxPivotsPerUser cannot be
+          // truthfully enforced here. Counting every pivot the actor can view
+          // would incorrectly charge collaborators for other people's data.
+          // Per-sheet and computation limits remain enforceable and exact.
+          this.validatePivotRelationships(
+            pivotTables,
+            currentSheet.rowCount,
+            currentSheet.colCount,
+          );
+
+          for (const pivot of pivotTables) {
+            await this.validatePivotTable(
+              tx,
+              sheetId,
+              currentSheet.rowCount,
+              currentSheet.colCount,
+              pivot,
+              policy?.allowedAggregates ?? [
+                'SUM',
+                'COUNT',
+                'AVERAGE',
+                'MIN',
+                'MAX',
+              ],
+              policy?.maxRowsForPivot ?? 100_000,
+            );
+          }
+
+          const versionToMatch = expectedVersion ?? currentSheet.version;
+          const claimed = await tx.sheet.updateMany({
+            where: { id: sheetId, version: versionToMatch },
+            data: { version: { increment: 1 } },
+          });
+          if (claimed.count !== 1) {
+            throw new ConflictException(
+              'Sheet was modified by another user. Reload before saving again.',
+            );
+          }
+
+          await tx.pivotTable.deleteMany({ where: { sheetId } });
+          const created = [];
+          for (const pivot of pivotTables) {
+            created.push(
+              await tx.pivotTable.create({
+                data: {
+                  ...(pivot.id ? { id: pivot.id } : {}),
+                  sheetId,
+                  name: pivot.name,
+                  config: pivot.config as unknown as Prisma.InputJsonValue,
+                  sourceRange:
+                    pivot.sourceRange ??
+                    this.formatA1Range(pivot.config.sourceRange),
+                  targetCell: pivot.targetCell,
+                },
+              }),
+            );
+          }
+
+          return { pivotTables: created, version: versionToMatch + 1 };
+        },
+        {
+          isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+          maxWait: 5_000,
+          timeout: 60_000,
+        },
+      );
+    } catch (error) {
+      if (this.isTransactionConflict(error)) {
+        throw new ConflictException(
+          'Sheet was modified by another user. Reload before saving again.',
+        );
+      }
+      throw error;
+    }
+  }
+
+  private assertUniquePivotIds(pivotTables: PivotTableDto[]): void {
+    const ids = pivotTables.flatMap(({ id }) => (id ? [id] : []));
+    if (new Set(ids).size !== ids.length) {
+      throw new BadRequestException('Duplicate pivot table id');
+    }
+  }
+
+  private async validatePivotTable(
+    tx: Prisma.TransactionClient,
+    sheetId: string,
+    rowCount: number,
+    colCount: number,
+    pivot: PivotTableDto,
+    allowedAggregates: string[],
+    maxRowsForPivot: number,
+  ): Promise<void> {
+    const source = pivot.config.sourceRange;
+    this.assertPivotRange(source, rowCount, colCount, 'source');
+    const sourceRows = source.endRow - source.startRow + 1;
+    const sourceColumns = source.endCol - source.startCol + 1;
+    if (sourceRows > maxRowsForPivot) {
+      throw new BadRequestException(
+        `Pivot source cannot contain more than ${maxRowsForPivot} rows`,
+      );
+    }
+    if (sourceRows * sourceColumns > 1_000_000) {
+      throw new BadRequestException(
+        'Pivot source cannot contain more than 1000000 cells',
+      );
     }
 
-    // Create new pivot tables
-    const created = await this.prisma.$transaction(
-      pivotTables.map((pt) =>
-        this.prisma.pivotTable.create({
-          data: {
-            sheetId,
-            name: pt.name,
-            config: pt.config,
-            sourceRange: pt.sourceRange,
-            targetCell: pt.targetCell,
-          },
-        }),
-      ),
-    );
+    const canonicalSource = this.formatA1Range(source);
+    if (
+      pivot.sourceRange &&
+      this.normalizeA1(pivot.sourceRange) !== canonicalSource
+    ) {
+      throw new BadRequestException(
+        'sourceRange must match config.sourceRange',
+      );
+    }
 
-    return created;
+    const target = this.parseA1Cell(pivot.targetCell);
+    this.assertPivotRange(target, rowCount, colCount, 'target');
+    if (this.rangesOverlap(source, target)) {
+      throw new BadRequestException(
+        'Pivot output cannot overlap its source range',
+      );
+    }
+
+    const output = pivot.config.outputRange;
+    if (output) {
+      this.assertPivotRange(output, rowCount, colCount, 'output');
+      if (
+        target.startRow !== output.startRow ||
+        target.startCol !== output.startCol
+      ) {
+        throw new BadRequestException(
+          'targetCell must match the start of config.outputRange',
+        );
+      }
+      if (this.rangesOverlap(source, output)) {
+        throw new BadRequestException(
+          'Pivot output cannot overlap its source range',
+        );
+      }
+    }
+
+    const headers = await tx.cell.findMany({
+      where: {
+        sheetId,
+        row: source.startRow,
+        col: { gte: source.startCol, lte: source.endCol },
+      },
+      select: { col: true, value: true },
+    });
+    const valuesByColumn = new Map(
+      headers.map(({ col, value }) => [col, value]),
+    );
+    const headerNames: string[] = [];
+    for (let col = source.startCol; col <= source.endCol; col += 1) {
+      headerNames.push(String(valuesByColumn.get(col) ?? `Col ${col}`));
+    }
+    if (new Set(headerNames).size !== headerNames.length) {
+      throw new BadRequestException('Pivot source headers must be unique');
+    }
+    const knownFields = new Set(headerNames);
+    const configuredFields = [
+      ...pivot.config.rows,
+      ...pivot.config.cols,
+      ...pivot.config.values.map(({ field }) => field),
+      ...(pivot.config.filters ?? []).map(({ field }) => field),
+      ...(pivot.config.rowSort?.valueField
+        ? [pivot.config.rowSort.valueField]
+        : []),
+      ...(pivot.config.colSort?.valueField
+        ? [pivot.config.colSort.valueField]
+        : []),
+    ];
+    for (const field of configuredFields) {
+      if (!knownFields.has(field)) {
+        throw new BadRequestException(`Unknown pivot field: ${field}`);
+      }
+    }
+    if (new Set(pivot.config.rows).size !== pivot.config.rows.length) {
+      throw new BadRequestException('Pivot row fields must be unique');
+    }
+    if (new Set(pivot.config.cols).size !== pivot.config.cols.length) {
+      throw new BadRequestException('Pivot column fields must be unique');
+    }
+    const valueKeys = pivot.config.values.map(
+      ({ field, aggregation }) => `${field}\u0000${aggregation}`,
+    );
+    if (new Set(valueKeys).size !== valueKeys.length) {
+      throw new BadRequestException('Pivot value aggregations must be unique');
+    }
+    for (const { aggregation } of pivot.config.values) {
+      if (!allowedAggregates.includes(aggregation)) {
+        throw new BadRequestException(
+          `Pivot aggregation is not allowed by policy: ${aggregation}`,
+        );
+      }
+    }
+    for (const sort of [pivot.config.rowSort, pivot.config.colSort]) {
+      if (!sort) continue;
+      if (sort.by === 'VALUE' && (!sort.valueField || !sort.aggregation)) {
+        throw new BadRequestException(
+          'Value-based pivot sorting requires valueField and aggregation',
+        );
+      }
+      if (sort.aggregation && !allowedAggregates.includes(sort.aggregation)) {
+        throw new BadRequestException(
+          `Pivot aggregation is not allowed by policy: ${sort.aggregation}`,
+        );
+      }
+      if (
+        sort.by !== 'VALUE' &&
+        (sort.valueField !== undefined || sort.aggregation !== undefined)
+      ) {
+        throw new BadRequestException(
+          'Label-based pivot sorting cannot specify a value aggregation',
+        );
+      }
+    }
+    for (const filter of pivot.config.filters ?? []) {
+      const hasValue = filter.value !== undefined;
+      const hasValues = filter.values !== undefined;
+      if (hasValue && !this.isPivotScalar(filter.value)) {
+        throw new BadRequestException('Pivot filter values must be scalar');
+      }
+      if (
+        hasValues &&
+        filter.values!.some((value) => !this.isPivotScalar(value))
+      ) {
+        throw new BadRequestException('Pivot filter values must be scalar');
+      }
+      if (filter.operator === 'BETWEEN' && filter.values?.length !== 2) {
+        throw new BadRequestException(
+          'BETWEEN pivot filters require exactly two values',
+        );
+      }
+      if (
+        filter.operator === 'IN' &&
+        (!filter.values || filter.values.length === 0)
+      ) {
+        throw new BadRequestException('IN pivot filters require values');
+      }
+      if (['BETWEEN', 'IN'].includes(filter.operator) && hasValue) {
+        throw new BadRequestException(
+          `${filter.operator} pivot filters cannot specify value`,
+        );
+      }
+      if (
+        ['IS_BLANK', 'IS_NOT_BLANK'].includes(filter.operator) &&
+        (hasValue || hasValues)
+      ) {
+        throw new BadRequestException(
+          `${filter.operator} pivot filters cannot specify values`,
+        );
+      }
+      if (
+        !['BETWEEN', 'IN', 'IS_BLANK', 'IS_NOT_BLANK'].includes(
+          filter.operator,
+        ) &&
+        filter.value === undefined
+      ) {
+        throw new BadRequestException(
+          `${filter.operator} pivot filters require a value`,
+        );
+      }
+      if (!['BETWEEN', 'IN'].includes(filter.operator) && hasValues) {
+        throw new BadRequestException(
+          `${filter.operator} pivot filters cannot specify values`,
+        );
+      }
+    }
+  }
+
+  private isPivotScalar(value: unknown): boolean {
+    return (
+      value === null ||
+      typeof value === 'string' ||
+      typeof value === 'boolean' ||
+      (typeof value === 'number' && Number.isFinite(value))
+    );
+  }
+
+  private validatePivotRelationships(
+    pivots: PivotTableDto[],
+    rowCount: number,
+    colCount: number,
+  ): void {
+    const footprints = pivots.map((pivot) => {
+      const target = this.parseA1Cell(pivot.targetCell);
+      this.assertPivotRange(target, rowCount, colCount, 'target');
+      return pivot.config.outputRange ?? target;
+    });
+    for (let index = 0; index < pivots.length; index += 1) {
+      const output = footprints[index];
+      for (let other = 0; other < pivots.length; other += 1) {
+        if (this.rangesOverlap(output, pivots[other].config.sourceRange)) {
+          throw new BadRequestException(
+            index === other
+              ? 'Pivot output cannot overlap its source range'
+              : 'A pivot output cannot overlap another pivot source range',
+          );
+        }
+        if (index < other && this.rangesOverlap(output, footprints[other])) {
+          throw new BadRequestException(
+            'Pivot output ranges cannot overlap each other',
+          );
+        }
+      }
+    }
+  }
+
+  private assertPivotRange(
+    range: PivotSourceRangeDto,
+    rowCount: number,
+    colCount: number,
+    label: string,
+  ): void {
+    if (
+      !Number.isInteger(range.startRow) ||
+      !Number.isInteger(range.startCol) ||
+      !Number.isInteger(range.endRow) ||
+      !Number.isInteger(range.endCol) ||
+      range.startRow < 0 ||
+      range.startCol < 0 ||
+      range.startRow > range.endRow ||
+      range.startCol > range.endCol ||
+      range.endRow >= rowCount ||
+      range.endCol >= colCount
+    ) {
+      throw new BadRequestException(`Pivot ${label} range is out of bounds`);
+    }
+  }
+
+  private rangesOverlap(
+    first: PivotSourceRangeDto,
+    second: Pick<PivotSourceRangeDto, 'startRow' | 'startCol'> &
+      Partial<Pick<PivotSourceRangeDto, 'endRow' | 'endCol'>>,
+  ): boolean {
+    const secondEndRow = second.endRow ?? second.startRow;
+    const secondEndCol = second.endCol ?? second.startCol;
+    return !(
+      first.endRow < second.startRow ||
+      secondEndRow < first.startRow ||
+      first.endCol < second.startCol ||
+      secondEndCol < first.startCol
+    );
+  }
+
+  private parseA1Cell(value: string): PivotSourceRangeDto {
+    const match = /^\$?([A-Z]+)\$?([1-9][0-9]*)$/i.exec(value.trim());
+    if (!match) throw new BadRequestException('Invalid pivot target cell');
+    let col = 0;
+    for (const character of match[1].toUpperCase()) {
+      col = col * 26 + character.charCodeAt(0) - 64;
+    }
+    const row = Number(match[2]) - 1;
+    return { startRow: row, endRow: row, startCol: col - 1, endCol: col - 1 };
+  }
+
+  private tryParseA1Cell(value: string): PivotSourceRangeDto | null {
+    try {
+      return this.parseA1Cell(value);
+    } catch {
+      return null;
+    }
+  }
+
+  private formatA1Cell(row: number, col: number): string {
+    let value = col + 1;
+    let column = '';
+    while (value > 0) {
+      value -= 1;
+      column = String.fromCharCode(65 + (value % 26)) + column;
+      value = Math.floor(value / 26);
+    }
+    return `${column}${row + 1}`;
+  }
+
+  private formatA1Range(range: PivotSourceRangeDto): string {
+    return `${this.formatA1Cell(range.startRow, range.startCol)}:${this.formatA1Cell(range.endRow, range.endCol)}`;
+  }
+
+  private normalizeA1(value: string): string {
+    return value.replace(/\$/g, '').toUpperCase();
+  }
+
+  private isTransactionConflict(error: unknown): boolean {
+    return (
+      typeof error === 'object' &&
+      error !== null &&
+      'code' in error &&
+      error.code === 'P2034'
+    );
   }
 }

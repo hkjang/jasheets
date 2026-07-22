@@ -25,6 +25,7 @@ import { StructuralChangeDto } from './dto/structural-change.dto';
 import { SheetViewDto } from './dto/sheet-view.dto';
 import { MergeCellsDto, UnmergeCellsDto } from './dto/merged-range.dto';
 import { ImportWorkbookDto } from './dto/import-workbook.dto';
+import { SavePivotTablesDto } from './dto/pivot-table.dto';
 
 @Controller('sheets')
 @UseGuards(JwtAuthGuard)
@@ -293,21 +294,13 @@ export class SheetsController {
   savePivotTables(
     @Request() req: any,
     @Param('sheetId') sheetId: string,
-    @Body()
-    dto: {
-      pivotTables: Array<{
-        id?: string;
-        name?: string;
-        config: any;
-        sourceRange?: string;
-        targetCell?: string;
-      }>;
-    },
+    @Body() dto: SavePivotTablesDto,
   ) {
     return this.sheetsService.savePivotTables(
       req.user.id,
       sheetId,
       dto.pivotTables,
+      dto.expectedVersion,
     );
   }
 }
