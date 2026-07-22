@@ -6,6 +6,7 @@ import {
 import { shiftFormulaReferences } from '@jasheets/formula-engine';
 import { createHash } from 'node:crypto';
 import { SheetsService } from '../sheets/sheets.service';
+import { RevisionLogsService } from '../revision-logs/revision-logs.service';
 import {
   SpreadsheetCommand,
   SpreadsheetCommandContext,
@@ -20,7 +21,10 @@ import {
  */
 @Injectable()
 export class SpreadsheetCommandService {
-  constructor(private readonly sheetsService: SheetsService) {}
+  constructor(
+    private readonly sheetsService: SheetsService,
+    private readonly revisionLogsService: RevisionLogsService,
+  ) {}
 
   async execute(
     context: SpreadsheetCommandContext,
@@ -88,6 +92,62 @@ export class SpreadsheetCommandService {
           { previewHash: command.previewHash, changeSetHash },
         );
         return { ...result, previewHash: command.previewHash };
+      }
+      case 'ROLLBACK_REVISION': {
+        const plan = await this.revisionLogsService.prepareRevisionRollback(
+          context.userId,
+          command.revisionId,
+        );
+        const replay = await this.sheetsService.getCellMutationReplay(
+          context.userId,
+          plan.sheetId,
+          command.idempotencyKey,
+        );
+        if (replay) {
+          const metadata =
+            replay.metadata &&
+            typeof replay.metadata === 'object' &&
+            !Array.isArray(replay.metadata)
+              ? replay.metadata
+              : {};
+          if (metadata.rollbackRevisionId !== command.revisionId) {
+            throw new ConflictException(
+              'Idempotency key was already used for a different rollback',
+            );
+          }
+          return {
+            ...replay,
+            revisionId: command.revisionId,
+            restoredCells: plan.updates.length,
+          };
+        }
+        if (plan.currentVersion !== command.expectedVersion) {
+          throw new ConflictException(
+            `Sheet version changed from ${command.expectedVersion} to ${plan.currentVersion}`,
+          );
+        }
+        if (!plan.currentMatchesRevision) {
+          throw new ConflictException(
+            'Some target cells changed after this revision; refusing to overwrite newer changes',
+          );
+        }
+        const result = await this.sheetsService.updateCells(
+          context.userId,
+          plan.sheetId,
+          plan.updates,
+          command.expectedVersion,
+          command.idempotencyKey,
+          {
+            rollbackRevisionId: command.revisionId,
+            revisionAction: 'ROLLBACK',
+            revisionDescription: `Restored revision ${command.revisionId}`,
+          },
+        );
+        return {
+          ...result,
+          revisionId: command.revisionId,
+          restoredCells: plan.updates.length,
+        };
       }
       case 'WRITE_RANGE': {
         const { rowCount, colCount } = this.validateMatrix(

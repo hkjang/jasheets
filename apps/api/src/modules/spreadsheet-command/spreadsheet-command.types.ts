@@ -32,6 +32,13 @@ export interface ExecuteChangeSetCommand {
   idempotencyKey: string;
 }
 
+export interface RollbackRevisionCommand {
+  type: 'ROLLBACK_REVISION';
+  revisionId: string;
+  expectedVersion: number;
+  idempotencyKey: string;
+}
+
 export interface WriteRangeCommand {
   type: 'WRITE_RANGE';
   sheetId: string;
@@ -109,6 +116,7 @@ export interface ChangeStructureCommand {
 export type SpreadsheetCommand =
   | SetCellsCommand
   | ExecuteChangeSetCommand
+  | RollbackRevisionCommand
   | WriteRangeCommand
   | AppendRowsCommand
   | ApplyFormulaCommand

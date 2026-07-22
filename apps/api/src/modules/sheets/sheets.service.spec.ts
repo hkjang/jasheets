@@ -154,6 +154,29 @@ describe('SheetsService cell updates', () => {
     });
   });
 
+  it('records rollback metadata as an auditable rollback revision', async () => {
+    await service.updateCells(
+      'user-1',
+      sheet.id,
+      [{ row: 1, col: 2, value: 'restored' }],
+      0,
+      'rollback-1',
+      {
+        rollbackRevisionId: 'revision-1',
+        revisionAction: 'ROLLBACK',
+        revisionDescription: 'Restored revision revision-1',
+      },
+    );
+
+    expect(prisma.revisionLog.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        action: 'ROLLBACK',
+        description: 'Restored revision revision-1',
+        sheetVersion: 1,
+      }),
+    });
+  });
+
   it('rejects duplicate coordinates before writing', async () => {
     await expect(
       service.updateCells('user-1', sheet.id, [

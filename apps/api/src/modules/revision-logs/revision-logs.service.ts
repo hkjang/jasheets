@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
   ForbiddenException,
@@ -258,6 +259,148 @@ export class RevisionLogsService {
     await this.checkSheetAccess(userId, revision.sheetId);
 
     return revision;
+  }
+
+  async prepareRevisionRollback(userId: string, revisionId: string) {
+    const revision = await this.getRevision(userId, revisionId);
+    if (
+      !Array.isArray(revision.previousData) ||
+      !Array.isArray(revision.newData) ||
+      revision.previousData.length < 1 ||
+      revision.previousData.length > 1000
+    ) {
+      throw new BadRequestException(
+        'Revision does not contain a reversible cell change set',
+      );
+    }
+
+    const previous = this.parseRevisionCells(
+      revision.previousData,
+      'previousData',
+    );
+    const next = this.parseRevisionCells(revision.newData, 'newData');
+    const nextByCoordinate = new Map(
+      next.map((cell) => [`${cell.row}:${cell.col}`, cell]),
+    );
+    if (
+      previous.length !== next.length ||
+      previous.some(({ row, col }) => !nextByCoordinate.has(`${row}:${col}`))
+    ) {
+      throw new BadRequestException('Revision cell states do not align');
+    }
+
+    const currentCells = await this.prisma.cell.findMany({
+      where: {
+        sheetId: revision.sheetId,
+        OR: next.map(({ row, col }) => ({ row, col })),
+      },
+      select: {
+        row: true,
+        col: true,
+        value: true,
+        formula: true,
+        format: true,
+      },
+    });
+    const currentByCoordinate = new Map(
+      currentCells.map((cell) => [`${cell.row}:${cell.col}`, cell]),
+    );
+    const currentMatchesRevision = next.every((expected) => {
+      const current = currentByCoordinate.get(
+        `${expected.row}:${expected.col}`,
+      );
+      return ['value', 'formula', 'format'].every(
+        (field) =>
+          !(field in expected) ||
+          this.jsonEqual(
+            current?.[field as 'value' | 'formula' | 'format'] ?? null,
+            expected[field as 'value' | 'formula' | 'format'] ?? null,
+          ),
+      );
+    });
+
+    return {
+      sheetId: revision.sheetId,
+      currentVersion: revision.sheet.version,
+      currentMatchesRevision,
+      updates: previous,
+    };
+  }
+
+  private parseRevisionCells(value: unknown[], fieldName: string) {
+    const seen = new Set<string>();
+    return value.map((item) => {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        throw new BadRequestException(`${fieldName} contains an invalid cell`);
+      }
+      const cell = item as Record<string, unknown>;
+      if (
+        !Number.isInteger(cell.row) ||
+        !Number.isInteger(cell.col) ||
+        (cell.row as number) < 0 ||
+        (cell.col as number) < 0
+      ) {
+        throw new BadRequestException(
+          `${fieldName} contains invalid coordinates`,
+        );
+      }
+      const coordinate = `${cell.row}:${cell.col}`;
+      if (seen.has(coordinate)) {
+        throw new BadRequestException(
+          `${fieldName} contains duplicate coordinates`,
+        );
+      }
+      if (
+        'formula' in cell &&
+        cell.formula !== null &&
+        typeof cell.formula !== 'string'
+      ) {
+        throw new BadRequestException(
+          `${fieldName} contains an invalid formula`,
+        );
+      }
+      if (
+        'format' in cell &&
+        cell.format !== null &&
+        (typeof cell.format !== 'object' || Array.isArray(cell.format))
+      ) {
+        throw new BadRequestException(
+          `${fieldName} contains an invalid format`,
+        );
+      }
+      seen.add(coordinate);
+      return {
+        row: cell.row as number,
+        col: cell.col as number,
+        ...('value' in cell ? { value: cell.value } : {}),
+        ...('formula' in cell
+          ? { formula: cell.formula as string | null }
+          : {}),
+        ...('format' in cell
+          ? { format: cell.format as Record<string, unknown> }
+          : {}),
+      };
+    });
+  }
+
+  private jsonEqual(left: unknown, right: unknown): boolean {
+    return (
+      JSON.stringify(this.canonicalize(left)) ===
+      JSON.stringify(this.canonicalize(right))
+    );
+  }
+
+  private canonicalize(value: unknown): unknown {
+    if (Array.isArray(value))
+      return value.map((item) => this.canonicalize(item));
+    if (value && typeof value === 'object') {
+      return Object.fromEntries(
+        Object.entries(value as Record<string, unknown>)
+          .sort(([left], [right]) => left.localeCompare(right))
+          .map(([key, item]) => [key, this.canonicalize(item)]),
+      );
+    }
+    return value;
   }
 
   /**

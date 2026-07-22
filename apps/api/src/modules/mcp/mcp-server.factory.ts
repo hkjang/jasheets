@@ -213,6 +213,31 @@ export class McpServerFactory {
     );
 
     server.registerTool(
+      'rollback_revision',
+      {
+        description:
+          'Safely undo one cell revision through the shared command boundary. Refuses to overwrite cells changed after that revision.',
+        inputSchema: {
+          revisionId: z.string().uuid(),
+          expectedVersion: z.number().int().min(0),
+          idempotencyKey: z.string().regex(/^[A-Za-z0-9_-]{1,128}$/),
+        },
+        annotations: {
+          readOnlyHint: false,
+          destructiveHint: true,
+          idempotentHint: true,
+        },
+      },
+      async (input) =>
+        jsonResult(
+          await this.commands.execute(
+            { userId, actorType: 'MCP' },
+            { type: 'ROLLBACK_REVISION', ...input },
+          ),
+        ),
+    );
+
+    server.registerTool(
       'set_cells',
       {
         description:

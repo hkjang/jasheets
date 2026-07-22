@@ -2453,12 +2453,27 @@ export class SheetsService {
         const maxCol = Math.max(...cols);
         const startCell = `${this.columnLabel(minCol)}${minRow + 1}`;
         const endCell = `${this.columnLabel(maxCol)}${maxRow + 1}`;
+        const revisionMetadata =
+          mutationMetadata &&
+          typeof mutationMetadata === 'object' &&
+          !Array.isArray(mutationMetadata)
+            ? (mutationMetadata as Record<string, unknown>)
+            : {};
+        const revisionAction =
+          typeof revisionMetadata.revisionAction === 'string'
+            ? revisionMetadata.revisionAction
+            : normalizedUpdates.length === 1
+              ? 'CELL_UPDATE'
+              : 'BULK_UPDATE';
+        const revisionDescription =
+          typeof revisionMetadata.revisionDescription === 'string'
+            ? revisionMetadata.revisionDescription
+            : `Updated ${normalizedUpdates.length} cell(s)`;
         await tx.revisionLog.create({
           data: {
             sheetId,
             userId,
-            action:
-              normalizedUpdates.length === 1 ? 'CELL_UPDATE' : 'BULK_UPDATE',
+            action: revisionAction,
             targetRange:
               startCell === endCell ? startCell : `${startCell}:${endCell}`,
             sheetVersion: versionToMatch + 1,
@@ -2479,7 +2494,7 @@ export class SheetsService {
               formula,
               format,
             })),
-            description: `Updated ${normalizedUpdates.length} cell(s)`,
+            description: revisionDescription,
           },
         });
         return { cells, existingCells };

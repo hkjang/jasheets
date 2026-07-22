@@ -4,7 +4,8 @@ import { RevisionLogsService } from './revision-logs.service';
 describe('RevisionLogsService getRevisionHistory', () => {
   const prisma = {
     sheet: { findUnique: jest.fn() },
-    revisionLog: { findMany: jest.fn() },
+    cell: { findMany: jest.fn() },
+    revisionLog: { findMany: jest.fn(), findUnique: jest.fn() },
   };
   let service: RevisionLogsService;
 
@@ -90,5 +91,34 @@ describe('RevisionLogsService getRevisionHistory', () => {
       service.getRevisionHistory('user-1', 'sheet-1', { limit: 10 }),
     ).rejects.toThrow('No access');
     expect(prisma.revisionLog.findMany).not.toHaveBeenCalled();
+  });
+
+  it('prepares a reversible cell delta and detects unchanged targets', async () => {
+    prisma.revisionLog.findUnique.mockResolvedValueOnce({
+      id: 'revision-1',
+      sheetId: 'sheet-1',
+      previousData: [
+        { row: 0, col: 0, value: 1, formula: null, format: { bold: false } },
+      ],
+      newData: [
+        { row: 0, col: 0, value: 2, formula: null, format: { bold: true } },
+      ],
+      sheet: { version: 7 },
+      user: { id: 'user-1' },
+    });
+    prisma.cell.findMany.mockResolvedValueOnce([
+      { row: 0, col: 0, value: 2, formula: null, format: { bold: true } },
+    ]);
+
+    await expect(
+      service.prepareRevisionRollback('user-1', 'revision-1'),
+    ).resolves.toEqual({
+      sheetId: 'sheet-1',
+      currentVersion: 7,
+      currentMatchesRevision: true,
+      updates: [
+        { row: 0, col: 0, value: 1, formula: null, format: { bold: false } },
+      ],
+    });
   });
 });

@@ -1,5 +1,6 @@
 import { SheetsService } from '../sheets/sheets.service';
 import { SpreadsheetCommandService } from './spreadsheet-command.service';
+import { RevisionLogsService } from '../revision-logs/revision-logs.service';
 
 describe('SpreadsheetCommandService', () => {
   const sheets = {
@@ -11,8 +12,10 @@ describe('SpreadsheetCommandService', () => {
     createPivotTable: jest.fn(),
     createChart: jest.fn(),
   };
+  const revisions = { prepareRevisionRollback: jest.fn() };
   const service = new SpreadsheetCommandService(
     sheets as unknown as SheetsService,
+    revisions as unknown as RevisionLogsService,
   );
 
   beforeEach(() => jest.clearAllMocks());
@@ -61,6 +64,70 @@ describe('SpreadsheetCommandService', () => {
       type: 'insert',
       index: 3,
     });
+  });
+
+  it('rolls back a revision through the atomic cell command', async () => {
+    revisions.prepareRevisionRollback.mockResolvedValue({
+      sheetId: 'sheet-1',
+      currentVersion: 8,
+      currentMatchesRevision: true,
+      updates: [
+        { row: 1, col: 2, value: 'before', formula: null, format: null },
+      ],
+    });
+    sheets.getCellMutationReplay.mockResolvedValue(null);
+    sheets.updateCells.mockResolvedValue({ version: 9, cells: [] });
+
+    await expect(
+      service.execute(
+        { userId: 'user-1', actorType: 'MCP' },
+        {
+          type: 'ROLLBACK_REVISION',
+          revisionId: 'revision-1',
+          expectedVersion: 8,
+          idempotencyKey: 'rollback-1',
+        },
+      ),
+    ).resolves.toMatchObject({
+      version: 9,
+      revisionId: 'revision-1',
+      restoredCells: 1,
+    });
+    expect(sheets.updateCells).toHaveBeenCalledWith(
+      'user-1',
+      'sheet-1',
+      [{ row: 1, col: 2, value: 'before', formula: null, format: null }],
+      8,
+      'rollback-1',
+      {
+        rollbackRevisionId: 'revision-1',
+        revisionAction: 'ROLLBACK',
+        revisionDescription: 'Restored revision revision-1',
+      },
+    );
+  });
+
+  it('refuses to overwrite cells changed after the target revision', async () => {
+    revisions.prepareRevisionRollback.mockResolvedValue({
+      sheetId: 'sheet-1',
+      currentVersion: 8,
+      currentMatchesRevision: false,
+      updates: [{ row: 1, col: 2, value: 'before' }],
+    });
+    sheets.getCellMutationReplay.mockResolvedValue(null);
+
+    await expect(
+      service.execute(
+        { userId: 'user-1', actorType: 'MCP' },
+        {
+          type: 'ROLLBACK_REVISION',
+          revisionId: 'revision-1',
+          expectedVersion: 8,
+          idempotencyKey: 'rollback-conflict',
+        },
+      ),
+    ).rejects.toThrow('refusing to overwrite newer changes');
+    expect(sheets.updateCells).not.toHaveBeenCalled();
   });
 
   it('executes a change set only when its preview still matches', async () => {

@@ -43,6 +43,7 @@ describe('McpServerFactory', () => {
         'analyze_range',
         'preview_changes',
         'get_revision_history',
+        'rollback_revision',
         'execute_change_set',
         'set_cells',
         'write_range',
@@ -185,6 +186,30 @@ describe('McpServerFactory', () => {
         cursor: undefined,
         action: 'BULK_UPDATE',
         includeChanges: true,
+      },
+    );
+
+    commands.execute.mockResolvedValueOnce({
+      version: 9,
+      revisionId: '550e8400-e29b-41d4-a716-446655440010',
+      restoredCells: 2,
+    });
+    const rollback = await client.callTool({
+      name: 'rollback_revision',
+      arguments: {
+        revisionId: '550e8400-e29b-41d4-a716-446655440010',
+        expectedVersion: 8,
+        idempotencyKey: 'rollback-1',
+      },
+    });
+    expect(rollback.isError).not.toBe(true);
+    expect(commands.execute).toHaveBeenLastCalledWith(
+      { userId: 'user-1', actorType: 'MCP' },
+      {
+        type: 'ROLLBACK_REVISION',
+        revisionId: '550e8400-e29b-41d4-a716-446655440010',
+        expectedVersion: 8,
+        idempotencyKey: 'rollback-1',
       },
     );
 
