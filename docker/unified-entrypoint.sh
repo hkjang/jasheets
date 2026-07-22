@@ -23,7 +23,16 @@ export CORS_ORIGIN=${CORS_ORIGIN:-*}
 
 echo "Applying JaSheets database migrations..."
 cd /app/api
-./node_modules/.bin/prisma migrate deploy --schema ./prisma/schema.prisma
+migration_attempt=1
+until ./node_modules/.bin/prisma migrate deploy --schema ./prisma/schema.prisma; do
+  if [ "$migration_attempt" -ge 30 ]; then
+    echo "Database did not become ready after $migration_attempt attempts." >&2
+    exit 1
+  fi
+  echo "Database is not ready; retrying migration in 2 seconds ($migration_attempt/30)..." >&2
+  migration_attempt=$((migration_attempt + 1))
+  sleep 2
+done
 
 shutdown() {
   kill -TERM "${API_PID:-0}" "${WEB_PID:-0}" 2>/dev/null || true
