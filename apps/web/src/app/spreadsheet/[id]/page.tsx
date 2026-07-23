@@ -111,6 +111,9 @@ export default function SpreadsheetPage() {
   const [sheetData, setSheetData] = useState<Record<string, SheetData>>({});
   const [pendingSelectedCell, setPendingSelectedCell] =
     useState<CellPosition | null>(null);
+  const [pendingToastMessage, setPendingToastMessage] = useState<string | null>(
+    null,
+  );
   const [workbookSearchSession, setWorkbookSearchSession] =
     useState<WorkbookSearchSession | null>(null);
 
@@ -198,12 +201,13 @@ export default function SpreadsheetPage() {
   );
 
   const selectSheet = useCallback(
-    (sheetId: string, targetCell?: CellPosition) => {
+    (sheetId: string, targetCell?: CellPosition, notification?: string) => {
       const sheet = sheets.find(
         ({ id: candidateId }) => candidateId === sheetId,
       );
       if (!sheet) return;
       setPendingSelectedCell(targetCell ?? null);
+      setPendingToastMessage(notification ?? null);
       const canvas = document.querySelector<HTMLCanvasElement>(
         'canvas[role="grid"]',
       );
@@ -564,6 +568,7 @@ export default function SpreadsheetPage() {
         title={title}
         sheets={sheets.map(({ id: sheetId, name }) => ({ id: sheetId, name }))}
         initialSelectedCell={pendingSelectedCell}
+        initialToastMessage={pendingToastMessage}
         workbookSearchSession={workbookSearchSession}
         onWorkbookSearchSessionChange={setWorkbookSearchSession}
         onSheetSelect={selectSheet}

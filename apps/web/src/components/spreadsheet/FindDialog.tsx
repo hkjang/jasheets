@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import styles from "./FindDialog.module.css";
 
 interface FindDialogProps {
@@ -12,6 +12,7 @@ interface FindDialogProps {
     options: {
       scope: "sheet" | "workbook";
       mode: "all" | "values" | "formulas";
+      direction: "previous" | "next";
     },
   ) => Promise<void> | void;
   onReplace: (query: string, replacement: string, matchCase: boolean) => void;
@@ -37,15 +38,39 @@ export default function FindDialog({
   const [searchMode, setSearchMode] = useState<"all" | "values" | "formulas">(
     "values",
   );
+  const queryInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    queryInputRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      onClose();
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, onClose]);
 
   if (!isOpen) return null;
 
   return (
     <div className={styles.overlay}>
-      <div className={styles.dialog}>
+      <div
+        className={styles.dialog}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="find-dialog-title"
+      >
         <div className={styles.header}>
-          <h3>{mode === "find" ? "찾기" : "찾기 및 바꾸기"}</h3>
-          <button onClick={onClose} className={styles.closeBtn}>
+          <h3 id="find-dialog-title">
+            {mode === "find" ? "찾기" : "찾기 및 바꾸기"}
+          </h3>
+          <button
+            onClick={onClose}
+            className={styles.closeBtn}
+            aria-label="닫기"
+          >
             ×
           </button>
         </div>
@@ -70,9 +95,18 @@ export default function FindDialog({
             <label htmlFor="find-query">찾을 내용</label>
             <input
               id="find-query"
+              ref={queryInputRef}
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              autoFocus
+              onKeyDown={(event) => {
+                if (event.key !== "Enter" || !query) return;
+                event.preventDefault();
+                void onFind(query, matchCase, {
+                  scope,
+                  mode: searchMode,
+                  direction: event.shiftKey ? "previous" : "next",
+                });
+              }}
             />
           </div>
 
@@ -132,14 +166,32 @@ export default function FindDialog({
 
         <div className={styles.footer}>
           {mode === "find" ? (
-            <button
-              onClick={() =>
-                void onFind(query, matchCase, { scope, mode: searchMode })
-              }
-              disabled={!query}
-            >
-              찾기
-            </button>
+            <>
+              <button
+                onClick={() =>
+                  void onFind(query, matchCase, {
+                    scope,
+                    mode: searchMode,
+                    direction: "previous",
+                  })
+                }
+                disabled={!query}
+              >
+                이전
+              </button>
+              <button
+                onClick={() =>
+                  void onFind(query, matchCase, {
+                    scope,
+                    mode: searchMode,
+                    direction: "next",
+                  })
+                }
+                disabled={!query}
+              >
+                다음
+              </button>
+            </>
           ) : (
             <>
               <button

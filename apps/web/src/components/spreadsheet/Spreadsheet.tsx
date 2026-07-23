@@ -154,6 +154,7 @@ interface SpreadsheetProps {
   title?: string;
   sheets?: SheetTab[];
   initialSelectedCell?: CellPosition | null;
+  initialToastMessage?: string | null;
   workbookSearchSession?: WorkbookSearchSession | null;
   onWorkbookSearchSessionChange?: (
     session: WorkbookSearchSession | null,
@@ -161,6 +162,7 @@ interface SpreadsheetProps {
   onSheetSelect?: (
     sheetId: string,
     targetCell?: CellPosition,
+    notification?: string,
   ) => Promise<void> | void;
   onSheetAdd?: () => Promise<void> | void;
   onSheetRename?: (sheetId: string, name: string) => Promise<void> | void;
@@ -212,6 +214,7 @@ export default function Spreadsheet({
   title = "Untitled Spreadsheet",
   sheets = [],
   initialSelectedCell = null,
+  initialToastMessage = null,
   workbookSearchSession = null,
   onWorkbookSearchSessionChange,
   onSheetSelect,
@@ -236,7 +239,9 @@ export default function Spreadsheet({
     () => sheetVersionRef.current,
     [],
   );
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [toastMessage, setToastMessage] = useState<string | null>(
+    initialToastMessage,
+  );
   const [sheetActionPending, setSheetActionPending] = useState(false);
   const user = currentUser;
   const collaborationBroadcastRef = useRef<
@@ -1700,7 +1705,8 @@ export default function Spreadsheet({
       options: {
         scope: "sheet" | "workbook";
         mode: "all" | "values" | "formulas";
-      } = { scope: "sheet", mode: "values" },
+        direction: "previous" | "next";
+      } = { scope: "sheet", mode: "values", direction: "next" },
     ) => {
       if (spreadsheetId && spreadsheetId !== "demo" && activeSheetId) {
         try {
@@ -1731,6 +1737,15 @@ export default function Spreadsheet({
             };
             workbookSearchRef.current = session;
             onWorkbookSearchSessionChange?.({ ...session });
+          } else if (options.direction === "previous") {
+            session.index =
+              session.index > 0
+                ? session.index - 1
+                : Math.max(0, session.matches.length - 1);
+            onWorkbookSearchSessionChange?.({
+              ...session,
+              matches: [...session.matches],
+            });
           } else {
             session.index += 1;
             if (session.index >= session.matches.length && session.hasMore) {
@@ -1760,17 +1775,20 @@ export default function Spreadsheet({
             setToastMessage("검색 결과가 없습니다.");
             return;
           }
+          const resultMessage = `${match.sheetName}!${match.cell} · ${session.index + 1}${session.hasMore ? "+" : `/${session.matches.length}`}`;
           if (match.sheetId !== activeSheetId) {
-            await onSheetSelect?.(match.sheetId, {
-              row: match.row,
-              col: match.col,
-            });
+            await onSheetSelect?.(
+              match.sheetId,
+              {
+                row: match.row,
+                col: match.col,
+              },
+              resultMessage,
+            );
           } else {
             _handleCellSelect({ row: match.row, col: match.col });
+            setToastMessage(resultMessage);
           }
-          setToastMessage(
-            `${match.sheetName}!${match.cell} · ${session.index + 1}${session.hasMore ? "+" : `/${session.matches.length}`}`,
-          );
           return;
         } catch (error) {
           console.error("Workbook search failed:", error);
@@ -1803,6 +1821,17 @@ export default function Spreadsheet({
       spreadsheetId,
     ],
   );
+
+  useEffect(() => {
+    const openFind = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "f")
+        return;
+      event.preventDefault();
+      setIsFindOpen(true);
+    };
+    window.addEventListener("keydown", openFind);
+    return () => window.removeEventListener("keydown", openFind);
+  }, []);
 
   const handleReplace = useCallback(
     (query: string, replacement: string, matchCase: boolean) => {

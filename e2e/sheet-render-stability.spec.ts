@@ -137,3 +137,76 @@ test("sheet switching never replaces the editor with a loading frame", async ({
     ),
   ).toBe(true);
 });
+
+test("Ctrl+F searches the workbook and selects a match on another sheet", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem("auth_token", "e2e-token");
+    localStorage.setItem(
+      "user",
+      JSON.stringify({ id: "e2e-user", email: "e2e@example.com", name: "E2E" }),
+    );
+  });
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    await route.fulfill({
+      contentType: "application/json",
+      json:
+        path.includes("/comments") || path.includes("/filter-profiles")
+          ? []
+          : { version: 1 },
+    });
+  });
+  await page.route("**/api/sheets/stability-workbook", async (route) => {
+    await route.fulfill({ contentType: "application/json", json: workbook });
+  });
+  await page.route(
+    "**/api/sheets/stability-workbook/search?**",
+    async (route) => {
+      await route.fulfill({
+        contentType: "application/json",
+        json: {
+          spreadsheetId: workbook.id,
+          query: "beta",
+          mode: "values",
+          matchCase: false,
+          matches: [
+            {
+              sheetId: "sheet-b",
+              sheetName: "Sheet 2",
+              row: 0,
+              col: 0,
+              cell: "A1",
+              value: "beta",
+              formula: null,
+              matchIn: ["value"],
+            },
+          ],
+          hasMore: false,
+          nextCursor: null,
+        },
+      });
+    },
+  );
+
+  await page.goto("/spreadsheet/stability-workbook");
+  await expect(
+    page.getByRole("grid", { name: "Spreadsheet grid" }),
+  ).toBeVisible();
+  await page.keyboard.press("Control+f");
+  const dialog = page.getByRole("dialog", { name: "찾기" });
+  await expect(dialog).toBeVisible();
+  await dialog.getByLabel("찾을 내용").fill("beta");
+  await dialog.getByLabel("검색 범위").selectOption("workbook");
+  await dialog.getByLabel("찾을 내용").press("Enter");
+
+  await expect(page.getByRole("tab", { name: "Sheet 2" })).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
+  await expect(page.getByPlaceholder("Enter value or formula")).toHaveValue(
+    "beta",
+  );
+  await expect(page.getByText("Sheet 2!A1 · 1/1")).toBeVisible();
+});

@@ -24,12 +24,44 @@ describe("FindDialog", () => {
       target: { value: "formulas" },
     });
     fireEvent.click(screen.getByLabelText("대소문자 구분"));
-    fireEvent.click(screen.getAllByRole("button", { name: "찾기" })[1]);
+    fireEvent.click(screen.getByRole("button", { name: "다음" }));
 
     expect(onFind).toHaveBeenCalledWith("SUM(", true, {
       scope: "workbook",
       mode: "formulas",
+      direction: "next",
     });
+  });
+
+  it("supports Enter, Shift+Enter, and Escape keyboard navigation", () => {
+    const onFind = jest.fn();
+    const onClose = jest.fn();
+    render(
+      <FindDialog
+        isOpen
+        onClose={onClose}
+        onFind={onFind}
+        onReplace={jest.fn()}
+        onReplaceAll={jest.fn()}
+      />,
+    );
+    const input = screen.getByLabelText("찾을 내용");
+    fireEvent.change(input, { target: { value: "total" } });
+    fireEvent.keyDown(input, { key: "Enter" });
+    fireEvent.keyDown(input, { key: "Enter", shiftKey: true });
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(onFind).toHaveBeenNthCalledWith(1, "total", false, {
+      scope: "sheet",
+      mode: "values",
+      direction: "next",
+    });
+    expect(onFind).toHaveBeenNthCalledWith(2, "total", false, {
+      scope: "sheet",
+      mode: "values",
+      direction: "previous",
+    });
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   it("does not render while closed", () => {
