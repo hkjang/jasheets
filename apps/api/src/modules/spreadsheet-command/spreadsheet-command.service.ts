@@ -98,6 +98,11 @@ export class SpreadsheetCommandService {
           context.userId,
           command.revisionId,
         );
+        if (command.sheetId && command.sheetId !== plan.sheetId) {
+          throw new BadRequestException(
+            'Revision does not belong to the requested sheet',
+          );
+        }
         const replay = await this.sheetsService.getCellMutationReplay(
           context.userId,
           plan.sheetId,

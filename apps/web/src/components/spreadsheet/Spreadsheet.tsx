@@ -152,6 +152,7 @@ interface SpreadsheetProps {
   onSheetReorder?: (sheetId: string, index: number) => Promise<void> | void;
   onSheetDuplicate?: (sheetId: string) => Promise<void> | void;
   onVersionChange?: (sheetId: string, version: number) => void;
+  onSheetReload?: () => Promise<void> | void;
   onChartsChange?: (sheetId: string, charts: unknown[]) => void;
   onStructureChange?: (
     sheetId: string,
@@ -201,6 +202,7 @@ export default function Spreadsheet({
   onSheetReorder,
   onSheetDuplicate,
   onVersionChange,
+  onSheetReload,
   onChartsChange,
   onStructureChange,
   onMergedRangesChange,
@@ -242,11 +244,14 @@ export default function Spreadsheet({
       "자동 저장에 실패했습니다. 연결이 복구되면 다시 시도합니다.",
     );
   }, []);
-  const handleAutosaveConflict = useCallback((version: number) => {
-    sheetVersionRef.current = version;
-    setSheetVersion(version);
-    if (activeSheetId) onVersionChange?.(activeSheetId, version);
-  }, [activeSheetId, onVersionChange]);
+  const handleAutosaveConflict = useCallback(
+    (version: number) => {
+      sheetVersionRef.current = version;
+      setSheetVersion(version);
+      if (activeSheetId) onVersionChange?.(activeSheetId, version);
+    },
+    [activeSheetId, onVersionChange],
+  );
   const {
     status: autosaveStatus,
     queueChanges,
@@ -2084,10 +2089,7 @@ export default function Spreadsheet({
         range,
         sheetVersionRef.current,
       );
-      const nextMergedRanges = [
-        ...mergedRangesRef.current,
-        result.mergedRange,
-      ];
+      const nextMergedRanges = [...mergedRangesRef.current, result.mergedRange];
       mergedRangesRef.current = nextMergedRanges;
       setMergedRanges(nextMergedRanges);
       onMergedRangesChange?.(activeSheetId, nextMergedRanges);
@@ -3054,9 +3056,17 @@ export default function Spreadsheet({
         isOpen={isHistoryPanelOpen}
         onClose={() => setIsHistoryPanelOpen(false)}
         sheetId={activeSheetId || ""}
-        onRollback={() => {
+        currentVersion={sheetVersion ?? 0}
+        beforeRollback={async () => {
+          await flushAutosave();
+          return sheetVersionRef.current ?? 0;
+        }}
+        onRollback={async (_revisionId, version) => {
+          sheetVersionRef.current = version;
+          setSheetVersion(version);
+          if (activeSheetId) onVersionChange?.(activeSheetId, version);
+          await onSheetReload?.();
           setToastMessage("시트가 이전 버전으로 복원되었습니다.");
-          // Reload data after rollback
         }}
       />
 

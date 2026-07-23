@@ -35,6 +35,7 @@ export interface ExecuteChangeSetCommand {
 export interface RollbackRevisionCommand {
   type: 'ROLLBACK_REVISION';
   revisionId: string;
+  sheetId?: string;
   expectedVersion: number;
   idempotencyKey: string;
 }

@@ -562,6 +562,7 @@ export default function SpreadsheetPage() {
         onSheetReorder={reorderSheet}
         onSheetDuplicate={duplicateSheet}
         onVersionChange={handleVersionChange}
+        onSheetReload={() => loadSpreadsheet(true, activeSheetId)}
         onChartsChange={handleChartsChange}
         onStructureChange={handleStructureChange}
         onMergedRangesChange={handleMergedRangesChange}
