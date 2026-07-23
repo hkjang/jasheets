@@ -224,16 +224,26 @@ export class McpServerFactory {
           sheetId: z.string().uuid().optional(),
           limit: z.number().int().min(1).max(100).optional().default(50),
           cursor: z.string().min(1).max(512).optional(),
+          matchCase: z.boolean().optional().default(false),
         },
         annotations: { readOnlyHint: true, idempotentHint: true },
       },
-      async ({ spreadsheetId, query, mode, sheetId, limit, cursor }) =>
+      async ({
+        spreadsheetId,
+        query,
+        mode,
+        sheetId,
+        limit,
+        cursor,
+        matchCase,
+      }) =>
         jsonResult(
           await this.queries.searchWorkbook(userId, spreadsheetId, query, {
             mode,
             sheetId,
             limit,
             cursor,
+            matchCase,
           }),
         ),
     );

@@ -215,6 +215,7 @@ describe('McpServerFactory', () => {
         sheetId: undefined,
         limit: 25,
         cursor: undefined,
+        matchCase: false,
       },
     );
 

@@ -49,6 +49,27 @@ export interface SpreadsheetSheet {
   pivotTables?: ManagedPivotTable[];
 }
 
+export interface WorkbookSearchMatch {
+  sheetId: string;
+  sheetName: string;
+  row: number;
+  col: number;
+  cell: string;
+  value: unknown;
+  formula: string | null;
+  matchIn: Array<"value" | "formula">;
+}
+
+export interface WorkbookSearchResult {
+  spreadsheetId: string;
+  query: string;
+  mode: "all" | "values" | "formulas";
+  matchCase: boolean;
+  matches: WorkbookSearchMatch[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
 export class CellVersionConflictError extends Error {
   constructor(readonly currentVersion: number) {
     super("다른 사용자의 변경과 병합한 뒤 다시 저장합니다.");
@@ -146,10 +167,7 @@ export const api = {
       apiClient.request<PersistedConditionalRule[]>(
         `/sheets/${sheetId}/conditional-rules`,
       ),
-    create: (
-      sheetId: string,
-      rule: Omit<PersistedConditionalRule, "id">,
-    ) =>
+    create: (sheetId: string, rule: Omit<PersistedConditionalRule, "id">) =>
       apiClient.request<PersistedConditionalRule>(
         `/sheets/${sheetId}/conditional-rules`,
         {
@@ -239,18 +257,37 @@ export const api = {
     get: async (id: string, signal?: AbortSignal) => {
       return apiClient.request<SpreadsheetDetail>(`/sheets/${id}`, { signal });
     },
-    importWorkbook: async (
-      id: string,
-      payload: WorkbookImportPayload,
-    ) => apiClient.request<{
-      mode: "append" | "replace";
-      imported: Array<{ id: string; name: string; version: number }>;
-      preservedSheetCount: number;
-    }>(`/sheets/${id}/import-workbook`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    }),
+    search: async (
+      spreadsheetId: string,
+      options: {
+        query: string;
+        mode?: "all" | "values" | "formulas";
+        sheetId?: string;
+        limit?: number;
+        cursor?: string;
+        matchCase?: boolean;
+      },
+    ) => {
+      const params = new URLSearchParams({ query: options.query });
+      if (options.mode) params.set("mode", options.mode);
+      if (options.sheetId) params.set("sheetId", options.sheetId);
+      if (options.limit) params.set("limit", String(options.limit));
+      if (options.cursor) params.set("cursor", options.cursor);
+      if (options.matchCase) params.set("matchCase", "true");
+      return apiClient.request<WorkbookSearchResult>(
+        `/sheets/${spreadsheetId}/search?${params}`,
+      );
+    },
+    importWorkbook: async (id: string, payload: WorkbookImportPayload) =>
+      apiClient.request<{
+        mode: "append" | "replace";
+        imported: Array<{ id: string; name: string; version: number }>;
+        preservedSheetCount: number;
+      }>(`/sheets/${id}/import-workbook`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      }),
     addSheet: async (spreadsheetId: string, name: string) => {
       return apiClient.request<SpreadsheetSheet>(
         `/sheets/${spreadsheetId}/sheets`,
@@ -313,26 +350,28 @@ export const api = {
       sheetId: string,
       range: MergedRange,
       expectedVersion: number,
-    ) => apiClient.request<{ mergedRange: PersistedMergedRange; version: number }>(
-      `/sheets/sheet/${sheetId}/merged-ranges`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...range, expectedVersion }),
-      },
-    ),
+    ) =>
+      apiClient.request<{ mergedRange: PersistedMergedRange; version: number }>(
+        `/sheets/sheet/${sheetId}/merged-ranges`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...range, expectedVersion }),
+        },
+      ),
     unmergeCells: async (
       sheetId: string,
       range: MergedRange,
       expectedVersion: number,
-    ) => apiClient.request<{ version: number }>(
-      `/sheets/sheet/${sheetId}/merged-ranges`,
-      {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...range, expectedVersion }),
-      },
-    ),
+    ) =>
+      apiClient.request<{ version: number }>(
+        `/sheets/sheet/${sheetId}/merged-ranges`,
+        {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...range, expectedVersion }),
+        },
+      ),
     saveView: async (
       sheetId: string,
       view: {
@@ -513,7 +552,9 @@ export const api = {
         ) {
           throw new CellVersionConflictError(body.currentVersion);
         }
-        throw new Error("다른 사용자가 먼저 시트를 변경했습니다. 입력 내용은 유지됩니다.");
+        throw new Error(
+          "다른 사용자가 먼저 시트를 변경했습니다. 입력 내용은 유지됩니다.",
+        );
       }
       if (!res.ok) throw new Error("Failed to save cells");
       return res.json();

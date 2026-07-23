@@ -662,6 +662,7 @@ export class SheetsService {
       sheetId?: string;
       limit: number;
       cursor?: string;
+      matchCase?: boolean;
     },
   ) {
     const normalizedQuery = query.trim();
@@ -693,6 +694,7 @@ export class SheetsService {
       : null;
     const includeValues = options.mode !== 'formulas';
     const includeFormulas = options.mode !== 'values';
+    const matchCase = options.matchCase ?? false;
     const searchPattern = `%${normalizedQuery.replace(/[\\%_]/g, '\\$&')}%`;
     const rows = await this.prisma.$queryRaw<
       Array<{
@@ -721,10 +723,12 @@ export class SheetsService {
         ${options.sheetId ? Prisma.sql`AND s.id = ${options.sheetId}` : Prisma.empty}
         AND (
           (${includeValues} AND c."valueSearchText" IS NOT NULL AND
-            lower(c."valueSearchText") LIKE lower(${searchPattern}) ESCAPE E'\\\\')
+            lower(c."valueSearchText") LIKE lower(${searchPattern}) ESCAPE E'\\\\' AND
+            (${!matchCase} OR c."valueSearchText" LIKE ${searchPattern} ESCAPE E'\\\\'))
           OR
           (${includeFormulas} AND c.formula IS NOT NULL AND
-            lower(c.formula) LIKE lower(${searchPattern}) ESCAPE E'\\\\')
+            lower(c.formula) LIKE lower(${searchPattern}) ESCAPE E'\\\\' AND
+            (${!matchCase} OR c.formula LIKE ${searchPattern} ESCAPE E'\\\\'))
         )
         ${
           cursor
@@ -736,7 +740,9 @@ export class SheetsService {
     `);
     const hasMore = rows.length > options.limit;
     const page = rows.slice(0, options.limit);
-    const loweredQuery = normalizedQuery.toLowerCase();
+    const comparableQuery = matchCase
+      ? normalizedQuery
+      : normalizedQuery.toLowerCase();
     const matches = page.map((cell) => {
       const valueText =
         typeof cell.value === 'string'
@@ -753,11 +759,16 @@ export class SheetsService {
         value: cell.value,
         formula: cell.formula,
         matchIn: [
-          ...(includeValues && valueText.toLowerCase().includes(loweredQuery)
+          ...(includeValues &&
+          (matchCase ? valueText : valueText.toLowerCase()).includes(
+            comparableQuery,
+          )
             ? (['value'] as const)
             : []),
           ...(includeFormulas &&
-          cell.formula?.toLowerCase().includes(loweredQuery)
+          (matchCase ? cell.formula : cell.formula?.toLowerCase())?.includes(
+            comparableQuery,
+          )
             ? (['formula'] as const)
             : []),
         ],
@@ -768,6 +779,7 @@ export class SheetsService {
       spreadsheetId,
       query: normalizedQuery,
       mode: options.mode,
+      matchCase,
       matches,
       hasMore,
       nextCursor:

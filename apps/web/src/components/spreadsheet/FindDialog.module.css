@@ -4,7 +4,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0,0,0,0.1);
+  background: rgba(0, 0, 0, 0.1);
   display: flex;
   justify-content: center;
   align-items: flex-start;
@@ -15,7 +15,7 @@
 .dialog {
   background: white;
   border-radius: 8px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
   width: 400px;
   max-width: 90vw;
   overflow: hidden;
@@ -91,6 +91,27 @@
   color: #3c4043;
 }
 
+.searchOptions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.searchOptions label {
+  display: grid;
+  gap: 4px;
+}
+
+.searchOptions select {
+  min-width: 0;
+  padding: 7px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  background: white;
+  color: #3c4043;
+}
+
 .footer {
   padding: 16px;
   background: #f8f9fa;
@@ -115,7 +136,7 @@
 }
 
 .footer button:not(:last-child) {
-    background: white;
-    color: #1a73e8;
-    border: 1px solid #dadce0;
+  background: white;
+  color: #1a73e8;
+  border: 1px solid #dadce0;
 }

@@ -242,6 +242,7 @@ export class McpQueryService {
     options: {
       limit: number;
       cursor?: string;
+      matchCase?: boolean;
       action?: string;
       includeChanges?: boolean;
     },
@@ -262,6 +263,7 @@ export class McpQueryService {
       sheetId?: string;
       limit: number;
       cursor?: string;
+      matchCase?: boolean;
     },
   ) {
     return this.sheetsService.searchWorkbook(

@@ -27,6 +27,7 @@ import { MergeCellsDto, UnmergeCellsDto } from './dto/merged-range.dto';
 import { ImportWorkbookDto } from './dto/import-workbook.dto';
 import { SavePivotTablesDto } from './dto/pivot-table.dto';
 import { SpreadsheetCommandService } from '../spreadsheet-command/spreadsheet-command.service';
+import { SearchWorkbookDto } from './dto/search-workbook.dto';
 
 @Controller('sheets')
 @UseGuards(JwtAuthGuard)
@@ -107,6 +108,26 @@ export class SheetsController {
       req.user.id,
       id,
       body.isPublic,
+    );
+  }
+
+  @Get(':id/search')
+  searchWorkbook(
+    @Request() req: any,
+    @Param('id') spreadsheetId: string,
+    @Query() dto: SearchWorkbookDto,
+  ) {
+    return this.sheetsService.searchWorkbook(
+      req.user.id,
+      spreadsheetId,
+      dto.query,
+      {
+        mode: dto.mode,
+        sheetId: dto.sheetId,
+        limit: dto.limit,
+        cursor: dto.cursor,
+        matchCase: dto.matchCase,
+      },
     );
   }
 

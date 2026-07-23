@@ -3,7 +3,9 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { clearAuthSession } from "@/lib/auth-session";
-import Spreadsheet from "@/components/spreadsheet/Spreadsheet";
+import Spreadsheet, {
+  type WorkbookSearchSession,
+} from "@/components/spreadsheet/Spreadsheet";
 import { api, type SpreadsheetSheet } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
 import { ApiError } from "@/lib/api-client";
@@ -13,6 +15,7 @@ import {
 } from "@/components/ui/PageLoadState";
 import {
   DEFAULT_CONFIG,
+  type CellPosition,
   type CellData,
   type ColumnDef,
   type RowData,
@@ -106,6 +109,10 @@ export default function SpreadsheetPage() {
   const [title, setTitle] = useState("");
   const [sheets, setSheets] = useState<SpreadsheetSheet[]>([]);
   const [sheetData, setSheetData] = useState<Record<string, SheetData>>({});
+  const [pendingSelectedCell, setPendingSelectedCell] =
+    useState<CellPosition | null>(null);
+  const [workbookSearchSession, setWorkbookSearchSession] =
+    useState<WorkbookSearchSession | null>(null);
 
   const requestRef = useRef(0);
   const abortRef = useRef<AbortController | null>(null);
@@ -191,11 +198,12 @@ export default function SpreadsheetPage() {
   );
 
   const selectSheet = useCallback(
-    (sheetId: string) => {
+    (sheetId: string, targetCell?: CellPosition) => {
       const sheet = sheets.find(
         ({ id: candidateId }) => candidateId === sheetId,
       );
       if (!sheet) return;
+      setPendingSelectedCell(targetCell ?? null);
       const canvas = document.querySelector<HTMLCanvasElement>(
         'canvas[role="grid"]',
       );
@@ -555,6 +563,9 @@ export default function SpreadsheetPage() {
         currentSheetName={activeSheet?.name}
         title={title}
         sheets={sheets.map(({ id: sheetId, name }) => ({ id: sheetId, name }))}
+        initialSelectedCell={pendingSelectedCell}
+        workbookSearchSession={workbookSearchSession}
+        onWorkbookSearchSessionChange={setWorkbookSearchSession}
         onSheetSelect={selectSheet}
         onSheetAdd={addSheet}
         onSheetRename={renameSheet}

@@ -98,7 +98,7 @@ import CommandPalette from "./CommandPalette";
 import type { PersistedCellUpdate } from "@/utils/cellPersistence";
 import SheetTabs, { type SheetTab } from "./SheetTabs";
 import type { FormulaWorkbook } from "@jasheets/formula-engine";
-import type { PersistedMergedRange } from "@/lib/api";
+import type { PersistedMergedRange, WorkbookSearchMatch } from "@/lib/api";
 import {
   findMergedRange,
   normalizeMergedRange,
@@ -124,6 +124,14 @@ import {
   sourceRangeToA1,
 } from "@/utils/managedPivots";
 
+export interface WorkbookSearchSession {
+  key: string;
+  matches: WorkbookSearchMatch[];
+  index: number;
+  cursor: string | null;
+  hasMore: boolean;
+}
+
 interface SpreadsheetProps {
   currentUser: User;
   initialData?: SheetData;
@@ -145,7 +153,15 @@ interface SpreadsheetProps {
   currentSheetName?: string;
   title?: string;
   sheets?: SheetTab[];
-  onSheetSelect?: (sheetId: string) => Promise<void> | void;
+  initialSelectedCell?: CellPosition | null;
+  workbookSearchSession?: WorkbookSearchSession | null;
+  onWorkbookSearchSessionChange?: (
+    session: WorkbookSearchSession | null,
+  ) => void;
+  onSheetSelect?: (
+    sheetId: string,
+    targetCell?: CellPosition,
+  ) => Promise<void> | void;
   onSheetAdd?: () => Promise<void> | void;
   onSheetRename?: (sheetId: string, name: string) => Promise<void> | void;
   onSheetDelete?: (sheetId: string) => Promise<void> | void;
@@ -195,6 +211,9 @@ export default function Spreadsheet({
   currentSheetName,
   title = "Untitled Spreadsheet",
   sheets = [],
+  initialSelectedCell = null,
+  workbookSearchSession = null,
+  onWorkbookSearchSessionChange,
   onSheetSelect,
   onSheetAdd,
   onSheetRename,
@@ -331,7 +350,7 @@ export default function Spreadsheet({
     setSelection,
     handleCellSelect: _handleCellSelect,
     handleSelectionChange: _handleSelectionChange,
-  } = useSpreadsheetSelection();
+  } = useSpreadsheetSelection(initialSelectedCell);
 
   // Editing
   const {
@@ -1322,6 +1341,9 @@ export default function Spreadsheet({
 
   // Find Dialog state
   const [isFindOpen, setIsFindOpen] = useState(false);
+  const workbookSearchRef = useRef<WorkbookSearchSession | null>(
+    workbookSearchSession,
+  );
 
   // File Open Dialog state
   const [isFileDialogOpen, setIsFileDialogOpen] = useState(false);
@@ -1672,7 +1694,91 @@ export default function Spreadsheet({
 
   // Find Handlers
   const handleFind = useCallback(
-    (query: string, matchCase: boolean) => {
+    async (
+      query: string,
+      matchCase: boolean,
+      options: {
+        scope: "sheet" | "workbook";
+        mode: "all" | "values" | "formulas";
+      } = { scope: "sheet", mode: "values" },
+    ) => {
+      if (spreadsheetId && spreadsheetId !== "demo" && activeSheetId) {
+        try {
+          await flushAutosave();
+          const sheetId = options.scope === "sheet" ? activeSheetId : undefined;
+          const key = JSON.stringify({
+            spreadsheetId,
+            sheetId,
+            query,
+            matchCase,
+            mode: options.mode,
+          });
+          let session = workbookSearchRef.current;
+          if (!session || session.key !== key) {
+            const result = await api.spreadsheets.search(spreadsheetId, {
+              query,
+              mode: options.mode,
+              sheetId,
+              limit: 100,
+              matchCase,
+            });
+            session = {
+              key,
+              matches: result.matches,
+              index: 0,
+              cursor: result.nextCursor,
+              hasMore: result.hasMore,
+            };
+            workbookSearchRef.current = session;
+            onWorkbookSearchSessionChange?.({ ...session });
+          } else {
+            session.index += 1;
+            if (session.index >= session.matches.length && session.hasMore) {
+              const result = await api.spreadsheets.search(spreadsheetId, {
+                query,
+                mode: options.mode,
+                sheetId,
+                limit: 100,
+                cursor: session.cursor ?? undefined,
+                matchCase,
+              });
+              const previousLength = session.matches.length;
+              session.matches.push(...result.matches);
+              session.index = previousLength;
+              session.cursor = result.nextCursor;
+              session.hasMore = result.hasMore;
+            } else if (session.index >= session.matches.length) {
+              session.index = 0;
+            }
+            onWorkbookSearchSessionChange?.({
+              ...session,
+              matches: [...session.matches],
+            });
+          }
+          const match = session.matches[session.index];
+          if (!match) {
+            setToastMessage("검색 결과가 없습니다.");
+            return;
+          }
+          if (match.sheetId !== activeSheetId) {
+            await onSheetSelect?.(match.sheetId, {
+              row: match.row,
+              col: match.col,
+            });
+          } else {
+            _handleCellSelect({ row: match.row, col: match.col });
+          }
+          setToastMessage(
+            `${match.sheetName}!${match.cell} · ${session.index + 1}${session.hasMore ? "+" : `/${session.matches.length}`}`,
+          );
+          return;
+        } catch (error) {
+          console.error("Workbook search failed:", error);
+          setToastMessage("통합 문서 검색에 실패했습니다.");
+          return;
+        }
+      }
+
       const start = selectedCell || { row: -1, col: -1 };
       const next = findNext(query, matchCase, start);
       if (next) {
@@ -1686,7 +1792,16 @@ export default function Spreadsheet({
         }
       }
     },
-    [findNext, selectedCell, _handleCellSelect],
+    [
+      _handleCellSelect,
+      activeSheetId,
+      findNext,
+      flushAutosave,
+      onSheetSelect,
+      onWorkbookSearchSessionChange,
+      selectedCell,
+      spreadsheetId,
+    ],
   );
 
   const handleReplace = useCallback(
