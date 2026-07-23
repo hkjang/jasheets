@@ -653,6 +653,179 @@ export class SheetsService {
     };
   }
 
+  async searchWorkbook(
+    userId: string,
+    spreadsheetId: string,
+    query: string,
+    options: {
+      mode: 'all' | 'values' | 'formulas';
+      sheetId?: string;
+      limit: number;
+      cursor?: string;
+    },
+  ) {
+    const normalizedQuery = query.trim();
+    if (normalizedQuery.length < 1 || normalizedQuery.length > 200) {
+      throw new BadRequestException(
+        'Workbook search query must contain between 1 and 200 characters',
+      );
+    }
+    if (
+      !Number.isInteger(options.limit) ||
+      options.limit < 1 ||
+      options.limit > 100
+    ) {
+      throw new BadRequestException(
+        'Workbook search limit must be between 1 and 100',
+      );
+    }
+    if (!['all', 'values', 'formulas'].includes(options.mode)) {
+      throw new BadRequestException('Workbook search mode is invalid');
+    }
+    if (!(await this.checkAccess(userId, spreadsheetId))) {
+      throw new ForbiddenException(
+        'You do not have access to this spreadsheet',
+      );
+    }
+
+    const cursor = options.cursor
+      ? this.decodeWorkbookSearchCursor(options.cursor)
+      : null;
+    const includeValues = options.mode !== 'formulas';
+    const includeFormulas = options.mode !== 'values';
+    const searchPattern = `%${normalizedQuery.replace(/[\\%_]/g, '\\$&')}%`;
+    const rows = await this.prisma.$queryRaw<
+      Array<{
+        id: string;
+        sheetId: string;
+        sheetName: string;
+        sheetIndex: number;
+        row: number;
+        col: number;
+        value: Prisma.JsonValue | null;
+        formula: string | null;
+      }>
+    >(Prisma.sql`
+      SELECT
+        c.id,
+        c."sheetId",
+        s.name AS "sheetName",
+        s."index" AS "sheetIndex",
+        c.row,
+        c.col,
+        c.value,
+        c.formula
+      FROM cells c
+      INNER JOIN sheets s ON s.id = c."sheetId"
+      WHERE s."spreadsheetId" = ${spreadsheetId}
+        ${options.sheetId ? Prisma.sql`AND s.id = ${options.sheetId}` : Prisma.empty}
+        AND (
+          (${includeValues} AND c."valueSearchText" IS NOT NULL AND
+            lower(c."valueSearchText") LIKE lower(${searchPattern}) ESCAPE E'\\\\')
+          OR
+          (${includeFormulas} AND c.formula IS NOT NULL AND
+            lower(c.formula) LIKE lower(${searchPattern}) ESCAPE E'\\\\')
+        )
+        ${
+          cursor
+            ? Prisma.sql`AND (s."index", c.row, c.col, c.id) > (${cursor.sheetIndex}, ${cursor.row}, ${cursor.col}, ${cursor.id})`
+            : Prisma.empty
+        }
+      ORDER BY s."index" ASC, c.row ASC, c.col ASC, c.id ASC
+      LIMIT ${options.limit + 1}
+    `);
+    const hasMore = rows.length > options.limit;
+    const page = rows.slice(0, options.limit);
+    const loweredQuery = normalizedQuery.toLowerCase();
+    const matches = page.map((cell) => {
+      const valueText =
+        typeof cell.value === 'string'
+          ? cell.value
+          : cell.value === null
+            ? ''
+            : JSON.stringify(cell.value);
+      return {
+        sheetId: cell.sheetId,
+        sheetName: cell.sheetName,
+        row: cell.row,
+        col: cell.col,
+        cell: `${this.columnLabel(cell.col)}${cell.row + 1}`,
+        value: cell.value,
+        formula: cell.formula,
+        matchIn: [
+          ...(includeValues && valueText.toLowerCase().includes(loweredQuery)
+            ? (['value'] as const)
+            : []),
+          ...(includeFormulas &&
+          cell.formula?.toLowerCase().includes(loweredQuery)
+            ? (['formula'] as const)
+            : []),
+        ],
+      };
+    });
+    const last = page.at(-1);
+    return {
+      spreadsheetId,
+      query: normalizedQuery,
+      mode: options.mode,
+      matches,
+      hasMore,
+      nextCursor:
+        hasMore && last
+          ? this.encodeWorkbookSearchCursor({
+              sheetIndex: last.sheetIndex,
+              row: last.row,
+              col: last.col,
+              id: last.id,
+            })
+          : null,
+    };
+  }
+
+  private encodeWorkbookSearchCursor(cursor: {
+    sheetIndex: number;
+    row: number;
+    col: number;
+    id: string;
+  }): string {
+    return Buffer.from(JSON.stringify(cursor), 'utf8').toString('base64url');
+  }
+
+  private decodeWorkbookSearchCursor(cursor: string): {
+    sheetIndex: number;
+    row: number;
+    col: number;
+    id: string;
+  } {
+    try {
+      const decoded = JSON.parse(
+        Buffer.from(cursor, 'base64url').toString('utf8'),
+      ) as Record<string, unknown>;
+      if (
+        !Number.isInteger(decoded.sheetIndex) ||
+        !Number.isInteger(decoded.row) ||
+        !Number.isInteger(decoded.col) ||
+        (decoded.sheetIndex as number) < 0 ||
+        (decoded.row as number) < 0 ||
+        (decoded.col as number) < 0 ||
+        typeof decoded.id !== 'string' ||
+        !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          decoded.id,
+        )
+      ) {
+        throw new Error('invalid cursor');
+      }
+      return decoded as {
+        sheetIndex: number;
+        row: number;
+        col: number;
+        id: string;
+      };
+    } catch {
+      throw new BadRequestException('Workbook search cursor is invalid');
+    }
+  }
+
   private jsonEqual(left: unknown, right: unknown): boolean {
     return (
       JSON.stringify(this.canonicalize(left)) ===

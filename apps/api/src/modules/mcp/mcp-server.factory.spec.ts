@@ -14,6 +14,7 @@ describe('McpServerFactory', () => {
     analyzeRange: jest.fn(),
     previewChanges: jest.fn(),
     getRevisionHistory: jest.fn(),
+    searchWorkbook: jest.fn(),
   };
 
   beforeEach(() => jest.clearAllMocks());
@@ -43,6 +44,7 @@ describe('McpServerFactory', () => {
         'analyze_range',
         'preview_changes',
         'get_revision_history',
+        'search_workbook',
         'rollback_revision',
         'execute_change_set',
         'set_cells',
@@ -186,6 +188,33 @@ describe('McpServerFactory', () => {
         cursor: undefined,
         action: 'BULK_UPDATE',
         includeChanges: true,
+      },
+    );
+
+    queries.searchWorkbook.mockResolvedValue({
+      matches: [{ sheetId: '550e8400-e29b-41d4-a716-446655440001' }],
+      hasMore: false,
+      nextCursor: null,
+    });
+    const search = await client.callTool({
+      name: 'search_workbook',
+      arguments: {
+        spreadsheetId: '550e8400-e29b-41d4-a716-446655440000',
+        query: 'revenue',
+        mode: 'formulas',
+        limit: 25,
+      },
+    });
+    expect(search.isError).not.toBe(true);
+    expect(queries.searchWorkbook).toHaveBeenCalledWith(
+      'user-1',
+      '550e8400-e29b-41d4-a716-446655440000',
+      'revenue',
+      {
+        mode: 'formulas',
+        sheetId: undefined,
+        limit: 25,
+        cursor: undefined,
       },
     );
 

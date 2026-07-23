@@ -232,16 +232,17 @@ model CollaborationSnapshot {
 
 // Cell model
 model Cell {
-  id        String   @id @default(uuid())
-  sheetId   String
-  sheet     Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
-  row       Int
-  col       Int
-  value     Json?
-  formula   String?
-  format    Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id              String   @id @default(uuid())
+  sheetId         String
+  sheet           Sheet    @relation(fields: [sheetId], references: [id], onDelete: Cascade)
+  row             Int
+  col             Int
+  value           Json?
+  valueSearchText String?
+  formula         String?
+  format          Json?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
   @@unique([sheetId, row, col])
   @@index([sheetId])

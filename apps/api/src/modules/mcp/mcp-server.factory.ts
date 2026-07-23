@@ -213,6 +213,32 @@ export class McpServerFactory {
     );
 
     server.registerTool(
+      'search_workbook',
+      {
+        description:
+          'Search values, formulas, or both across an accessible workbook with stable bounded pagination.',
+        inputSchema: {
+          spreadsheetId: z.string().uuid(),
+          query: z.string().trim().min(1).max(200),
+          mode: z.enum(['all', 'values', 'formulas']).optional().default('all'),
+          sheetId: z.string().uuid().optional(),
+          limit: z.number().int().min(1).max(100).optional().default(50),
+          cursor: z.string().min(1).max(512).optional(),
+        },
+        annotations: { readOnlyHint: true, idempotentHint: true },
+      },
+      async ({ spreadsheetId, query, mode, sheetId, limit, cursor }) =>
+        jsonResult(
+          await this.queries.searchWorkbook(userId, spreadsheetId, query, {
+            mode,
+            sheetId,
+            limit,
+            cursor,
+          }),
+        ),
+    );
+
+    server.registerTool(
       'rollback_revision',
       {
         description:

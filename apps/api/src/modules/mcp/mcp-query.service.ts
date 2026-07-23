@@ -253,6 +253,25 @@ export class McpQueryService {
     );
   }
 
+  searchWorkbook(
+    userId: string,
+    spreadsheetId: string,
+    query: string,
+    options: {
+      mode: 'all' | 'values' | 'formulas';
+      sheetId?: string;
+      limit: number;
+      cursor?: string;
+    },
+  ) {
+    return this.sheetsService.searchWorkbook(
+      userId,
+      spreadsheetId,
+      query,
+      options,
+    );
+  }
+
   private analysisType(value: unknown): string {
     if (value === null || value === undefined) return 'unknown';
     if (Array.isArray(value)) return 'array';
