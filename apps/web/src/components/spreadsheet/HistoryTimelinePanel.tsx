@@ -35,6 +35,23 @@ interface HistoryTimelinePanelProps {
   onRollback?: (revisionId: string, version: number) => Promise<void> | void;
 }
 
+function rollbackIdempotencyKey(): string {
+  if (typeof globalThis.crypto?.randomUUID === "function") {
+    return `rollback-${globalThis.crypto.randomUUID()}`;
+  }
+  const bytes = new Uint8Array(16);
+  if (typeof globalThis.crypto?.getRandomValues === "function") {
+    globalThis.crypto.getRandomValues(bytes);
+  } else {
+    for (let index = 0; index < bytes.length; index += 1) {
+      bytes[index] = Math.floor(Math.random() * 256);
+    }
+  }
+  return `rollback-${Array.from(bytes, (value) =>
+    value.toString(16).padStart(2, "0"),
+  ).join("")}`;
+}
+
 export default function HistoryTimelinePanel({
   isOpen,
   onClose,
@@ -102,7 +119,7 @@ export default function HistoryTimelinePanel({
           method: "POST",
           body: JSON.stringify({
             expectedVersion,
-            idempotencyKey: `rollback-${crypto.randomUUID()}`,
+            idempotencyKey: rollbackIdempotencyKey(),
           }),
         },
       );
@@ -259,7 +276,7 @@ export default function HistoryTimelinePanel({
                       className={styles.rollbackButton}
                       disabled={rolling}
                     >
-                      {rolling ? "롤백 중..." : "이 시점으로 되돌리기"}
+                      {rolling ? "복원 중..." : "이 변경 되돌리기"}
                     </button>
                   </div>
                 )}
